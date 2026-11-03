@@ -1,22 +1,11 @@
 import SwiftUI
 
-/// Telemetry inspector: a Generation widget (this chat's averages + context) and a Hardware widget
-/// ordered along the data path of a reply — GPU (does the work) → memory (holds the model) → CPU.
-struct ObservabilityPanel: View {
-    var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 14) {
-                GenerationWidget()
-                HardwareWidget()
-            }
-            .padding(12)
-        }
-        .background(.background.secondary)
-    }
-}
+// The two telemetry widgets, each shown in its own floating window (FloatingWidgets.swift):
+// Generation (this chat's averages + context) and Hardware, ordered along the data path of a
+// reply — GPU (does the work) → memory (holds the model) → CPU.
 
 /// A titled panel with its own tinted background, so each group reads as a separate widget.
-private struct PanelWidget<Trailing: View, Content: View>: View {
+struct PanelWidget<Trailing: View, Content: View>: View {
     let title: String
     let symbol: String
     @ViewBuilder var trailing: Trailing
@@ -48,7 +37,7 @@ private struct PanelWidget<Trailing: View, Content: View>: View {
 
 // MARK: - Generation
 
-private struct GenerationWidget: View {
+struct GenerationWidget: View {
     @Environment(ChatController.self) private var chat
     @Environment(BackendController.self) private var backends
 
@@ -152,7 +141,7 @@ private struct ContextStrip: View {
 
 // MARK: - Hardware
 
-private struct HardwareWidget: View {
+struct HardwareWidget: View {
     @Environment(SystemMonitor.self) private var monitor
     @Environment(ChatController.self) private var chat
 

@@ -106,7 +106,7 @@ final class ChatController {
 
     // MARK: Generation
 
-    var canSend: Bool { !isGenerating && backends.status.isOnline && backends.selectedModel != nil }
+    var canSend: Bool { !isGenerating && backends.status.isOnline && backends.selectedModel != nil && backends.activeTest == nil }
 
     func send(_ text: String) {
         let text = text.trimmingCharacters(in: .whitespacesAndNewlines)

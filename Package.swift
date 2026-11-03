@@ -27,6 +27,7 @@ let package = Package(
             linkerSettings: [
                 .linkedFramework("IOKit"),
                 .linkedFramework("Metal"),
+                .linkedFramework("MetalPerformanceShaders"),
             ]
         ),
     ]

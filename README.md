@@ -1,9 +1,9 @@
-<p align="center"><img src="assets/icon.png" width="128" alt="Loupe icon"></p>
+<p align="center"><img src="assets/icon.png" width="128" alt="Medonom icon"></p>
 
-<h1 align="center">Loupe</h1>
-<p align="center"><b>Local AI, up close.</b></p>
+<h1 align="center">Medonom</h1>
+<p align="center"><b>Local AI, measured.</b></p>
 
-Loupe is a native macOS app (SwiftUI, Apple Silicon) for chatting with local LLMs. It includes live observability and a curated list of verified models. Everything runs on your Mac.
+Medonom is a native macOS app (SwiftUI, Apple Silicon) for chatting with local LLMs. It includes live observability and a curated list of verified models. Everything runs on your Mac.
 
 ## Features
 
@@ -16,23 +16,27 @@ Loupe is a native macOS app (SwiftUI, Apple Silicon) for chatting with local LLM
   - Verified models only by default. The Model Library lets you download, use and remove models with one click (Ollama), and shows a memory-fit badge for your Mac.
 - **Framework selection**: Ollama (recommended), LM Studio, llama.cpp `llama-server`, and MLX LM. A green dot shows which ones are running.
 - **Context window**: pick 2K–128K tokens, limited to what the model supports, with a memory estimate for each size. Older messages are trimmed automatically when they don't fit.
-- **Telemetry** (the Telemetry button at the top right, or ⌥⌘I). The compact vitals in the toolbar hide while the panel is open.
-  - **Generation widget**: averages for this chat with the exact model + quant selected. A new chat, model or quant starts at zero; reopening an old chat restores its numbers. Shows first-token time (cold starts left out), tokens/sec, prompt speed and reply length, plus context-window usage.
-  - **Hardware widget**: compact cards with each part's load next to its temperature, in data-path order: GPU, then memory (with pressure and swap), then CPU. Includes the macOS thermal state.
+- **Telemetry** (sidebar › Telemetry, or ⌥⌘1 / ⌥⌘2): **Generation** and **Hardware** each open as a floating widget that stays above other windows. Drag it anywhere to move it, and drag an edge to resize: the whole widget scales and keeps its shape. The compact vitals in the toolbar hide while the Hardware widget is open.
+  - **Generation**: averages for this chat with the exact model + quant selected. A new chat, model or quant starts at zero; reopening an old chat restores its numbers. Shows first-token time (cold starts left out), tokens/sec, prompt speed and reply length, plus context-window usage.
+  - **Hardware**: compact cards with each part's load next to its temperature, in data-path order: GPU, then memory (with pressure and swap), then CPU. Includes the macOS thermal state.
   - Temperatures come from the SMC. No admin rights needed.
   - Every metric uses green / yellow / red ranges
+- **Tests** (sidebar › Tests), each with its own dashboard:
+  - **Model Test** (⌥⌘3): 20 auto-graded questions on any installed model, chosen in the dashboard without changing the model you chat with (math, reasoning, knowledge, instruction following, code, and a long-context "find the secret code" check), plus speed: tokens/sec, first-token time and prompt reading speed. The dashboard shows the score ring, a per-category chart, every question with the model's answer, a quality-vs-speed chart and a leaderboard of every model and quant you've tested.
+  - **Hardware Test** (⌥⌘4, about 30 s): CPU single and multi-core, CPU and GPU memory bandwidth, GPU FP16 matrix math (Metal Performance Shaders), disk read/write with the cache bypassed, and 15 s of sustained GPU load to check for throttling. The dashboard shows temperatures and load through the run, and estimates each catalog model's generation speed on this Mac from the measured bandwidth (tokens/sec ≈ bandwidth ÷ model size), next to the speeds the model test measured.
+  - Chat waits while a test runs, so the numbers stay clean. Results are saved in `tests.json` next to the conversations.
 - **Look and feel**:
   - Six colour themes (View › Theme, or Settings › Appearance) and a static ambient mesh background
   - Liquid Glass for the composer and controls on macOS 26+
   - Green, yellow and red always keep their health meaning, whatever the theme
-  - The Loupe mark: a lens with a spark inside and a measuring bezel whose ticks run green → yellow → red. The in-app mark and wordmark follow the theme. The icon is drawn by `scripts/make-icon.swift`.
+  - The Medonom mark: a metronome whose pendulum weight is an AI spark, against a tempo scale that runs green → yellow → red. The in-app mark and wordmark follow the theme. The icon is drawn by `scripts/make-icon.swift`.
 
 ## Run it
 
 Requirements: an Apple Silicon Mac, macOS 14 or later, and Command Line Tools or Xcode.
 
 ```bash
-make run        # builds "build/Loupe.app" and opens it
+make run        # builds "build/Medonom.app" and opens it
 make install    # copies it to /Applications
 ```
 
@@ -55,10 +59,10 @@ Sources/SensorsC/           C bridge: Apple SMC + HID temperature sensors
 Sources/LocalAIAgent/
   App/                      App entry, settings, debug hooks
   Backends/                 Ollama + OpenAI-compatible clients (streaming)
-  Services/                 Backend/chat controllers, persistence
+  Services/                 Backend/chat controllers, persistence, model + hardware tests
   Telemetry/                CPU/GPU/memory/thermal sampling
   Models/                   Chat types, curated catalog, health thresholds
-  Views/                    Chat, sidebar, toolbar, inspector, library, settings
+  Views/                    Chat, sidebar, toolbar, telemetry widgets, test dashboards, library, settings
 scripts/build-app.sh        Builds and ad-hoc signs the .app bundle
 ```
 

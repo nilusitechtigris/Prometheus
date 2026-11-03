@@ -5,8 +5,15 @@ import SwiftUI
 @MainActor
 @Observable
 final class UIState {
+    /// What the main area shows: the selected chat or one of the test dashboards.
+    enum Destination: Hashable { case chat, modelTest, hardwareTest }
+
+    var destination: Destination = .chat
+    /// Telemetry widget windows currently on screen.
+    var openWidgets: Set<TelemetryWidgetKind> = []
     var showLibrary = false
     var showModelPicker = false
+    var showTestModelPicker = false
     var composerFocusRequest = 0
     var draft = ""
 }
@@ -39,6 +46,7 @@ struct LocalAIAgentApp: App {
     @State private var chat: ChatController
     @State private var monitor = SystemMonitor()
     @State private var ui = UIState()
+    @State private var lab = TestLab()
 
     init() {
         let settings = AppSettings()
@@ -58,12 +66,13 @@ struct LocalAIAgentApp: App {
                 .environment(chat)
                 .environment(monitor)
                 .environment(ui)
+                .environment(lab)
                 .frame(minWidth: 980, minHeight: 640)
                 .task {
                     backends.start()
                     monitor.start()
                     #if DEBUG
-                    DebugHooks.install(chat: chat, ui: ui)
+                    DebugHooks.install(chat: chat, ui: ui, lab: lab, backends: backends, monitor: monitor, settings: settings)
                     #endif
                 }
         }
@@ -82,6 +91,7 @@ struct LocalAIAgentApp: App {
             }
             CommandGroup(replacing: .newItem) {
                 Button("New Chat") {
+                    ui.destination = .chat
                     chat.newConversation()
                     ui.composerFocusRequest += 1
                 }
@@ -106,18 +116,55 @@ struct LocalAIAgentApp: App {
                     .keyboardShortcut("m", modifiers: [.command, .shift])
                 Button("Model Library…") { ui.showLibrary = true }
                     .keyboardShortcut("l", modifiers: [.command, .shift])
-                Button(settings.showInspector ? "Hide Telemetry" : "Show Telemetry") {
-                    settings.showInspector.toggle()
-                }
-                .keyboardShortcut("i", modifiers: [.command, .option])
+                Divider()
+                WidgetMenuItems(ui: ui)
+                Divider()
+                Button("Model Test Dashboard") { ui.destination = .modelTest }
+                    .keyboardShortcut("3", modifiers: [.command, .option])
+                Button("Hardware Test Dashboard") { ui.destination = .hardwareTest }
+                    .keyboardShortcut("4", modifiers: [.command, .option])
             }
         }
+
+        widgetWindow(.generation)
+        widgetWindow(.hardware)
 
         Settings {
             SettingsView()
                 .environment(settings)
                 .environment(backends)
                 .environment(chat)
+        }
+    }
+
+    /// A floating telemetry widget in its own window.
+    private func widgetWindow(_ kind: TelemetryWidgetKind) -> some Scene {
+        Window(kind.title, id: kind.windowID) {
+            FloatingWidgetWindow(kind: kind)
+                .environment(settings)
+                .environment(backends)
+                .environment(chat)
+                .environment(monitor)
+                .environment(ui)
+                .tint(Palette.accent)
+        }
+        .windowStyle(.hiddenTitleBar)
+        .defaultSize(width: kind.baseWidth, height: kind == .generation ? 300 : 460)
+        .defaultPosition(.topTrailing)
+    }
+}
+
+/// Chat-menu toggles for the floating telemetry widgets (⌥⌘1, ⌥⌘2).
+private struct WidgetMenuItems: View {
+    let ui: UIState
+    @Environment(\.openWindow) private var openWindow
+    @Environment(\.dismissWindow) private var dismissWindow
+
+    var body: some View {
+        let toggle = TelemetryWidgetToggle(open: openWindow, dismiss: dismissWindow, ui: ui)
+        ForEach(Array(TelemetryWidgetKind.allCases.enumerated()), id: \.element) { index, kind in
+            Button("\(ui.openWidgets.contains(kind) ? "Hide" : "Show") \(kind.title) Widget") { toggle(kind) }
+                .keyboardShortcut(KeyEquivalent(Character("\(index + 1)")), modifiers: [.command, .option])
         }
     }
 }

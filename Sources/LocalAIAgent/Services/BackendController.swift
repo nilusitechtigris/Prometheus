@@ -33,6 +33,8 @@ final class BackendController {
     var pulls: [String: PullState] = [:]
     var lastError: String?
     var isStartingOllama = false
+    /// Name of the test that's using the model or the hardware right now; chat waits until it ends.
+    var activeTest: String?
 
     private var pollTask: Task<Void, Never>?
     private var detailsFor: String?
@@ -99,10 +101,24 @@ final class BackendController {
     }
 
     /// The context window actually requested, clamped to what the model supports.
-    var effectiveContext: Int {
+    var effectiveContext: Int { context(details: details, catalog: selectedModel?.catalog) }
+
+    private func context(details: ModelDetails?, catalog: CatalogModel?) -> Int {
         if !kind.supportsPerRequestContext, let loadedCtx = details?.maxContext { return loadedCtx }
-        guard let max = maxContext else { return settings.contextLength }
+        guard let max = details?.maxContext ?? catalog?.maxContext else { return settings.contextLength }
         return min(settings.contextLength, max)
+    }
+
+    /// Context window for any installed model, using what's known without asking the framework.
+    func estimatedContext(for model: LocalModel) -> Int {
+        context(details: model.id == settings.selectedModel ? details : nil, catalog: model.catalog)
+    }
+
+    /// Asks the framework for the context window and thinking support of any installed model,
+    /// which may not be the chat's selected one.
+    func capabilities(of model: LocalModel) async -> (context: Int, supportsThinking: Bool) {
+        let info = try? await backend.details(for: model.id)
+        return (context(details: info, catalog: model.catalog), info?.supportsThinking ?? model.catalog?.thinking ?? false)
     }
 
     var supportsThinking: Bool { details?.supportsThinking ?? selectedModel?.catalog?.thinking ?? false }

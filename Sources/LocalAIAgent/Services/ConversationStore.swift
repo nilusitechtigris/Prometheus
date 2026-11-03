@@ -4,7 +4,8 @@ import Foundation
 struct ConversationStore {
     let fileURL: URL
 
-    init() {
+    /// The app's data folder (also holds test results).
+    static let directory: URL = {
         var base = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
             .appendingPathComponent("LocalAIAgent", isDirectory: true)
         #if DEBUG
@@ -14,7 +15,11 @@ struct ConversationStore {
         }
         #endif
         try? FileManager.default.createDirectory(at: base, withIntermediateDirectories: true)
-        fileURL = base.appendingPathComponent("conversations.json")
+        return base
+    }()
+
+    init() {
+        fileURL = Self.directory.appendingPathComponent("conversations.json")
     }
 
     func load() -> [Conversation] {

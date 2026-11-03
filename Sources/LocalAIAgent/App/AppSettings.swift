@@ -52,7 +52,6 @@ final class AppSettings {
     var thinkingEnabled: Bool { didSet { defaults.set(thinkingEnabled, forKey: "thinkingEnabled") } }
     var allowUnverifiedModels: Bool { didSet { defaults.set(allowUnverifiedModels, forKey: "allowUnverifiedModels") } }
     var maxResponseTokens: Int { didSet { defaults.set(maxResponseTokens, forKey: "maxResponseTokens") } }
-    var showInspector: Bool { didSet { defaults.set(showInspector, forKey: "showInspector") } }
     /// Unload the previous model when switching, so two models don't compete for unified memory.
     var unloadOnSwitch: Bool { didSet { defaults.set(unloadOnSwitch, forKey: "unloadOnSwitch") } }
     /// Whether the stats card under each reply is expanded (applies to every reply).
@@ -69,7 +68,6 @@ final class AppSettings {
         thinkingEnabled = defaults.object(forKey: "thinkingEnabled") as? Bool ?? true
         allowUnverifiedModels = defaults.bool(forKey: "allowUnverifiedModels")
         maxResponseTokens = defaults.integer(forKey: "maxResponseTokens")
-        showInspector = defaults.object(forKey: "showInspector") as? Bool ?? true
         unloadOnSwitch = defaults.object(forKey: "unloadOnSwitch") as? Bool ?? true
         replyStatsExpanded = defaults.object(forKey: "replyStatsExpanded") as? Bool ?? true
     }
