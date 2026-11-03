@@ -12,7 +12,7 @@ struct ChatView: View {
             }
             ComposerView()
         }
-        .background(Color(nsColor: .windowBackgroundColor))
+        .background(AmbientBackground())
     }
 }
 

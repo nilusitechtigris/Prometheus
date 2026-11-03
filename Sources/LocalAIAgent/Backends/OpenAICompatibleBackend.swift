@@ -15,11 +15,26 @@ struct OpenAICompatibleBackend: LLMBackend {
     func listModels() async throws -> [LocalModel] {
         let obj = try await HTTP.json(HTTP.request(url("v1/models"), timeout: 5))
         let data = obj["data"] as? [[String: Any]] ?? []
+
+        // LM Studio's REST API also reports who published each file and its quantization.
+        var lmStudioInfo: [String: [String: Any]] = [:]
+        if kind == .lmStudio,
+           let rich = try? await HTTP.json(HTTP.request(url("api/v0/models"), timeout: 3)),
+           let list = rich["data"] as? [[String: Any]] {
+            for m in list { if let id = m["id"] as? String { lmStudioInfo[id] = m } }
+        }
+
         return data.compactMap { m in
             guard let id = m["id"] as? String else { return nil }
             // Skip embedding-only models that LM Studio also lists.
             if id.lowercased().contains("embed") { return nil }
-            return LocalModel(id: id)
+            let info = lmStudioInfo[id]
+            if (info?["type"] as? String) == "embeddings" { return nil }
+            return LocalModel(
+                id: id,
+                quantization: info?["quantization"] as? String,
+                publisher: (info?["publisher"] as? String) ?? (kind == .mlx ? QuantParser.provider(in: id) : nil)
+            )
         }
         .sorted { $0.id < $1.id }
     }

@@ -5,16 +5,22 @@ A native macOS app (SwiftUI, Apple Silicon) for chatting with local LLMs. It inc
 ## Features
 
 - **Chat**: streaming responses, Markdown (code blocks with copy, tables, lists, math blocks), collapsible "thinking" for reasoning models, stop/regenerate, saved conversations with search.
-- **Model selection**: verified models only by default. The Model Library lets you download, use and remove models with one click (Ollama), and shows a memory-fit badge for your Mac.
+- **Controls under the message box**: Framework · Model + quant · Context · Think · Temp
+- **Model and quant selection** (⇧⌘M):
+  - Always shows the quantization (Q4_K_M, Q8_0, FP16, Q4_0 QAT, MXFP4) and who made the quantized file (Ollama, Google, OpenAI, or the publisher on LM Studio and MLX).
+  - Switch between quants of the same model in one click. A variant you don't have yet is downloaded first.
+  - Verified models only by default. The Model Library lets you download, use and remove models with one click (Ollama), and shows a memory-fit badge for your Mac.
 - **Framework selection**: Ollama (recommended), LM Studio, llama.cpp `llama-server`, and MLX LM. A green dot shows which ones are running.
 - **Context window**: pick 2K–128K tokens, limited to what the model supports, with a memory estimate for each size. Older messages are trimmed automatically when they don't fit.
-- **Observability** (⌥⌘I):
-  - Time to first token, tokens/sec (updates live while generating), prompt-processing speed, tokens in/out, model load time
-  - Context-window usage
-  - Loaded models, their GPU/CPU split, and a one-click Unload
-  - CPU (with per-core bars), GPU, and memory (with pressure, swap, and a breakdown), each with a sparkline
-  - CPU, GPU, and memory temperatures read from the SMC, plus the macOS thermal state. No admin rights needed.
-  - Every metric uses green / yellow / red ranges (see "How ranges are defined" in the panel)
+- **Telemetry** (the Telemetry button at the top right, or ⌥⌘I). The compact vitals in the toolbar hide while the panel is open.
+  - **Generation widget**: averages for this chat with the exact model + quant selected. A new chat, model or quant starts at zero; reopening an old chat restores its numbers. Shows first-token time (cold starts left out), tokens/sec, prompt speed and reply length, plus context-window usage.
+  - **Hardware widget**: compact cards with each part's load next to its temperature, in data-path order: GPU, then memory (with pressure and swap), then CPU. Includes the macOS thermal state.
+  - Temperatures come from the SMC. No admin rights needed.
+  - Every metric uses green / yellow / red ranges
+- **Look and feel**:
+  - Six colour themes (View › Theme, or Settings › Appearance) and a static ambient mesh background
+  - Liquid Glass for the composer and controls on macOS 26+
+  - Green, yellow and red always keep their health meaning, whatever the theme
 
 ## Run it
 

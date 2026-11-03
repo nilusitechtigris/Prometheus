@@ -22,7 +22,9 @@ struct OllamaBackend: LLMBackend {
                 sizeBytes: m.int64("size"),
                 parameterSize: details["parameter_size"] as? String,
                 quantization: details["quantization_level"] as? String,
-                family: details["family"] as? String
+                family: details["family"] as? String,
+                // Official library models are quantized by Ollama; `user/model` and `hf.co/user/repo` by their owner.
+                publisher: QuantParser.provider(in: name) ?? "Ollama"
             )
         }
         .sorted { $0.id < $1.id }

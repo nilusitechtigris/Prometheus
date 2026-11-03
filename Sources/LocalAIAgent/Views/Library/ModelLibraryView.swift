@@ -60,7 +60,7 @@ struct ModelLibraryView: View {
     private var filterBar: some View {
         HStack(spacing: 6) {
             filterButton(nil, title: "All", symbol: "square.grid.2x2")
-            ForEach(CatalogModel.Category.allCases.filter { $0 != .recommended }) { c in
+            ForEach(CatalogModel.Category.allCases) { c in
                 filterButton(c, title: c.rawValue, symbol: c.symbol)
             }
             Spacer()
@@ -136,14 +136,23 @@ struct ModelCard: View {
     let model: CatalogModel
     var compact = false
     @State private var confirmRemove = false
+    @State private var chosenTag: String?
+
+    /// The quantization this card is acting on: the user's pick, else an installed one, else the default.
+    private var variant: QuantVariant {
+        if let tag = chosenTag, let v = model.variant(forTag: tag) { return v }
+        if let selected = backends.selectedModel.flatMap({ model.variant(forTag: $0.id) }) { return selected }
+        return model.variants.first { backends.installed($0) != nil } ?? model.defaultVariant
+    }
 
     private var installed: LocalModel? {
-        backends.models.first { $0.id == model.ollamaTag || $0.id == model.ollamaTag + ":latest" }
-            ?? (backends.kind == .ollama ? nil : backends.models.first { $0.catalog?.id == model.id })
+        if backends.kind == .ollama { return backends.installed(variant) }
+        return backends.models.first { $0.catalog?.id == model.id }
     }
 
     var body: some View {
-        let estimate = backends.memoryEstimate(for: model)
+        let variant = self.variant
+        let estimate = backends.memoryEstimate(for: model, variant: variant)
         let verdict = MemoryFit.verdict(requiredBytes: estimate, budget: monitor.gpuBudgetBytes)
 
         Card(padding: 14) {
@@ -175,8 +184,20 @@ struct ModelCard: View {
                         .frame(maxWidth: .infinity, minHeight: 34, alignment: .topLeading)
                 }
 
+                if backends.kind == .ollama {
+                    VStack(alignment: .leading, spacing: 5) {
+                        HStack(spacing: 5) {
+                            ForEach(model.variants) { v in
+                                variantChip(v, selected: v == variant)
+                            }
+                        }
+                        Text("\(variant.quality) · \(variant.size) · quantized by \(variant.quantizedBy)")
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+
                 HStack(spacing: 6) {
-                    Chip(text: model.downloadSize, symbol: "arrow.down.circle")
                     Chip(text: "\(Format.tokens(model.maxContext)) ctx", symbol: "text.word.spacing")
                     if model.thinking { Chip(text: "Thinking", symbol: "brain.head.profile", tint: Palette.accent) }
                 }
@@ -190,26 +211,46 @@ struct ModelCard: View {
                         .lineLimit(1)
                         .help("Estimated memory for weights + \(Format.tokens(settings.contextLength)) context, out of ≈ \(Format.gigabytes(monitor.gpuBudgetBytes)) the GPU can use")
                     Spacer(minLength: 6)
-                    action.fixedSize()
+                    action(variant).fixedSize()
                 }
             }
         }
-        .confirmationDialog("Remove \(model.displayName)?", isPresented: $confirmRemove, titleVisibility: .visible) {
+        .confirmationDialog("Remove \(model.displayName) \(variant.quant)?", isPresented: $confirmRemove, titleVisibility: .visible) {
             Button("Remove from Disk", role: .destructive) {
                 if let installed { Task { await backends.delete(installed.id) } }
             }
         } message: {
-            Text("Frees \(model.downloadSize). You can download it again any time.")
+            Text("Frees \(variant.size). You can download it again any time.")
         }
     }
 
+    private func variantChip(_ v: QuantVariant, selected: Bool) -> some View {
+        let isInstalled = backends.installed(v) != nil
+        return Button {
+            withAnimation(.snappy) { chosenTag = v.tag }
+        } label: {
+            HStack(spacing: 3) {
+                if isInstalled { Image(systemName: "checkmark").font(.system(size: 8, weight: .bold)) }
+                Text(v.quant)
+            }
+            .font(.system(size: 10.5, weight: .semibold, design: .monospaced))
+            .padding(.horizontal, 7)
+            .padding(.vertical, 3)
+            .background(selected ? AnyShapeStyle(Palette.accent) : AnyShapeStyle(Color.primary.opacity(0.07)),
+                        in: RoundedRectangle(cornerRadius: 6, style: .continuous))
+            .foregroundStyle(selected ? Color.white : (isInstalled ? Palette.accent : Color.secondary))
+        }
+        .buttonStyle(.plain)
+        .help("\(v.quant) · \(v.quality) · \(v.size)\(isInstalled ? " · installed" : "")")
+    }
+
     @ViewBuilder
-    private var action: some View {
-        if let pull = backends.pulls[model.ollamaTag] {
+    private func action(_ variant: QuantVariant) -> some View {
+        if let pull = backends.pulls[variant.tag] {
             if let error = pull.error {
                 HStack(spacing: 6) {
                     Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(Palette.critical).help(error)
-                    Button("Retry") { backends.cancelPull(model.ollamaTag); backends.pull(model.ollamaTag) }.controlSize(.small)
+                    Button("Retry") { backends.cancelPull(variant.tag); backends.pull(variant.tag) }.controlSize(.small)
                 }
             } else {
                 HStack(spacing: 8) {
@@ -219,7 +260,7 @@ struct ModelCard: View {
                             .font(.caption2.monospacedDigit())
                             .foregroundStyle(.secondary)
                     }
-                    Button { backends.cancelPull(model.ollamaTag) } label: { Image(systemName: "xmark.circle.fill") }
+                    Button { backends.cancelPull(variant.tag) } label: { Image(systemName: "xmark.circle.fill") }
                         .buttonStyle(.borderless)
                         .help("Cancel download")
                 }
@@ -241,7 +282,7 @@ struct ModelCard: View {
             }
         } else if backends.kind.supportsModelDownloads {
             Button {
-                backends.pull(model.ollamaTag)
+                backends.pull(variant.tag)
             } label: {
                 Label("Download", systemImage: "arrow.down")
             }

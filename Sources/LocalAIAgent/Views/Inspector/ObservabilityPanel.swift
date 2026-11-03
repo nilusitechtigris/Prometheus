@@ -1,380 +1,210 @@
 import SwiftUI
 
+/// Telemetry inspector: a Generation widget (this chat's averages + context) and a Hardware widget
+/// ordered along the data path of a reply — GPU (does the work) → memory (holds the model) → CPU.
 struct ObservabilityPanel: View {
     var body: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: 18) {
-                GenerationSection()
-                ContextSection()
-                ModelMemorySection()
-                SystemSection()
-                ThermalSection()
-                RangesLegend()
+            VStack(alignment: .leading, spacing: 14) {
+                GenerationWidget()
+                HardwareWidget()
             }
-            .padding(14)
+            .padding(12)
         }
         .background(.background.secondary)
     }
 }
 
-// MARK: - Generation
-
-private struct GenerationSection: View {
-    @Environment(ChatController.self) private var chat
+/// A titled panel with its own tinted background, so each group reads as a separate widget.
+private struct PanelWidget<Trailing: View, Content: View>: View {
+    let title: String
+    let symbol: String
+    @ViewBuilder var trailing: Trailing
+    @ViewBuilder var content: Content
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            SectionHeader(title: "Generation", symbol: "bolt.horizontal.fill",
-                          trailing: chat.live != nil ? AnyView(LevelPill(level: .good, text: "Live")) : nil)
-
-            TimelineView(.periodic(from: .now, by: 0.25)) { _ in
-                let live = chat.live
-                let m = chat.lastMetrics
-                let ttft = live?.timeToFirstToken ?? (live == nil ? m?.timeToFirstToken : nil)
-                let tps = live?.tokensPerSecond ?? (live == nil ? m?.tokensPerSecond : nil)
-
-                HStack(spacing: 10) {
-                    BigMetric(title: "Time to first token", value: Format.seconds(ttft), unit: "",
-                              level: Thresholds.timeToFirstToken.level(ttft), threshold: Thresholds.timeToFirstToken, raw: ttft)
-                    BigMetric(title: "Tokens / sec", value: Format.rate(tps), unit: "",
-                              level: Thresholds.tokensPerSecond.level(tps), threshold: Thresholds.tokensPerSecond, raw: tps)
-                }
+        let shape = RoundedRectangle(cornerRadius: 18, style: .continuous)
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(spacing: 8) {
+                Image(systemName: symbol)
+                    .font(.system(size: 11, weight: .bold))
+                    .foregroundStyle(.white)
+                    .frame(width: 22, height: 22)
+                    .background(Palette.gradient, in: RoundedRectangle(cornerRadius: 6, style: .continuous))
+                Text(title).font(.headline)
+                Spacer()
+                trailing
             }
-
-            if let load = chat.lastMetrics?.loadDuration, load > 0.5, chat.live == nil {
-                Label("TTFT includes \(Format.seconds(load)) of model loading (cold start). Follow-up messages are much faster while the model stays in memory.",
-                      systemImage: "info.circle")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-
-            if let m = chat.lastMetrics, chat.live == nil {
-                Card(padding: 10) {
-                    VStack(spacing: 6) {
-                        row("Prompt processing", m.promptTokensPerSecond.map { "\(Format.rate($0)) tok/s" } ?? "—")
-                        row("Tokens in / out", "\(m.promptTokens.map(String.init) ?? "—") / \(m.completionTokens.map(String.init) ?? "—")\(m.isEstimated ? " ≈" : "")")
-                        if let load = m.loadDuration {
-                            row("Model load", Format.seconds(load), note: load > 0.5 ? "cold start" : nil)
-                        }
-                        if let t = m.thinkingDuration { row("Thinking time", Format.seconds(t)) }
-                        row("Total time", Format.seconds(m.totalDuration))
-                    }
-                }
-            } else if chat.live == nil {
-                Text("Send a message to see speed metrics.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
-
-            if chat.throughputHistory.count >= 2 {
-                Card(padding: 10) {
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text("Throughput per response (tok/s)").font(.caption).foregroundStyle(.secondary)
-                        Sparkline(points: chat.throughputHistory, color: Palette.accent2,
-                                  rules: [Thresholds.tokensPerSecond.critical, Thresholds.tokensPerSecond.warning])
-                    }
-                }
-            }
+            content
         }
-    }
-
-    private func row(_ label: String, _ value: String, note: String? = nil) -> some View {
-        HStack {
-            Text(label).foregroundStyle(.secondary)
-            if let note { Text(note).font(.caption2).foregroundStyle(.tertiary) }
-            Spacer()
-            Text(value).monospacedDigit()
+        .padding(12)
+        .background {
+            shape.fill(Color.primary.opacity(0.045))
+            shape.fill(LinearGradient(colors: [Palette.accent.opacity(0.10), .clear], startPoint: .top, endPoint: .center))
         }
-        .font(.callout)
+        .overlay(shape.strokeBorder(Color.primary.opacity(0.09), lineWidth: 0.5))
     }
 }
 
-private struct BigMetric: View {
-    let title: String
-    let value: String
-    let unit: String
-    let level: HealthLevel
-    let threshold: Threshold
-    let raw: Double?
+// MARK: - Generation
+
+private struct GenerationWidget: View {
+    @Environment(ChatController.self) private var chat
+    @Environment(BackendController.self) private var backends
 
     var body: some View {
-        Card(padding: 10) {
-            VStack(alignment: .leading, spacing: 6) {
-                HStack {
-                    Text(title).font(.caption).foregroundStyle(.secondary).lineLimit(1)
-                    Spacer(minLength: 0)
-                    StatusDot(level: level, size: 7)
+        // Scoped to this chat + this exact model and quant: a new chat, model or quant starts at zero.
+        let avg = chat.averages(for: backends.selectedModel?.id)
+        let replies = avg?.responses ?? 0
+
+        PanelWidget(title: "Generation", symbol: "bolt.fill") {
+            Text("\(replies) repl\(replies == 1 ? "y" : "ies") · avg")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .monospacedDigit()
+        } content: {
+            Grid(horizontalSpacing: 8, verticalSpacing: 8) {
+                GridRow {
+                    AvgTile(title: "First token", value: Format.seconds(avg?.timeToFirstToken),
+                            threshold: Thresholds.timeToFirstToken, raw: avg?.timeToFirstToken,
+                            help: "Average time to the first token. Replies that waited for the model to load are left out\(avg.map { $0.coldStarts > 0 ? " (\($0.coldStarts) here)" : "" } ?? "").")
+                    AvgTile(title: "Speed", value: Format.rate(avg?.tokensPerSecond), unit: "tok/s",
+                            threshold: Thresholds.tokensPerSecond, raw: avg?.tokensPerSecond,
+                            help: "Average generation speed")
                 }
-                Text(value)
-                    .font(.system(size: 24, weight: .semibold, design: .rounded))
-                    .monospacedDigit()
-                    .contentTransition(.numericText())
-                RangeBar(value: raw, threshold: threshold, height: 5)
+                GridRow {
+                    AvgTile(title: "Prompt speed", value: Format.rate(avg?.promptTokensPerSecond), unit: "tok/s",
+                            help: "Average speed of reading the prompt")
+                    AvgTile(title: "Reply", value: avg?.completionTokens.map { "\(Int($0.rounded()))" } ?? "—",
+                            unit: avg?.totalDuration.map { "tok · \(Format.seconds($0))" } ?? "tok",
+                            help: "Average reply length and total time")
+                }
+            }
+            ContextStrip()
+        }
+    }
+}
+
+private struct AvgTile: View {
+    let title: String
+    let value: String
+    var unit: String?
+    var threshold: Threshold?
+    var raw: Double?
+    var help: String
+
+    var body: some View {
+        let level = threshold?.level(raw) ?? .unknown
+        Card(padding: 10) {
+            VStack(alignment: .leading, spacing: 5) {
+                HStack(spacing: 5) {
+                    Text(title).font(.caption2).foregroundStyle(.secondary).lineLimit(1)
+                    Spacer(minLength: 0)
+                    if threshold != nil { StatusDot(level: level, size: 6) }
+                }
+                HStack(alignment: .firstTextBaseline, spacing: 3) {
+                    Text(value)
+                        .font(.system(size: 19, weight: .semibold, design: .rounded))
+                        .monospacedDigit()
+                        .contentTransition(.numericText())
+                    if let unit { Text(unit).font(.caption2).foregroundStyle(.secondary).lineLimit(1) }
+                }
+                if let threshold {
+                    RangeBar(value: raw, threshold: threshold, height: 4)
+                }
             }
         }
+        .help(help)
     }
 }
 
 // MARK: - Context
 
-private struct ContextSection: View {
+private struct ContextStrip: View {
     @Environment(ChatController.self) private var chat
     @Environment(BackendController.self) private var backends
 
     var body: some View {
         let ctx = backends.effectiveContext
-        let used = chat.lastMetrics?.contextUsed
-        let pct = used.map { Double($0) / Double(max(ctx, 1)) * 100 }
+        let used = chat.lastMetrics?.contextUsed ?? 0
+        let pct = Double(used) / Double(max(ctx, 1)) * 100
+        let level = Thresholds.contextUsage.level(pct)
 
-        VStack(alignment: .leading, spacing: 8) {
-            SectionHeader(title: "Context window", symbol: "text.word.spacing")
-            Card(padding: 10) {
-                VStack(alignment: .leading, spacing: 8) {
-                    HStack(alignment: .firstTextBaseline) {
-                        Text(used.map { Format.tokens($0) } ?? "0")
-                            .font(.system(size: 20, weight: .semibold, design: .rounded))
-                            .monospacedDigit()
-                        Text("of \(Format.tokens(ctx)) tokens")
-                            .foregroundStyle(.secondary)
-                        Spacer()
-                        LevelPill(level: Thresholds.contextUsage.level(pct ?? 0), text: Format.percent(pct ?? 0))
-                    }
-                    RangeBar(value: pct ?? 0, threshold: Thresholds.contextUsage, height: 6)
-                    if chat.trimmedMessageCount > 0 {
-                        Label("\(chat.trimmedMessageCount) older messages trimmed to fit", systemImage: "scissors")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                    }
-                    if let max = backends.maxContext {
-                        Text("Model supports up to \(Format.tokens(max)) tokens\(backends.kind.supportsPerRequestContext ? "" : " · set in \(backends.kind.displayName)")")
-                            .font(.caption)
-                            .foregroundStyle(.tertiary)
-                    }
-                }
-            }
-        }
-    }
-}
-
-// MARK: - Model memory
-
-private struct ModelMemorySection: View {
-    @Environment(BackendController.self) private var backends
-    @Environment(SystemMonitor.self) private var monitor
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            SectionHeader(title: "Model in memory", symbol: "memorychip")
-            if backends.kind != .ollama {
-                Card(padding: 10) {
-                    Text("Loaded-model memory is reported by Ollama. \(backends.kind.displayName) shows it in its own window.")
-                        .font(.caption).foregroundStyle(.secondary)
-                }
-            } else if backends.loaded.isEmpty {
-                Card(padding: 10) {
-                    HStack {
-                        Image(systemName: "moon.zzz").foregroundStyle(.secondary)
-                        Text("No model loaded. It loads on your next message and unloads after 10 idle minutes.")
-                            .font(.caption).foregroundStyle(.secondary)
-                    }
-                }
-            } else {
-                ForEach(backends.loaded) { m in
-                    LoadedModelCard(model: m, budget: monitor.gpuBudgetBytes)
-                }
-            }
-        }
-    }
-}
-
-private struct LoadedModelCard: View {
-    @Environment(BackendController.self) private var backends
-    let model: LoadedModel
-    let budget: Int64
-
-    var body: some View {
-        let gpuShare = model.sizeBytes > 0 ? Double(model.vramBytes) / Double(model.sizeBytes) * 100 : 0
-        let budgetPct = Double(model.sizeBytes) / Double(max(budget, 1)) * 100
         Card(padding: 10) {
-            VStack(alignment: .leading, spacing: 8) {
-                HStack {
-                    Text(ModelCatalog.entry(matchingID: model.name)?.displayName ?? model.name)
-                        .font(.callout.weight(.semibold))
-                    Spacer()
-                    Button("Unload") { Task { await backends.unload(model.name) } }
-                        .controlSize(.small)
-                        .help("Free this model's memory now")
-                }
-                HStack(alignment: .firstTextBaseline) {
-                    Text(Format.gigabytes(model.sizeBytes))
-                        .font(.system(size: 20, weight: .semibold, design: .rounded))
-                    Text("of \(Format.gigabytes(budget)) GPU budget").foregroundStyle(.secondary)
-                    Spacer()
-                }
-                RangeBar(value: budgetPct, threshold: Threshold(warning: 70, critical: 95, displayMax: 100), height: 6)
+            VStack(alignment: .leading, spacing: 6) {
                 HStack(spacing: 6) {
-                    Chip(text: gpuShare >= 99.5 ? "100% GPU" : String(format: "%.0f%% GPU / %.0f%% CPU", gpuShare, 100 - gpuShare),
-                         symbol: "cpu", tint: gpuShare >= 99.5 ? Palette.good : Palette.warning)
-                    if let ctx = model.contextLength { Chip(text: "\(Format.tokens(ctx)) ctx", symbol: "text.word.spacing") }
-                    if let exp = model.expiresAt, exp > Date() {
-                        Chip(text: "unloads \(exp.formatted(.relative(presentation: .numeric)))", symbol: "timer")
-                    }
+                    Image(systemName: "text.word.spacing").font(.caption).foregroundStyle(.secondary)
+                    Text("Context").font(.callout.weight(.semibold))
+                    Spacer()
+                    Text("\(Format.tokens(used)) / \(Format.tokens(ctx))")
+                        .font(.callout.monospacedDigit())
+                    LevelPill(level: level, text: Format.percent(pct))
+                }
+                RangeBar(value: pct, threshold: Thresholds.contextUsage, height: 4)
+                if chat.trimmedMessageCount > 0 {
+                    Text("\(chat.trimmedMessageCount) older messages trimmed to fit")
+                        .font(.caption2).foregroundStyle(.secondary)
                 }
             }
         }
     }
 }
 
-// MARK: - System
+// MARK: - Hardware
 
-private struct SystemSection: View {
+private struct HardwareWidget: View {
     @Environment(SystemMonitor.self) private var monitor
     @Environment(ChatController.self) private var chat
 
     var body: some View {
         let s = monitor.snapshot
-        VStack(alignment: .leading, spacing: 8) {
-            SectionHeader(title: "System", symbol: "cpu")
+        PanelWidget(title: "Hardware", symbol: "cpu.fill") {
+            LevelPill(level: thermalLevel(s.thermalState), text: "Thermal: \(thermalText(s.thermalState))")
+        } content: {
 
-            MetricCard(title: "CPU", symbol: "cpu", value: Format.percent(s.cpuUsage),
-                       detail: "\(s.perCoreUsage.count) cores", threshold: Thresholds.cpuUsage,
-                       raw: s.cpuUsage, series: monitor.cpu.points, domain: 0...100) {
+            // GPU — runs the model.
+            ComponentCard(title: "GPU", symbol: "square.stack.3d.up.fill",
+                          subtitle: monitor.gpuCoreCount.map { "\($0)-core" }) {
+                MiniStat(label: "Load", value: Format.percent(s.gpuUsage), threshold: Thresholds.gpuUsage,
+                         raw: s.gpuUsage, series: monitor.gpu.points, domain: 0...100)
+                MiniStat(label: "Temp", value: Format.temp(s.gpuTemp), detail: s.gpuTempMax.map { "max \(Int($0))°" },
+                         threshold: Thresholds.gpuTemp, raw: s.gpuTemp, series: monitor.gpuTemp.points, domain: 20...110)
+            } footer: {
+                FooterRow(items: [("GPU memory", Format.bytes(s.gpuMemoryInUse), nil)])
+                if chat.isGenerating, (s.gpuUsage ?? 0) >= Thresholds.gpuUsage.warning {
+                    Text("High GPU load is expected while generating.")
+                        .font(.caption2).foregroundStyle(.tertiary)
+                }
+            }
+
+            // Memory — holds the model weights and context.
+            ComponentCard(title: "Memory", symbol: "memorychip.fill",
+                          subtitle: "\(Format.gigabytes(s.memoryUsed)) / \(Format.gigabytes(s.memoryTotal))") {
+                MiniStat(label: "Used", value: Format.percent(s.memoryPercent), threshold: Thresholds.memoryUsage,
+                         raw: s.memoryPercent, series: monitor.memory.points, domain: 0...100, levelOverride: s.memoryLevel)
+                MiniStat(label: "Temp", value: Format.temp(s.memoryTemp), threshold: Thresholds.memoryTemp,
+                         raw: s.memoryTemp, series: monitor.memoryTemp.points, domain: 20...100)
+            } footer: {
+                FooterRow(items: [
+                    ("Pressure", pressureText(s.memoryPressure), pressureLevel(s.memoryPressure)),
+                    ("Swap", Format.gigabytes(s.swapUsed), s.swapUsed > 2_147_483_648 ? .warning : nil),
+                ])
+            }
+
+            // CPU — tokenisation, sampling and everything else.
+            ComponentCard(title: "CPU", symbol: "cpu", subtitle: "\(s.perCoreUsage.count) cores") {
+                MiniStat(label: "Load", value: Format.percent(s.cpuUsage), threshold: Thresholds.cpuUsage,
+                         raw: s.cpuUsage, series: monitor.cpu.points, domain: 0...100)
+                MiniStat(label: "Temp", value: Format.temp(s.cpuTemp), detail: s.cpuTempMax.map { "max \(Int($0))°" },
+                         threshold: Thresholds.cpuTemp, raw: s.cpuTemp, series: monitor.cpuTemp.points, domain: 20...110)
+            } footer: {
                 CoreBars(values: s.perCoreUsage)
             }
-
-            MetricCard(title: "GPU", symbol: "square.stack.3d.up.fill", value: Format.percent(s.gpuUsage),
-                       detail: monitor.gpuCoreCount.map { "\($0)-core GPU" } ?? "", threshold: Thresholds.gpuUsage,
-                       raw: s.gpuUsage, series: monitor.gpu.points, domain: 0...100) {
-                HStack {
-                    Text("GPU memory in use").foregroundStyle(.secondary)
-                    Spacer()
-                    Text(Format.bytes(s.gpuMemoryInUse)).monospacedDigit()
-                }
-                .font(.caption)
-                if chat.isGenerating, (s.gpuUsage ?? 0) >= Thresholds.gpuUsage.warning {
-                    Label("High GPU load is expected while generating.", systemImage: "info.circle")
-                        .font(.caption2).foregroundStyle(.secondary)
-                }
-            }
-
-            MetricCard(title: "Memory", symbol: "memorychip.fill",
-                       value: Format.percent(s.memoryPercent),
-                       detail: "\(Format.gigabytes(s.memoryUsed)) of \(Format.gigabytes(s.memoryTotal))",
-                       threshold: Thresholds.memoryUsage, raw: s.memoryPercent, series: monitor.memory.points,
-                       domain: 0...100, levelOverride: s.memoryLevel) {
-                VStack(spacing: 3) {
-                    breakdown("Pressure", pressureText(s.memoryPressure), level: pressureLevel(s.memoryPressure))
-                    breakdown("App", Format.gigabytes(s.memoryApp))
-                    breakdown("Wired", Format.gigabytes(s.memoryWired))
-                    breakdown("Compressed", Format.gigabytes(s.memoryCompressed))
-                    breakdown("Swap used", Format.gigabytes(s.swapUsed), level: s.swapUsed > 2_147_483_648 ? .warning : nil)
-                }
-            }
         }
-    }
-
-    private func breakdown(_ label: String, _ value: String, level: HealthLevel? = nil) -> some View {
-        HStack(spacing: 6) {
-            Text(label).foregroundStyle(.secondary)
-            Spacer()
-            if let level { StatusDot(level: level, size: 6) }
-            Text(value).monospacedDigit()
-        }
-        .font(.caption)
     }
 
     private func pressureText(_ p: Int) -> String { p >= 4 ? "Critical" : p >= 2 ? "Warning" : "Normal" }
     private func pressureLevel(_ p: Int) -> HealthLevel { p >= 4 ? .critical : p >= 2 ? .warning : .good }
-}
-
-private struct MetricCard<Extra: View>: View {
-    let title: String
-    let symbol: String
-    let value: String
-    let detail: String
-    let threshold: Threshold
-    let raw: Double?
-    let series: [SamplePoint]
-    var domain: ClosedRange<Double>?
-    var levelOverride: HealthLevel?
-    @ViewBuilder var extra: Extra
-
-    var body: some View {
-        let level = levelOverride ?? threshold.level(raw)
-        Card(padding: 10) {
-            VStack(alignment: .leading, spacing: 8) {
-                HStack(spacing: 6) {
-                    Image(systemName: symbol).foregroundStyle(.secondary).font(.caption)
-                    Text(title).font(.callout.weight(.semibold))
-                    Spacer()
-                    LevelPill(level: level)
-                }
-                HStack(alignment: .firstTextBaseline) {
-                    Text(value)
-                        .font(.system(size: 22, weight: .semibold, design: .rounded))
-                        .monospacedDigit()
-                        .contentTransition(.numericText())
-                    Text(detail).font(.caption).foregroundStyle(.secondary)
-                    Spacer()
-                }
-                RangeBar(value: raw, threshold: threshold, height: 5)
-                Sparkline(points: series, color: level == .unknown ? Palette.accent : level.color, domain: domain,
-                          rules: [threshold.warning, threshold.critical], height: 34)
-                extra
-            }
-        }
-    }
-}
-
-private struct CoreBars: View {
-    let values: [Double]
-
-    var body: some View {
-        HStack(alignment: .bottom, spacing: 3) {
-            ForEach(Array(values.enumerated()), id: \.offset) { _, v in
-                let level = Thresholds.cpuUsage.level(v)
-                ZStack(alignment: .bottom) {
-                    RoundedRectangle(cornerRadius: 2).fill(.quaternary.opacity(0.6))
-                    RoundedRectangle(cornerRadius: 2).fill(level.color.opacity(0.85))
-                        .frame(height: max(2, CGFloat(v / 100) * 22))
-                }
-                .frame(height: 22)
-            }
-        }
-        .help("Per-core utilisation")
-    }
-}
-
-// MARK: - Thermals
-
-private struct ThermalSection: View {
-    @Environment(SystemMonitor.self) private var monitor
-
-    var body: some View {
-        let s = monitor.snapshot
-        VStack(alignment: .leading, spacing: 8) {
-            SectionHeader(title: "Temperature", symbol: "thermometer.medium",
-                          trailing: AnyView(LevelPill(level: thermalLevel(s.thermalState), text: "macOS: \(thermalText(s.thermalState))")))
-
-            Card(padding: 10) {
-                VStack(spacing: 12) {
-                    ThermalRow(title: "CPU", symbol: "cpu", value: s.cpuTemp, max: s.cpuTempMax,
-                               threshold: Thresholds.cpuTemp, series: monitor.cpuTemp.points)
-                    Divider()
-                    ThermalRow(title: "GPU", symbol: "square.stack.3d.up.fill", value: s.gpuTemp, max: s.gpuTempMax,
-                               threshold: Thresholds.gpuTemp, series: monitor.gpuTemp.points)
-                    Divider()
-                    ThermalRow(title: "Memory", symbol: "memorychip.fill", value: s.memoryTemp, max: nil,
-                               threshold: Thresholds.memoryTemp, series: monitor.memoryTemp.points)
-                }
-            }
-            if s.cpuTemp == nil && s.gpuTemp == nil {
-                Text("Temperature sensors aren't readable on this Mac; macOS thermal state is shown instead.")
-                    .font(.caption).foregroundStyle(.secondary)
-            }
-        }
-    }
 
     private func thermalText(_ s: ProcessInfo.ThermalState) -> String {
         switch s {
@@ -396,106 +226,101 @@ private struct ThermalSection: View {
     }
 }
 
-private struct ThermalRow: View {
+/// A hardware component with its load and temperature side by side.
+private struct ComponentCard<Stats: View, Footer: View>: View {
     let title: String
     let symbol: String
-    let value: Double?
-    let max: Double?
-    let threshold: Threshold
-    let series: [SamplePoint]
+    var subtitle: String?
+    @ViewBuilder var stats: Stats
+    @ViewBuilder var footer: Footer
 
     var body: some View {
-        let level = threshold.level(value)
-        VStack(alignment: .leading, spacing: 6) {
-            HStack(spacing: 8) {
-                Gauge(value: Swift.min(Swift.max(value ?? threshold.displayMin, threshold.displayMin), threshold.displayMax),
-                      in: threshold.displayMin...threshold.displayMax) {
-                    EmptyView()
-                } currentValueLabel: {
-                    Text(value.map { String(format: "%.0f", $0) } ?? "—")
-                        .font(.system(size: 13, weight: .semibold, design: .rounded))
-                        .monospacedDigit()
+        Card(padding: 10) {
+            VStack(alignment: .leading, spacing: 8) {
+                HStack(spacing: 6) {
+                    Image(systemName: symbol).font(.caption).foregroundStyle(Palette.accent)
+                    Text(title).font(.callout.weight(.semibold))
+                    if let subtitle { Text(subtitle).font(.caption).foregroundStyle(.secondary).monospacedDigit() }
+                    Spacer()
                 }
-                .gaugeStyle(.accessoryCircular)
-                .tint(Gradient(stops: gradientStops))
-                .scaleEffect(0.78)
-                .frame(width: 44, height: 44)
-
-                VStack(alignment: .leading, spacing: 2) {
-                    HStack(spacing: 6) {
-                        Text(title).font(.callout.weight(.semibold))
-                        LevelPill(level: level)
-                    }
-                    Text(subtitle).font(.caption).foregroundStyle(.secondary).monospacedDigit()
+                HStack(alignment: .top, spacing: 10) {
+                    stats
                 }
-                Spacer()
-                Sparkline(points: series, color: level == .unknown ? Palette.accent : level.color,
-                          domain: threshold.displayMin...threshold.displayMax,
-                          rules: [threshold.warning, threshold.critical], height: 30)
-                    .frame(width: 90)
+                footer
             }
-            RangeBar(value: value, threshold: threshold, height: 5)
         }
-    }
-
-    private var subtitle: String {
-        guard let value else { return "Sensor unavailable" }
-        var s = String(format: "Avg %.1f°C", value)
-        if let max { s += String(format: " · Hottest %.0f°C", max) }
-        return s
-    }
-
-    private var gradientStops: [Gradient.Stop] {
-        let span = threshold.displayMax - threshold.displayMin
-        let w = (threshold.warning - threshold.displayMin) / span
-        let c = (threshold.critical - threshold.displayMin) / span
-        return [
-            .init(color: Palette.good, location: 0),
-            .init(color: Palette.good, location: w - 0.02),
-            .init(color: Palette.warning, location: w + 0.02),
-            .init(color: Palette.warning, location: c - 0.02),
-            .init(color: Palette.critical, location: c + 0.02),
-            .init(color: Palette.critical, location: 1),
-        ]
     }
 }
 
-// MARK: - Legend
-
-private struct RangesLegend: View {
-    @State private var expanded = false
+private struct MiniStat: View {
+    let label: String
+    let value: String
+    var detail: String?
+    let threshold: Threshold
+    let raw: Double?
+    let series: [SamplePoint]
+    var domain: ClosedRange<Double>?
+    var levelOverride: HealthLevel?
 
     var body: some View {
-        DisclosureGroup(isExpanded: $expanded) {
-            VStack(alignment: .leading, spacing: 6) {
-                legend("CPU / GPU load", Thresholds.describe(Thresholds.cpuUsage, unit: "%"))
-                legend("Memory used", Thresholds.describe(Thresholds.memoryUsage, unit: "%") + " (or macOS memory pressure)")
-                legend("CPU / GPU temperature", Thresholds.describe(Thresholds.cpuTemp, unit: "°C"))
-                legend("Memory temperature", Thresholds.describe(Thresholds.memoryTemp, unit: "°C"))
-                legend("Time to first token", Thresholds.describe(Thresholds.timeToFirstToken, unit: " s", decimals: 1))
-                legend("Tokens / sec", Thresholds.describe(Thresholds.tokensPerSecond, unit: ""))
-                legend("Context used", Thresholds.describe(Thresholds.contextUsage, unit: "%"))
-                Text("Apple Silicon runs hot by design and throttles near 100 °C. Temperatures come from the SMC and SoC sensors; no admin rights needed.")
-                    .font(.caption2)
-                    .foregroundStyle(.tertiary)
-                    .padding(.top, 2)
+        let level = levelOverride ?? threshold.level(raw)
+        VStack(alignment: .leading, spacing: 4) {
+            HStack(spacing: 4) {
+                StatusDot(level: level, size: 6)
+                Text(label).font(.caption2).foregroundStyle(.secondary)
+                Spacer(minLength: 0)
+                if let detail { Text(detail).font(.caption2.monospacedDigit()).foregroundStyle(.tertiary) }
             }
-            .padding(.top, 6)
-        } label: {
-            HStack(spacing: 6) {
-                StatusDot(level: .good, size: 6)
-                StatusDot(level: .warning, size: 6)
-                StatusDot(level: .critical, size: 6)
-                Text("How ranges are defined").font(.caption.weight(.medium))
+            HStack(alignment: .bottom, spacing: 6) {
+                Text(value)
+                    .font(.system(size: 17, weight: .semibold, design: .rounded))
+                    .monospacedDigit()
+                    .contentTransition(.numericText())
+                    .fixedSize()
+                Sparkline(points: series, color: level == .unknown ? Palette.accent : level.color,
+                          domain: domain, height: 20)
             }
+            RangeBar(value: raw, threshold: threshold, height: 4)
         }
-        .padding(.horizontal, 2)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .help("\(label): \(value) — \(level.label)")
     }
+}
 
-    private func legend(_ title: String, _ text: String) -> some View {
-        VStack(alignment: .leading, spacing: 1) {
-            Text(title).font(.caption.weight(.semibold))
-            Text(text).font(.caption2.monospacedDigit()).foregroundStyle(.secondary)
+private struct FooterRow: View {
+    let items: [(String, String, HealthLevel?)]
+
+    var body: some View {
+        HStack(spacing: 10) {
+            ForEach(items.indices, id: \.self) { i in
+                HStack(spacing: 4) {
+                    if let level = items[i].2 { StatusDot(level: level, size: 5) }
+                    Text(items[i].0).foregroundStyle(.secondary)
+                    Text(items[i].1).monospacedDigit()
+                }
+            }
+            Spacer(minLength: 0)
         }
+        .font(.caption2)
+        .lineLimit(1)
+    }
+}
+
+private struct CoreBars: View {
+    let values: [Double]
+
+    var body: some View {
+        HStack(alignment: .bottom, spacing: 2.5) {
+            ForEach(Array(values.enumerated()), id: \.offset) { _, v in
+                let level = Thresholds.cpuUsage.level(v)
+                ZStack(alignment: .bottom) {
+                    RoundedRectangle(cornerRadius: 1.5).fill(.quaternary.opacity(0.6))
+                    RoundedRectangle(cornerRadius: 1.5).fill(level.color.opacity(0.85))
+                        .frame(height: max(1.5, CGFloat(v / 100) * 14))
+                }
+                .frame(height: 14)
+            }
+        }
+        .help("Per-core utilisation")
     }
 }

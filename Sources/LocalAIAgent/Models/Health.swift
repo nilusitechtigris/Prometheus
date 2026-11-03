@@ -1,3 +1,4 @@
+import Observation
 import SwiftUI
 
 /// Traffic-light classification used by every metric in the app.
@@ -26,11 +27,87 @@ enum HealthLevel: Int, Comparable {
 }
 
 enum Palette {
+    // Status colours stay fixed so green / yellow / red always mean the same thing.
     static let good = Color(red: 0.20, green: 0.78, blue: 0.40)
     static let warning = Color(red: 1.00, green: 0.76, blue: 0.03)
     static let critical = Color(red: 1.00, green: 0.27, blue: 0.23)
-    static let accent = Color(red: 0.36, green: 0.42, blue: 0.98)
-    static let accent2 = Color(red: 0.12, green: 0.74, blue: 0.80)
+
+    // Brand colours follow the selected theme (reading them registers an Observation dependency).
+    @MainActor static var accent: Color { ThemeStore.shared.theme.accent }
+    @MainActor static var accent2: Color { ThemeStore.shared.theme.accent2 }
+    @MainActor static var glow: Color { ThemeStore.shared.theme.glow }
+    @MainActor static var gradient: LinearGradient {
+        LinearGradient(colors: [accent, accent2], startPoint: .topLeading, endPoint: .bottomTrailing)
+    }
+}
+
+enum AppTheme: String, CaseIterable, Identifiable {
+    case aurora, ocean, ember, orchid, mint, graphite
+
+    var id: String { rawValue }
+
+    var name: String {
+        switch self {
+        case .aurora: return "Aurora"
+        case .ocean: return "Ocean"
+        case .ember: return "Ember"
+        case .orchid: return "Orchid"
+        case .mint: return "Mint"
+        case .graphite: return "Graphite"
+        }
+    }
+
+    private static func hex(_ v: UInt32) -> Color {
+        Color(red: Double((v >> 16) & 0xFF) / 255, green: Double((v >> 8) & 0xFF) / 255, blue: Double(v & 0xFF) / 255)
+    }
+
+    var accent: Color {
+        switch self {
+        case .aurora: return Self.hex(0x6366F1)
+        case .ocean: return Self.hex(0x0A84FF)
+        case .ember: return Self.hex(0xFF6B3D)
+        case .orchid: return Self.hex(0xBF5AF2)
+        case .mint: return Self.hex(0x00C7A3)
+        case .graphite: return Self.hex(0x8E8E93)
+        }
+    }
+
+    var accent2: Color {
+        switch self {
+        case .aurora: return Self.hex(0x22D3EE)
+        case .ocean: return Self.hex(0x5AC8FA)
+        case .ember: return Self.hex(0xFF2D78)
+        case .orchid: return Self.hex(0xFF6FB5)
+        case .mint: return Self.hex(0x30B0FF)
+        case .graphite: return Self.hex(0x5E5CE6)
+        }
+    }
+
+    /// Third colour used only in the ambient background.
+    var glow: Color {
+        switch self {
+        case .aurora: return Self.hex(0xA855F7)
+        case .ocean: return Self.hex(0x30D5C8)
+        case .ember: return Self.hex(0xFFB340)
+        case .orchid: return Self.hex(0x6E5BFF)
+        case .mint: return Self.hex(0x7ED957)
+        case .graphite: return Self.hex(0x636366)
+        }
+    }
+}
+
+@MainActor
+@Observable
+final class ThemeStore {
+    static let shared = ThemeStore()
+
+    var theme: AppTheme {
+        didSet { UserDefaults.standard.set(theme.rawValue, forKey: "theme") }
+    }
+
+    private init() {
+        theme = AppTheme(rawValue: UserDefaults.standard.string(forKey: "theme") ?? "") ?? .aurora
+    }
 }
 
 /// A green → yellow → red band. When `higherIsWorse` is false (e.g. tokens/sec) the bands are flipped.

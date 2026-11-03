@@ -6,6 +6,8 @@ struct SettingsView: View {
         TabView {
             GeneralSettings()
                 .tabItem { Label("General", systemImage: "gearshape") }
+            AppearanceSettings()
+                .tabItem { Label("Appearance", systemImage: "paintpalette") }
             FrameworkSettings()
                 .tabItem { Label("Frameworks", systemImage: "shippingbox") }
             SafetySettings()
@@ -13,7 +15,68 @@ struct SettingsView: View {
             DataSettings()
                 .tabItem { Label("Data", systemImage: "externaldrive") }
         }
-        .frame(width: 560, height: 440)
+        .frame(width: 580, height: 460)
+        .tint(Palette.accent)
+    }
+}
+
+private struct AppearanceSettings: View {
+    private var store = ThemeStore.shared
+
+    var body: some View {
+        Form {
+            Section {
+                LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 14), count: 3), spacing: 14) {
+                    ForEach(AppTheme.allCases) { theme in
+                        ThemeSwatch(theme: theme, selected: store.theme == theme) {
+                            withAnimation(.snappy) { store.theme = theme }
+                        }
+                    }
+                }
+                .padding(.vertical, 6)
+            } header: {
+                Text("Color theme")
+            } footer: {
+                Text("Themes change accents, the composer glow and the ambient background. Green, yellow and red always keep their health meaning. Light and dark mode follow macOS.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .formStyle(.grouped)
+    }
+}
+
+private struct ThemeSwatch: View {
+    let theme: AppTheme
+    let selected: Bool
+    let action: () -> Void
+    @State private var hovering = false
+
+    var body: some View {
+        Button(action: action) {
+            VStack(spacing: 7) {
+                ZStack {
+                    RoundedRectangle(cornerRadius: 12, style: .continuous)
+                        .fill(LinearGradient(colors: [theme.accent, theme.glow, theme.accent2],
+                                             startPoint: .topLeading, endPoint: .bottomTrailing))
+                    Image(systemName: "sparkles").font(.title2.weight(.semibold)).foregroundStyle(.white)
+                }
+                .frame(height: 58)
+                .overlay(
+                    RoundedRectangle(cornerRadius: 12, style: .continuous)
+                        .strokeBorder(selected ? Color.primary : .clear, lineWidth: 2)
+                        .padding(-3)
+                )
+                .scaleEffect(hovering ? 1.03 : 1)
+                .shadow(color: theme.accent.opacity(hovering || selected ? 0.4 : 0), radius: 8, y: 3)
+                HStack(spacing: 4) {
+                    if selected { Image(systemName: "checkmark.circle.fill").foregroundStyle(theme.accent) }
+                    Text(theme.name).font(.callout.weight(selected ? .semibold : .regular))
+                }
+            }
+        }
+        .buttonStyle(.plain)
+        .onHover { h in withAnimation(.snappy(duration: 0.2)) { hovering = h } }
     }
 }
 

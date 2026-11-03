@@ -107,13 +107,39 @@ final class BackendController {
 
     var supportsThinking: Bool { details?.supportsThinking ?? selectedModel?.catalog?.thinking ?? false }
 
-    func memoryEstimate(for catalog: CatalogModel, context: Int? = nil) -> Int64 {
-        MemoryFit.estimateBytes(weights: catalog.downloadBytes, kvKBPerToken: catalog.kvKBPerToken,
+    func memoryEstimate(for catalog: CatalogModel, variant: QuantVariant? = nil, context: Int? = nil) -> Int64 {
+        MemoryFit.estimateBytes(weights: (variant ?? catalog.defaultVariant).bytes, kvKBPerToken: catalog.kvKBPerToken,
                                 context: min(context ?? settings.contextLength, catalog.maxContext))
     }
 
+    /// The installed model (if any) that holds this exact quantization.
+    func installed(_ variant: QuantVariant) -> LocalModel? {
+        models.first { variant.matches($0.id) }
+    }
+
+    /// Installed, verified models grouped by catalog entry (one group per base model, several quants each).
+    var installedGroups: [(catalog: CatalogModel, models: [LocalModel])] {
+        var order: [String] = []
+        var groups: [String: (CatalogModel, [LocalModel])] = [:]
+        for model in verifiedModels {
+            guard let c = model.catalog else { continue }
+            if groups[c.id] == nil { order.append(c.id); groups[c.id] = (c, []) }
+            groups[c.id]!.1.append(model)
+        }
+        return order.compactMap { groups[$0] }.map { (catalog: $0.0, models: $0.1) }
+    }
+
+    /// Selects an installed quantization, or downloads it first and then selects it.
+    func choose(_ variant: QuantVariant) {
+        if let model = installed(variant) {
+            select(model)
+        } else if kind.supportsModelDownloads {
+            pull(variant.tag, selectWhenDone: true)
+        }
+    }
+
     func memoryEstimate(for model: LocalModel, context: Int) -> Int64? {
-        if let c = model.catalog { return memoryEstimate(for: c, context: context) }
+        if let c = model.catalog { return memoryEstimate(for: c, variant: model.variant, context: context) }
         guard let size = model.sizeBytes else { return nil }
         return MemoryFit.estimateBytes(weights: size, kvKBPerToken: 128, context: context)
     }
@@ -184,7 +210,7 @@ final class BackendController {
 
     // MARK: Ollama management
 
-    func pull(_ tag: String) {
+    func pull(_ tag: String, selectWhenDone: Bool = false) {
         guard let ollama, pulls[tag]?.task == nil else { return }
         var state = PullState()
         state.task = Task { [weak self] in
@@ -199,7 +225,8 @@ final class BackendController {
                 guard let self else { return }
                 self.pulls[tag] = nil
                 await self.refresh()
-                if self.selectedModel == nil, let m = self.models.first(where: { $0.id == tag || $0.id == tag + ":latest" }) {
+                if selectWhenDone || self.selectedModel == nil,
+                   let m = self.models.first(where: { $0.id == tag || $0.id == tag + ":latest" }) {
                     self.select(m)
                 }
             } catch {

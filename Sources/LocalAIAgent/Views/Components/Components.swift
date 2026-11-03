@@ -225,7 +225,7 @@ struct BrandMark: View {
 
     var body: some View {
         RoundedRectangle(cornerRadius: size * 0.28, style: .continuous)
-            .fill(LinearGradient(colors: [Palette.accent, Palette.accent2], startPoint: .topLeading, endPoint: .bottomTrailing))
+            .fill(Palette.gradient)
             .overlay(
                 Image(systemName: "sparkles")
                     .font(.system(size: size * 0.5, weight: .semibold))
@@ -237,13 +237,71 @@ struct BrandMark: View {
 }
 
 extension View {
+    /// Liquid Glass capsule on macOS 26+, frosted material before that. Use only for floating controls.
     @ViewBuilder
-    func glassCapsule() -> some View {
+    func glassCapsule(tint: Color? = nil, interactive: Bool = false) -> some View {
         if #available(macOS 26.0, *) {
-            self.glassEffect(.regular, in: Capsule())
+            self.glassEffect(Glass.regular.tint(tint).interactive(interactive), in: Capsule())
         } else {
             self.background(.regularMaterial, in: Capsule())
+                .background(tint?.opacity(0.25) ?? .clear, in: Capsule())
                 .overlay(Capsule().strokeBorder(.separator.opacity(0.6), lineWidth: 0.5))
         }
+    }
+
+    @ViewBuilder
+    func glassPanel(cornerRadius: CGFloat) -> some View {
+        let shape = RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+        if #available(macOS 26.0, *) {
+            self.glassEffect(.regular, in: shape)
+        } else {
+            self.background(.regularMaterial, in: shape)
+                .overlay(shape.strokeBorder(.separator.opacity(0.6), lineWidth: 0.5))
+        }
+    }
+}
+
+/// Groups neighbouring glass controls so they blend and morph together on macOS 26+.
+struct GlassGroup<Content: View>: View {
+    var spacing: CGFloat = 8
+    @ViewBuilder var content: Content
+
+    var body: some View {
+        if #available(macOS 26.0, *) {
+            GlassEffectContainer(spacing: spacing) {
+                HStack(spacing: spacing) { content }
+            }
+        } else {
+            HStack(spacing: spacing) { content }
+        }
+    }
+}
+
+/// Static ambient mesh in the theme colours behind the chat. Deliberately not animated,
+/// so the background never adds GPU load to the numbers the app is measuring.
+struct AmbientBackground: View {
+    @Environment(\.colorScheme) private var scheme
+
+    var body: some View {
+        let base = Color(nsColor: .windowBackgroundColor)
+        ZStack {
+            base
+            if #available(macOS 15.0, *) {
+                MeshGradient(
+                    width: 3, height: 3,
+                    points: [[0, 0], [0.55, 0], [1, 0],
+                             [0, 0.5], [0.45, 0.55], [1, 0.45],
+                             [0, 1], [0.5, 1], [1, 1]],
+                    colors: [Palette.accent, base, Palette.glow,
+                             base, base, base,
+                             Palette.accent2.opacity(0.8), base, Palette.accent.opacity(0.7)]
+                )
+                .opacity(scheme == .dark ? 0.20 : 0.12)
+            } else {
+                RadialGradient(colors: [Palette.accent.opacity(0.15), .clear], center: .topLeading, startRadius: 0, endRadius: 600)
+                RadialGradient(colors: [Palette.accent2.opacity(0.12), .clear], center: .bottomTrailing, startRadius: 0, endRadius: 600)
+            }
+        }
+        .ignoresSafeArea()
     }
 }

@@ -7,12 +7,21 @@ struct ComposerView: View {
     @Environment(UIState.self) private var ui
     @FocusState private var focused: Bool
     @State private var showOptions = false
+    @State private var sentCount = 0
 
     var body: some View {
         @Bindable var ui = ui
-        @Bindable var settings = settings
 
-        VStack(spacing: 8) {
+        VStack(spacing: 10) {
+            if let live = chat.live {
+                HStack {
+                    Spacer()
+                    LiveTicker(live: live)
+                }
+                .padding(.horizontal, 8)
+                .transition(.opacity)
+            }
+
             HStack(alignment: .bottom, spacing: 10) {
                 TextField(placeholder, text: $ui.draft, axis: .vertical)
                     .textFieldStyle(.plain)
@@ -20,78 +29,99 @@ struct ComposerView: View {
                     .lineLimit(1...10)
                     .focused($focused)
                     .onSubmit(send)
-                    .padding(.vertical, 6)
+                    .padding(.vertical, 7)
                     .disabled(!backends.status.isOnline)
 
                 if chat.isGenerating {
                     Button(action: chat.stop) {
                         Image(systemName: "stop.fill")
                             .font(.system(size: 11, weight: .bold))
-                            .frame(width: 28, height: 28)
+                            .frame(width: 30, height: 30)
                             .background(Circle().fill(.primary.opacity(0.85)))
                             .foregroundStyle(Color(nsColor: .windowBackgroundColor))
                     }
                     .buttonStyle(.plain)
                     .help("Stop generating (⌘.)")
+                    .transition(.scale.combined(with: .opacity))
                 } else {
                     Button(action: send) {
                         Image(systemName: "arrow.up")
                             .font(.system(size: 13, weight: .bold))
-                            .frame(width: 28, height: 28)
-                            .background(Circle().fill(canSend ? AnyShapeStyle(LinearGradient(colors: [Palette.accent, Palette.accent2], startPoint: .topLeading, endPoint: .bottomTrailing)) : AnyShapeStyle(.quaternary)))
+                            .symbolEffect(.bounce, value: sentCount)
+                            .frame(width: 30, height: 30)
+                            .background(Circle().fill(canSend ? AnyShapeStyle(Palette.gradient) : AnyShapeStyle(.quaternary)))
                             .foregroundStyle(.white)
+                            .shadow(color: canSend ? Palette.accent.opacity(0.45) : .clear, radius: 6, y: 2)
                     }
                     .buttonStyle(.plain)
                     .disabled(!canSend)
-                    .help("Send (↩)")
+                    .help("Send (↩) · new line with ⌥↩")
+                    .transition(.scale.combined(with: .opacity))
                 }
             }
-            .padding(.leading, 16)
+            .animation(.snappy, value: chat.isGenerating)
+            .padding(.leading, 18)
             .padding(.trailing, 8)
             .padding(.vertical, 8)
-            .background(RoundedRectangle(cornerRadius: 20, style: .continuous).fill(Color(nsColor: .textBackgroundColor)))
-            .overlay(RoundedRectangle(cornerRadius: 20, style: .continuous)
-                .strokeBorder(focused ? Palette.accent.opacity(0.5) : Color.secondary.opacity(0.25), lineWidth: focused ? 1.5 : 0.5))
-            .shadow(color: .black.opacity(0.06), radius: 8, y: 2)
+            .glassPanel(cornerRadius: 24)
+            .overlay(
+                RoundedRectangle(cornerRadius: 24, style: .continuous)
+                    .strokeBorder(focused ? Palette.accent.opacity(0.55) : Color.primary.opacity(0.08),
+                                  lineWidth: focused ? 1.5 : 0.5)
+            )
+            .shadow(color: .black.opacity(0.08), radius: 14, y: 4)
 
-            HStack(spacing: 8) {
-                if backends.supportsThinking {
-                    Toggle(isOn: $settings.thinkingEnabled) {
-                        Label("Think", systemImage: "brain.head.profile")
-                    }
-                    .toggleStyle(.button)
-                    .controlSize(.small)
-                    .help(backends.kind == .ollama ? "Let the model reason step by step before answering" : "Thinking is controlled by the framework")
-                    .disabled(backends.kind != .ollama)
-                }
-
-                Button {
-                    showOptions.toggle()
-                } label: {
-                    Label("Temp \(String(format: "%.1f", settings.temperature))", systemImage: "slider.horizontal.3")
-                }
-                .controlSize(.small)
-                .popover(isPresented: $showOptions, arrowEdge: .top) {
-                    GenerationOptionsView().environment(settings)
-                }
-
-                if let live = chat.live {
-                    LiveTicker(live: live)
-                }
-                Spacer()
-                Text("↩ send · ⌥↩ new line")
-                    .font(.caption)
-                    .foregroundStyle(.tertiary)
+            // Framework · Model + quant · Context · Think · Temp. Falls back to a compact row on narrow windows.
+            ViewThatFits(in: .horizontal) {
+                controlRow(compact: false)
+                controlRow(compact: true)
             }
-            .padding(.horizontal, 6)
+            .padding(.horizontal, 4)
         }
         .padding(.horizontal, 28)
         .padding(.top, 8)
         .padding(.bottom, 16)
-        .frame(maxWidth: 880)
+        .frame(maxWidth: 900)
         .frame(maxWidth: .infinity)
+        .animation(.snappy, value: chat.isGenerating)
         .onAppear { focused = true }
         .onChange(of: ui.composerFocusRequest) { focused = true }
+    }
+
+    private func controlRow(compact: Bool) -> some View {
+        HStack(spacing: 0) {
+            GlassGroup(spacing: 6) {
+                FrameworkPickerButton(compact: compact)
+                ModelPickerButton()
+                ContextPickerButton(compact: compact)
+                if backends.supportsThinking { ThinkPill(compact: compact) }
+                temperaturePill(compact: compact)
+            }
+            .fixedSize()
+            Spacer(minLength: 0)
+        }
+    }
+
+    private func temperaturePill(compact: Bool) -> some View {
+        Button {
+            showOptions.toggle()
+        } label: {
+            HStack(spacing: 5) {
+                Image(systemName: "slider.horizontal.3")
+                Text(compact ? String(format: "%.1f", settings.temperature)
+                             : "Temp \(String(format: "%.1f", settings.temperature))").monospacedDigit()
+            }
+            .font(.callout)
+            .padding(.horizontal, 11)
+            .padding(.vertical, 5)
+            .contentShape(Capsule())
+        }
+        .buttonStyle(.plain)
+        .glassCapsule(interactive: true)
+        .help("Temperature, response length and system instructions")
+        .popover(isPresented: $showOptions, arrowEdge: .top) {
+            GenerationOptionsView().environment(settings)
+        }
     }
 
     private var canSend: Bool {
@@ -108,7 +138,38 @@ struct ComposerView: View {
         guard canSend else { return }
         let text = ui.draft
         ui.draft = ""
+        sentCount += 1
         chat.send(text)
+    }
+}
+
+private struct ThinkPill: View {
+    @Environment(AppSettings.self) private var settings
+    @Environment(BackendController.self) private var backends
+    var compact = false
+
+    var body: some View {
+        let on = settings.thinkingEnabled
+        Button {
+            withAnimation(.snappy) { settings.thinkingEnabled.toggle() }
+        } label: {
+            HStack(spacing: 5) {
+                Image(systemName: "brain.head.profile")
+                    .symbolEffect(.bounce, value: on)
+                if !compact { Text("Think") }
+            }
+            .font(.callout.weight(on ? .semibold : .regular))
+            .foregroundStyle(on ? Palette.accent : .secondary)
+            .padding(.horizontal, 11)
+            .padding(.vertical, 5)
+            .contentShape(Capsule())
+        }
+        .buttonStyle(.plain)
+        .glassCapsule(tint: on ? Palette.accent.opacity(0.22) : nil, interactive: true)
+        .disabled(backends.kind != .ollama)
+        .help(backends.kind == .ollama
+              ? (on ? "Thinking on — the model reasons before answering" : "Thinking off — faster, direct answers")
+              : "Thinking is controlled by the framework")
     }
 }
 

@@ -65,9 +65,23 @@ struct LocalModel: Identifiable, Hashable {
     var parameterSize: String?
     var quantization: String?
     var family: String?
+    /// Who published the quantized weights, as reported by the framework (e.g. "lmstudio-community").
+    var publisher: String?
+
     var catalog: CatalogModel? { ModelCatalog.entry(matchingID: id) }
+    var variant: QuantVariant? { ModelCatalog.variant(forTag: id) }
     var isVerified: Bool { catalog != nil }
     var displayName: String { catalog?.displayName ?? id }
+
+    /// Quantization label, always available when it can be determined.
+    var quantLabel: String {
+        variant?.quant ?? quantization.map(QuantParser.normalise) ?? QuantParser.quant(in: id) ?? "Unknown quant"
+    }
+
+    /// Who produced the quantized file.
+    var quantProvider: String {
+        variant?.quantizedBy ?? publisher ?? QuantParser.provider(in: id) ?? "Unknown"
+    }
 }
 
 struct ModelDetails: Equatable {

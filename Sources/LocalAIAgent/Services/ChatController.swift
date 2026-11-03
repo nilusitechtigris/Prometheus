@@ -52,13 +52,15 @@ final class ChatController {
         selected?.messages.last(where: { $0.role == .assistant && $0.metrics != nil })?.metrics
     }
 
-    /// Per-response throughput history for the selected conversation (for the sparkline).
-    var throughputHistory: [SamplePoint] {
-        guard let conv = selected else { return [] }
-        return conv.messages.enumerated().compactMap { i, m in
-            guard let tps = m.metrics?.tokensPerSecond else { return nil }
-            return SamplePoint(id: i, date: m.createdAt, value: tps)
+    /// Average generation numbers for the selected chat, counting only replies from this exact
+    /// model + quantization — so a new chat, model or quant starts from zero.
+    func averages(for modelID: String?) -> GenerationAverages? {
+        guard let modelID, let conversation = selected else { return nil }
+        let metrics = conversation.messages.compactMap { m -> GenerationMetrics? in
+            guard m.role == .assistant, m.modelName == modelID, m.errorText == nil else { return nil }
+            return m.metrics
         }
+        return GenerationAverages(metrics)
     }
 
     // MARK: Conversations

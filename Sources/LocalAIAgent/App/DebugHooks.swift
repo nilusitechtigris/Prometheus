@@ -5,6 +5,7 @@ import AppKit
 ///   LOCALAI_SNAPSHOT_DIR=/path      write window snapshots (snap-N.png) every LOCALAI_SNAPSHOT_INTERVAL seconds
 ///   LOCALAI_AUTOPROMPT="text"       start a new chat and send this prompt after launch
 ///   LOCALAI_SHOW_LIBRARY=1          open the model library after launch
+///   LOCALAI_SHOW_MODEL_PICKER=1     open the model + quant picker after launch
 @MainActor
 enum DebugHooks {
     static func install(chat: ChatController, ui: UIState) {
@@ -14,6 +15,12 @@ enum DebugHooks {
                 for _ in 0..<40 where !chat.canSend { try? await Task.sleep(for: .milliseconds(250)) }
                 chat.newConversation()
                 chat.send(prompt)
+            }
+        }
+        if env["LOCALAI_SHOW_MODEL_PICKER"] != nil {
+            Task {
+                try? await Task.sleep(for: .seconds(2.5))
+                ui.showModelPicker = true
             }
         }
         if env["LOCALAI_SHOW_LIBRARY"] != nil {
@@ -39,6 +46,9 @@ enum DebugHooks {
         write(window, to: path)
         if let sheet = window.attachedSheet {
             write(sheet, to: path.replacingOccurrences(of: ".png", with: "-sheet.png"))
+        }
+        for (i, popover) in NSApp.windows.filter({ $0.isVisible && $0.className.contains("Popover") }).enumerated() {
+            write(popover, to: path.replacingOccurrences(of: ".png", with: "-popover\(i).png"))
         }
     }
 

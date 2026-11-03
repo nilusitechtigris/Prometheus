@@ -5,8 +5,14 @@ struct ConversationStore {
     let fileURL: URL
 
     init() {
-        let base = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
+        var base = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
             .appendingPathComponent("LocalAIAgent", isDirectory: true)
+        #if DEBUG
+        // Keeps automated UI test runs away from the user's real chats.
+        if let dir = ProcessInfo.processInfo.environment["LOCALAI_DATA_DIR"] {
+            base = URL(fileURLWithPath: dir, isDirectory: true)
+        }
+        #endif
         try? FileManager.default.createDirectory(at: base, withIntermediateDirectories: true)
         fileURL = base.appendingPathComponent("conversations.json")
     }

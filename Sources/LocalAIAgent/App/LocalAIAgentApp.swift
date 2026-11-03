@@ -6,6 +6,7 @@ import SwiftUI
 @Observable
 final class UIState {
     var showLibrary = false
+    var showModelPicker = false
     var composerFocusRequest = 0
     var draft = ""
 }
@@ -71,6 +72,13 @@ struct LocalAIAgentApp: App {
                 }
                 .keyboardShortcut("n")
             }
+            CommandGroup(after: .sidebar) {
+                Picker("Theme", selection: Binding(get: { ThemeStore.shared.theme },
+                                                   set: { ThemeStore.shared.theme = $0 })) {
+                    ForEach(AppTheme.allCases) { Text($0.name).tag($0) }
+                }
+                Divider()
+            }
             CommandMenu("Chat") {
                 Button("Stop Generating") { chat.stop() }
                     .keyboardShortcut(".")
@@ -79,9 +87,11 @@ struct LocalAIAgentApp: App {
                     .keyboardShortcut("r")
                     .disabled(!chat.canSend || chat.selected?.messages.isEmpty != false)
                 Divider()
+                Button("Choose Model…") { ui.showModelPicker = true }
+                    .keyboardShortcut("m", modifiers: [.command, .shift])
                 Button("Model Library…") { ui.showLibrary = true }
                     .keyboardShortcut("l", modifiers: [.command, .shift])
-                Button(settings.showInspector ? "Hide Observability" : "Show Observability") {
+                Button(settings.showInspector ? "Hide Telemetry" : "Show Telemetry") {
                     settings.showInspector.toggle()
                 }
                 .keyboardShortcut("i", modifiers: [.command, .option])
