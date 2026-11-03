@@ -33,6 +33,14 @@ enum Format {
         return String(format: "%.0f°C", t)
     }
 
+    /// Sampling temperature with up to two decimals: 0.7, 0.75, 1.
+    static func samplingTemperature(_ t: Double) -> String {
+        var text = String(format: "%.2f", t)
+        while text.hasSuffix("0") { text.removeLast() }
+        if text.hasSuffix(".") { text += "0" }
+        return text
+    }
+
     static func tokens(_ n: Int) -> String {
         n >= 1024 && n % 1024 == 0 ? "\(n / 1024)K" : (n >= 1000 ? String(format: "%.1fK", Double(n) / 1000) : "\(n)")
     }

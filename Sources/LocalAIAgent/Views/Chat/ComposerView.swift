@@ -108,8 +108,8 @@ struct ComposerView: View {
         } label: {
             HStack(spacing: 5) {
                 Image(systemName: "slider.horizontal.3")
-                Text(compact ? String(format: "%.1f", settings.temperature)
-                             : "Temp \(String(format: "%.1f", settings.temperature))").monospacedDigit()
+                Text(compact ? Format.samplingTemperature(settings.temperature)
+                             : "Temp \(Format.samplingTemperature(settings.temperature))").monospacedDigit()
             }
             .font(.callout)
             .padding(.horizontal, 11)

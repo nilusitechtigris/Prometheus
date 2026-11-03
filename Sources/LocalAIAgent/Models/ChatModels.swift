@@ -34,6 +34,8 @@ struct GenerationMetrics: Codable, Equatable {
     var taskDuration: Double?
     var promptDuration: Double?
     var generationDuration: Double?
+    /// Sampling temperature the reply was generated with.
+    var temperature: Double?
 
     var contextUsed: Int? {
         guard let p = promptTokens else { return nil }

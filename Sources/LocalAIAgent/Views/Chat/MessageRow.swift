@@ -217,6 +217,10 @@ struct MetricsFooter: View {
                     time
                     divider
                     tokens
+                    if metrics.temperature != nil {
+                        divider
+                        temperature
+                    }
                 }
                 collapseButton.padding(.leading, 12)
             }
@@ -229,7 +233,14 @@ struct MetricsFooter: View {
                     .fill(Color.primary.opacity(0.08))
                     .frame(height: 1)
                     .gridCellColumns(2)
-                GridRow { tokens.gridCellColumns(2) }
+                GridRow {
+                    if metrics.temperature != nil {
+                        tokens
+                        temperature
+                    } else {
+                        tokens.gridCellColumns(2)
+                    }
+                }
             }
             .fixedSize()
             .padding(.trailing, 22)
@@ -325,6 +336,16 @@ struct MetricsFooter: View {
             parts.append(SplitPart(value: "\(thinking)", label: "thinking", color: Palette.accent, share: Double(thinking)))
         }
         return parts
+    }
+
+    /// The sampling temperature this reply was generated with.
+    @ViewBuilder private var temperature: some View {
+        if let t = metrics.temperature {
+            StatSegment(label: "Model temp", symbol: "slider.horizontal.3",
+                        help: "Sampling temperature for this reply — lower is more precise, higher is more creative") {
+                Text(Format.samplingTemperature(t))
+            }
+        }
     }
 
     private var timeHelp: String {

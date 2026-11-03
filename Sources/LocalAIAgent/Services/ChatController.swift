@@ -260,6 +260,7 @@ final class ChatController {
         }
         m.contextLength = request.contextLength
         m.stopReason = cancelled ? "stopped" : stats?.stopReason
+        m.temperature = request.temperature
 
         let gotOutput = !content.isEmpty || !thinking.isEmpty
         update(messageID, in: convID) {
