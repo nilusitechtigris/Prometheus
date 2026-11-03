@@ -5,7 +5,7 @@ A native macOS app (SwiftUI, Apple Silicon) for chatting with local LLMs. It inc
 ## Features
 
 - **Chat**: streaming responses, Markdown (code blocks with copy, tables, lists, math blocks), collapsible "thinking" for reasoning models, stop/regenerate, saved conversations with search.
-- **Per-reply stats** under every answer: TTFT · task time (prompt processing + all generation; model load shown separately) · tok/s · output tokens · thinking tokens.
+- **Per-reply stats card** under every answer: speed · time (first token + generation, with a bar; the first-token segment keeps its health colour) · tokens (output + thinking, with a bar).
 - **Controls under the message box**: Framework · Model + quant · Context · Think · Temp
 - **Model and quant selection** (⇧⌘M):
   - Always shows the quantization (Q4_K_M, Q8_0, FP16, Q4_0 QAT, MXFP4) and who made the quantized file (Ollama, Google, OpenAI, or the publisher on LM Studio and MLX).

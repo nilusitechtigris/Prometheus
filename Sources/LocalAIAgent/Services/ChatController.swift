@@ -253,6 +253,7 @@ final class ChatController {
         } else {
             // No server timings (LM Studio, MLX): wall-clock from request to last token.
             m.taskDuration = max(end.timeIntervalSince(start) - (stats?.loadSeconds ?? 0), 0)
+            m.generationDuration = firstToken.map { end.timeIntervalSince($0) }
         }
         if !thinking.isEmpty, let first = firstToken {
             m.thinkingDuration = (thinkingEndedAt ?? end).timeIntervalSince(first)

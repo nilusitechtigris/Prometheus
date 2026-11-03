@@ -48,6 +48,20 @@ struct GenerationMetrics: Codable, Equatable {
     var taskTime: Double? {
         taskDuration ?? totalDuration.map { max($0 - (loadDuration ?? 0), 0) }
     }
+
+    /// Thinking + answer generation, after the prompt has been read.
+    var generationTime: Double? { generationDuration ?? taskTime }
+
+    /// Part of `generationTime` spent reasoning.
+    var thinkingTime: Double? {
+        guard let t = thinkingDuration, (thinkingTokens ?? 0) > 0 else { return nil }
+        return min(t, generationTime ?? t)
+    }
+
+    /// Part of `generationTime` spent writing the visible answer.
+    var outputTime: Double? {
+        generationTime.map { max($0 - (thinkingTime ?? 0), 0) }
+    }
 }
 
 /// Mean generation metrics over a set of responses.
@@ -78,7 +92,7 @@ struct GenerationAverages {
         tokensPerSecond = mean(metrics.compactMap(\.tokensPerSecond))
         promptTokensPerSecond = mean(metrics.compactMap(\.promptTokensPerSecond))
         completionTokens = mean(metrics.compactMap { $0.outputTokens.map(Double.init) })
-        totalDuration = mean(metrics.compactMap(\.taskTime))
+        totalDuration = mean(metrics.compactMap(\.generationTime))
     }
 }
 

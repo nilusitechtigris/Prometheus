@@ -75,7 +75,7 @@ private struct AssistantMessage: View {
                 }
 
                 if let metrics = message.metrics, !isStreaming {
-                    HStack(spacing: 10) {
+                    HStack(alignment: .center, spacing: 10) {
                         MetricsFooter(metrics: metrics)
                         Spacer(minLength: 0)
                         HStack(spacing: 2) {
@@ -180,68 +180,221 @@ private struct ErrorCard: View {
     }
 }
 
+/// One card of per-reply stats: speed · time (first token + generation) · tokens (output + thinking).
 struct MetricsFooter: View {
     let metrics: GenerationMetrics
 
     var body: some View {
-        FlowLayout(spacing: 6, lineSpacing: 6) {
-            if let ttft = metrics.timeToFirstToken {
-                metric(symbol: "bolt.fill", text: "\(Format.seconds(ttft)) TTFT", level: Thresholds.timeToFirstToken.level(ttft))
-                    .help("Time to first token")
-            }
-            if let task = metrics.taskTime {
-                Chip(text: "\(Format.seconds(task)) task", symbol: "stopwatch")
-                    .help(taskHelp)
-            }
-            if let tps = metrics.tokensPerSecond {
-                metric(symbol: "speedometer", text: "\(Format.rate(tps)) tok/s", level: Thresholds.tokensPerSecond.level(tps))
-                    .help("Generation speed")
-            }
-            if let out = metrics.outputTokens {
-                Chip(text: "\(out) output", symbol: "text.bubble")
-                    .help("\(out) output tokens — the visible answer")
-            }
-            if let thinking = metrics.thinkingTokens, thinking > 0 {
-                Chip(text: "\(thinking) thinking", symbol: "brain.head.profile", tint: Palette.accent)
-                    .help("\(thinking) thinking tokens — reasoning before the answer")
-            }
-            if let load = metrics.loadDuration, load > 0.5 {
-                Chip(text: "load \(Format.seconds(load))", symbol: "arrow.down.circle")
-                    .help("Time spent loading the model into memory (not part of task time)")
+        HStack(spacing: 8) {
+            // One row when there's room, two rows when the chat column is narrow.
+            ViewThatFits(in: .horizontal) {
+                HStack(alignment: .top, spacing: 0) {
+                    speed
+                    divider
+                    time
+                    divider
+                    tokens
+                }
+                .fixedSize()
+                .statsCard()
+
+                Grid(alignment: .topLeading, horizontalSpacing: 18, verticalSpacing: 9) {
+                    GridRow { speed; time }
+                    Rectangle()
+                        .fill(Color.primary.opacity(0.08))
+                        .frame(height: 1)
+                        .gridCellColumns(2)
+                    GridRow { tokens.gridCellColumns(2) }
+                }
+                .fixedSize()
+                .statsCard()
             }
             if metrics.stopReason == "stopped" {
-                Chip(text: "stopped", symbol: "stop.circle")
+                Chip(text: "Stopped", symbol: "stop.circle")
             } else if metrics.stopReason == "length" {
-                Chip(text: "hit length limit", symbol: "scissors")
+                Chip(text: "Hit length limit", symbol: "scissors")
             }
         }
     }
 
-    private func metric(symbol: String, text: String, level: HealthLevel) -> some View {
-        HStack(spacing: 5) {
-            StatusDot(level: level, size: 6)
-            Image(systemName: symbol).imageScale(.small)
-            Text(text)
-        }
-        .font(.caption.monospacedDigit())
-        .padding(.horizontal, 7)
-        .padding(.vertical, 3)
-        .background(level.color.opacity(0.12), in: Capsule())
-        .foregroundStyle(.secondary)
+    private var divider: some View {
+        Rectangle()
+            .fill(Color.primary.opacity(0.08))
+            .frame(width: 1, height: 30)
+            .padding(.horizontal, 14)
+            .padding(.top, 2)
     }
 
-    private var taskHelp: String {
-        var lines = ["Task time: prompt processing + all token generation"]
-        if let p = metrics.promptDuration {
-            lines.append("Prompt processing: \(Format.seconds(p))\(metrics.promptTokens.map { " (\($0) tokens)" } ?? "")")
+    @ViewBuilder private var speed: some View {
+        let tps = metrics.tokensPerSecond
+        StatSegment(label: "Speed", symbol: "speedometer", help: "Generation speed") {
+            StatusDot(level: Thresholds.tokensPerSecond.level(tps), size: 6)
+            Text(Format.rate(tps))
+            Text("tok/s").font(.system(size: 11)).foregroundStyle(.secondary)
         }
-        if let g = metrics.generationDuration {
-            lines.append("Generation: \(Format.seconds(g))\(metrics.completionTokens.map { " (\($0) tokens)" } ?? "")")
+    }
+
+    /// Waiting for the first token, then generating (thinking + answer summed).
+    @ViewBuilder private var time: some View {
+        let parts = timeParts
+        let total = parts.reduce(0) { $0 + $1.share }
+        StatSegment(label: "Time", symbol: "stopwatch",
+                    total: parts.count > 1 ? Format.seconds(total) : nil, help: timeHelp) {
+            SplitValues(parts: parts)
         }
-        if metrics.promptDuration == nil && metrics.generationDuration == nil {
-            lines.append("Measured from sending to the last token")
+    }
+
+    private var timeParts: [SplitPart] {
+        var parts: [SplitPart] = []
+        if let ttft = metrics.timeToFirstToken {
+            // The wait segment keeps its green / yellow / red health colour.
+            let level = Thresholds.timeToFirstToken.level(ttft)
+            parts.append(SplitPart(value: Format.seconds(ttft), label: "first token",
+                                   color: level == .unknown ? .secondary : level.color, share: ttft))
+        }
+        if let generation = metrics.generationTime {
+            parts.append(SplitPart(value: Format.seconds(generation), label: "generation",
+                                   color: Palette.accent2, share: generation))
+        }
+        return parts
+    }
+
+    @ViewBuilder private var tokens: some View {
+        let output = metrics.outputTokens ?? 0
+        let thinking = metrics.thinkingTokens ?? 0
+        StatSegment(label: "Tokens", symbol: "number",
+                    total: thinking > 0 ? "\(output + thinking)" : nil,
+                    help: "\(output) output tokens (the answer)" + (thinking > 0 ? " + \(thinking) thinking tokens (reasoning)" : "")) {
+            SplitValues(parts: tokenParts)
+        }
+    }
+
+    private var tokenParts: [SplitPart] {
+        let output = metrics.outputTokens ?? 0
+        let thinking = metrics.thinkingTokens ?? 0
+        var parts = [SplitPart(value: "\(output)", label: "output", color: Palette.accent2, share: Double(output))]
+        if thinking > 0 {
+            parts.append(SplitPart(value: "\(thinking)", label: "thinking", color: Palette.accent, share: Double(thinking)))
+        }
+        return parts
+    }
+
+    private var timeHelp: String {
+        var lines: [String] = []
+        if let ttft = metrics.timeToFirstToken {
+            var detail: [String] = []
+            if let p = metrics.promptDuration { detail.append("reading the prompt \(Format.seconds(p))") }
+            if let load = metrics.loadDuration, load > 0.5 { detail.append("model loading \(Format.seconds(load))") }
+            lines.append("First token: \(Format.seconds(ttft))" + (detail.isEmpty ? "" : " (incl. \(detail.joined(separator: ", ")))"))
+        }
+        if let generation = metrics.generationTime {
+            var line = "Generation: \(Format.seconds(generation))"
+            if let thinking = metrics.thinkingTime, let output = metrics.outputTime {
+                line += " (\(Format.seconds(thinking)) thinking + \(Format.seconds(output)) answer)"
+            }
+            lines.append(line)
         }
         return lines.joined(separator: "\n")
+    }
+}
+
+/// Small caption (and optional total) over a value — the building block of the stats card.
+private struct StatSegment<Value: View>: View {
+    let label: String
+    let symbol: String
+    var total: String?
+    let help: String
+    @ViewBuilder var value: Value
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 3) {
+            HStack(spacing: 4) {
+                Image(systemName: symbol).font(.system(size: 9, weight: .semibold))
+                Text(label.uppercased()).font(.system(size: 9.5, weight: .semibold)).tracking(0.5)
+                if let total {
+                    Text("· \(total)").font(.system(size: 9.5, weight: .semibold)).monospacedDigit().opacity(0.75)
+                }
+            }
+            .foregroundStyle(.secondary)
+            HStack(alignment: .firstTextBaseline, spacing: 5) {
+                value
+            }
+            .font(.system(size: 13.5, weight: .semibold, design: .rounded))
+            .monospacedDigit()
+        }
+        .help(help)
+    }
+}
+
+private struct SplitPart {
+    let value: String
+    let label: String
+    let color: Color
+    let share: Double
+}
+
+/// "● 37 output  ● 379 thinking" on one line, with a proportion bar underneath when there's more than one part.
+private struct SplitValues: View {
+    let parts: [SplitPart]
+
+    var body: some View {
+        let values = HStack(spacing: 10) {
+            ForEach(parts.indices, id: \.self) { i in
+                LabeledValue(value: parts[i].value, label: parts[i].label, color: parts[i].color)
+            }
+        }
+        if parts.count > 1 {
+            // The bar sits under the values and matches their width exactly.
+            values
+                .padding(.bottom, 8)
+                .overlay(alignment: .bottomLeading) { SplitBar(parts: parts) }
+        } else {
+            values
+        }
+    }
+}
+
+private struct LabeledValue: View {
+    let value: String
+    let label: String
+    let color: Color
+
+    var body: some View {
+        HStack(alignment: .firstTextBaseline, spacing: 4) {
+            Circle().fill(color).frame(width: 6, height: 6).alignmentGuide(.firstTextBaseline) { $0[.bottom] }
+            Text(value)
+            Text(label).font(.system(size: 11, weight: .regular)).foregroundStyle(.secondary)
+        }
+    }
+}
+
+private struct SplitBar: View {
+    let parts: [SplitPart]
+
+    var body: some View {
+        GeometryReader { geo in
+            let gap: CGFloat = 2
+            let total = max(parts.reduce(0) { $0 + $1.share }, 0.0001)
+            let available = geo.size.width - gap * CGFloat(parts.count - 1)
+            HStack(spacing: gap) {
+                ForEach(parts.indices, id: \.self) { i in
+                    let width = max(available * CGFloat(parts[i].share / total), parts[i].share > 0 ? 3 : 0)
+                    Capsule().fill(parts[i].color.opacity(0.85)).frame(width: width)
+                }
+            }
+        }
+        .frame(height: 4)
+    }
+}
+
+private extension View {
+    func statsCard() -> some View {
+        let shape = RoundedRectangle(cornerRadius: 12, style: .continuous)
+        return self
+            .padding(.horizontal, 12)
+            .padding(.vertical, 8)
+            .background(shape.fill(Color.primary.opacity(0.045)))
+            .overlay(shape.strokeBorder(Color.primary.opacity(0.08), lineWidth: 0.5))
     }
 }
 
