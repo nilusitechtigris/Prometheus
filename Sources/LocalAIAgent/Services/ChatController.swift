@@ -8,6 +8,7 @@ struct LiveGeneration {
     var startedAt = Date()
     var firstTokenAt: Date?
     var tokens = 0
+    var thinkingTokens = 0
 
     var timeToFirstToken: Double? { firstTokenAt.map { $0.timeIntervalSince(startedAt) } }
 
@@ -178,6 +179,7 @@ final class ChatController {
             guard var l = live else { return }
             if l.firstTokenAt == nil { l.firstTokenAt = Date() }
             l.tokens += 1
+            if isThinking { l.thinkingTokens += 1 }
             if !isThinking, l.phase != .answering {
                 l.phase = .answering
                 if !thinking.isEmpty, thinkingEndedAt == nil { thinkingEndedAt = Date() }
@@ -197,7 +199,8 @@ final class ChatController {
                     let parts = parser.feed(c)
                     thinking += parts.thinking
                     content += parts.answer
-                    noteToken(isThinking: parts.answer.isEmpty)
+                    // A chunk inside <think>…</think> (or the tags themselves) is a thinking token.
+                    noteToken(isThinking: parts.answer.isEmpty && (!parts.thinking.isEmpty || parser.isThinking))
                 case .finished(let s):
                     stats = s
                 }
@@ -223,7 +226,13 @@ final class ChatController {
         let firstToken = live?.firstTokenAt
         m.timeToFirstToken = firstToken.map { $0.timeIntervalSince(start) }
         m.promptTokens = stats?.promptTokens
-        m.completionTokens = stats?.completionTokens ?? live?.tokens
+        // Frameworks report one count for thinking + answer; split it using the streamed chunks
+        // (Ollama streams one token per chunk).
+        let completion = stats?.completionTokens ?? live?.tokens ?? 0
+        m.completionTokens = completion
+        if let thinkingCount = live?.thinkingTokens, thinkingCount > 0 {
+            m.thinkingTokens = min(thinkingCount, completion)
+        }
         if let tps = stats?.tokensPerSecond {
             m.tokensPerSecond = tps
         } else if let first = firstToken, let n = live?.tokens, n > 1 {
@@ -237,6 +246,14 @@ final class ChatController {
         m.promptTokensPerSecond = stats?.promptTokensPerSecond
         m.loadDuration = stats?.loadSeconds
         m.totalDuration = stats?.totalSeconds ?? end.timeIntervalSince(start)
+        if let generation = stats?.evalSeconds {
+            m.promptDuration = stats?.promptEvalSeconds
+            m.generationDuration = generation
+            m.taskDuration = (stats?.promptEvalSeconds ?? 0) + generation
+        } else {
+            // No server timings (LM Studio, MLX): wall-clock from request to last token.
+            m.taskDuration = max(end.timeIntervalSince(start) - (stats?.loadSeconds ?? 0), 0)
+        }
         if !thinking.isEmpty, let first = firstToken {
             m.thinkingDuration = (thinkingEndedAt ?? end).timeIntervalSince(first)
         }

@@ -38,6 +38,8 @@ struct ThinkTagParser {
     private var pending = ""
     private static let open = "<think>", close = "</think>"
 
+    var isThinking: Bool { inThink }
+
     mutating func feed(_ chunk: String) -> (thinking: String, answer: String) {
         pending += chunk
         var thinking = "", answer = ""

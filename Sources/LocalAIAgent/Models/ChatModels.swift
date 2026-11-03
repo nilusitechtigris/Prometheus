@@ -28,10 +28,25 @@ struct GenerationMetrics: Codable, Equatable {
     var contextLength: Int?
     var stopReason: String?
     var isEstimated = false
+    /// Tokens spent reasoning; the rest of `completionTokens` is the visible answer.
+    var thinkingTokens: Int?
+    /// Prompt processing + all token generation (model loading excluded).
+    var taskDuration: Double?
+    var promptDuration: Double?
+    var generationDuration: Double?
 
     var contextUsed: Int? {
         guard let p = promptTokens else { return nil }
         return p + (completionTokens ?? 0)
+    }
+
+    var outputTokens: Int? {
+        completionTokens.map { max($0 - (thinkingTokens ?? 0), 0) }
+    }
+
+    /// Falls back to total minus load for replies saved before task time was recorded.
+    var taskTime: Double? {
+        taskDuration ?? totalDuration.map { max($0 - (loadDuration ?? 0), 0) }
     }
 }
 
@@ -62,8 +77,8 @@ struct GenerationAverages {
         averageLoad = mean(cold.compactMap(\.loadDuration))
         tokensPerSecond = mean(metrics.compactMap(\.tokensPerSecond))
         promptTokensPerSecond = mean(metrics.compactMap(\.promptTokensPerSecond))
-        completionTokens = mean(metrics.compactMap { $0.completionTokens.map(Double.init) })
-        totalDuration = mean(metrics.compactMap(\.totalDuration))
+        completionTokens = mean(metrics.compactMap { $0.outputTokens.map(Double.init) })
+        totalDuration = mean(metrics.compactMap(\.taskTime))
     }
 }
 

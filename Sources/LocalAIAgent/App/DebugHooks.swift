@@ -6,6 +6,8 @@ import AppKit
 ///   LOCALAI_AUTOPROMPT="text"       start a new chat and send this prompt after launch
 ///   LOCALAI_SHOW_LIBRARY=1          open the model library after launch
 ///   LOCALAI_SHOW_MODEL_PICKER=1     open the model + quant picker after launch
+///   LOCALAI_NO_ACTIVATE=1           don't bring the app to the front on launch
+///   LOCALAI_DATA_DIR=/path          keep chats in this folder instead of the user's
 @MainActor
 enum DebugHooks {
     static func install(chat: ChatController, ui: UIState) {

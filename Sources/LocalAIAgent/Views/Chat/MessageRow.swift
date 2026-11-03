@@ -184,18 +184,30 @@ struct MetricsFooter: View {
     let metrics: GenerationMetrics
 
     var body: some View {
-        HStack(spacing: 6) {
+        FlowLayout(spacing: 6, lineSpacing: 6) {
             if let ttft = metrics.timeToFirstToken {
                 metric(symbol: "bolt.fill", text: "\(Format.seconds(ttft)) TTFT", level: Thresholds.timeToFirstToken.level(ttft))
+                    .help("Time to first token")
+            }
+            if let task = metrics.taskTime {
+                Chip(text: "\(Format.seconds(task)) task", symbol: "stopwatch")
+                    .help(taskHelp)
             }
             if let tps = metrics.tokensPerSecond {
                 metric(symbol: "speedometer", text: "\(Format.rate(tps)) tok/s", level: Thresholds.tokensPerSecond.level(tps))
+                    .help("Generation speed")
             }
-            if let n = metrics.completionTokens {
-                Chip(text: "\(n) tokens", symbol: "number")
+            if let out = metrics.outputTokens {
+                Chip(text: "\(out) output", symbol: "text.bubble")
+                    .help("\(out) output tokens — the visible answer")
+            }
+            if let thinking = metrics.thinkingTokens, thinking > 0 {
+                Chip(text: "\(thinking) thinking", symbol: "brain.head.profile", tint: Palette.accent)
+                    .help("\(thinking) thinking tokens — reasoning before the answer")
             }
             if let load = metrics.loadDuration, load > 0.5 {
                 Chip(text: "load \(Format.seconds(load))", symbol: "arrow.down.circle")
+                    .help("Time spent loading the model into memory (not part of task time)")
             }
             if metrics.stopReason == "stopped" {
                 Chip(text: "stopped", symbol: "stop.circle")
@@ -203,7 +215,6 @@ struct MetricsFooter: View {
                 Chip(text: "hit length limit", symbol: "scissors")
             }
         }
-        .help(helpText)
     }
 
     private func metric(symbol: String, text: String, level: HealthLevel) -> some View {
@@ -219,12 +230,17 @@ struct MetricsFooter: View {
         .foregroundStyle(.secondary)
     }
 
-    private var helpText: String {
-        var lines = ["Framework: \(metrics.backend)"]
-        if let p = metrics.promptTokens { lines.append("Prompt: \(p) tokens\(metrics.isEstimated ? " (estimated)" : "")") }
-        if let r = metrics.promptTokensPerSecond { lines.append("Prompt processing: \(Format.rate(r)) tok/s") }
-        if let t = metrics.totalDuration { lines.append("Total time: \(Format.seconds(t))") }
-        if let c = metrics.contextLength { lines.append("Context window: \(Format.tokens(c))") }
+    private var taskHelp: String {
+        var lines = ["Task time: prompt processing + all token generation"]
+        if let p = metrics.promptDuration {
+            lines.append("Prompt processing: \(Format.seconds(p))\(metrics.promptTokens.map { " (\($0) tokens)" } ?? "")")
+        }
+        if let g = metrics.generationDuration {
+            lines.append("Generation: \(Format.seconds(g))\(metrics.completionTokens.map { " (\($0) tokens)" } ?? "")")
+        }
+        if metrics.promptDuration == nil && metrics.generationDuration == nil {
+            lines.append("Measured from sending to the last token")
+        }
         return lines.joined(separator: "\n")
     }
 }

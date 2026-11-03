@@ -17,6 +17,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationDidFinishLaunching(_ notification: Notification) {
         // Also behave like a regular app when launched straight from `swift run`.
         NSApp.setActivationPolicy(.regular)
+        #if DEBUG
+        // Automated snapshot runs shouldn't steal focus from whatever the user is doing.
+        if ProcessInfo.processInfo.environment["LOCALAI_NO_ACTIVATE"] != nil { return }
+        #endif
         NSApp.activate(ignoringOtherApps: true)
     }
 

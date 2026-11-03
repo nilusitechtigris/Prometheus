@@ -165,7 +165,9 @@ private struct ThinkPill: View {
             .contentShape(Capsule())
         }
         .buttonStyle(.plain)
-        .glassCapsule(tint: on ? Palette.accent.opacity(0.22) : nil, interactive: true)
+        // Plain glass + accent outline: tinted glass made the whole chat column drop out of window captures.
+        .glassCapsule(interactive: true)
+        .overlay(Capsule().strokeBorder(on ? Palette.accent.opacity(0.6) : .clear, lineWidth: 1))
         .disabled(backends.kind != .ollama)
         .help(backends.kind == .ollama
               ? (on ? "Thinking on — the model reasons before answering" : "Thinking off — faster, direct answers")
@@ -196,6 +198,13 @@ private struct LiveTicker: View {
                         StatusDot(level: Thresholds.tokensPerSecond.level(tps), size: 6)
                         Text("\(Format.rate(tps)) tok/s")
                     }
+                }
+                HStack(spacing: 4) {
+                    Image(systemName: "stopwatch")
+                    Text(Format.seconds(Date().timeIntervalSince(live.startedAt)))
+                }
+                if live.thinkingTokens > 0 {
+                    Text("\(live.thinkingTokens) thinking · \(live.tokens - live.thinkingTokens) output")
                 }
             }
             .font(.caption.monospacedDigit())

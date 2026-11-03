@@ -168,6 +168,44 @@ struct Sparkline: View {
     }
 }
 
+/// Lays children out left to right, wrapping onto new lines when the width runs out.
+struct FlowLayout: Layout {
+    var spacing: CGFloat = 6
+    var lineSpacing: CGFloat = 6
+
+    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
+        let maxWidth = proposal.width ?? .infinity
+        var x: CGFloat = 0, y: CGFloat = 0, lineHeight: CGFloat = 0, widest: CGFloat = 0
+        for view in subviews {
+            let size = view.sizeThatFits(.unspecified)
+            if x > 0, x + size.width > maxWidth {
+                y += lineHeight + lineSpacing
+                x = 0
+                lineHeight = 0
+            }
+            x += size.width + spacing
+            lineHeight = max(lineHeight, size.height)
+            widest = max(widest, x - spacing)
+        }
+        return CGSize(width: min(widest, maxWidth), height: y + lineHeight)
+    }
+
+    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
+        var x = bounds.minX, y = bounds.minY, lineHeight: CGFloat = 0
+        for view in subviews {
+            let size = view.sizeThatFits(.unspecified)
+            if x > bounds.minX, x + size.width > bounds.maxX {
+                y += lineHeight + lineSpacing
+                x = bounds.minX
+                lineHeight = 0
+            }
+            view.place(at: CGPoint(x: x, y: y), proposal: ProposedViewSize(size))
+            x += size.width + spacing
+            lineHeight = max(lineHeight, size.height)
+        }
+    }
+}
+
 /// Rounded card container used across the inspector and library.
 struct Card<Content: View>: View {
     var padding: CGFloat = 12
@@ -238,13 +276,13 @@ struct BrandMark: View {
 
 extension View {
     /// Liquid Glass capsule on macOS 26+, frosted material before that. Use only for floating controls.
+    /// (Avoid tinted glass: it made the whole chat column drop out of window captures.)
     @ViewBuilder
-    func glassCapsule(tint: Color? = nil, interactive: Bool = false) -> some View {
+    func glassCapsule(interactive: Bool = false) -> some View {
         if #available(macOS 26.0, *) {
-            self.glassEffect(Glass.regular.tint(tint).interactive(interactive), in: Capsule())
+            self.glassEffect(Glass.regular.interactive(interactive), in: Capsule())
         } else {
             self.background(.regularMaterial, in: Capsule())
-                .background(tint?.opacity(0.25) ?? .clear, in: Capsule())
                 .overlay(Capsule().strokeBorder(.separator.opacity(0.6), lineWidth: 0.5))
         }
     }
