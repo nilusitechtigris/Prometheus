@@ -37,6 +37,15 @@ struct SidebarView: View {
                 ContentUnavailableView.search(text: search)
             }
         }
+        .safeAreaInset(edge: .top, spacing: 0) {
+            HStack(spacing: 8) {
+                BrandMark(size: 22)
+                BrandWordmark(size: 17)
+                Spacer()
+            }
+            .padding(.horizontal, 14)
+            .padding(.vertical, 6)
+        }
         .safeAreaInset(edge: .bottom, spacing: 0) {
             BackendStatusFooter()
         }

@@ -1,10 +1,11 @@
 #!/usr/bin/env bash
-# Builds "Local AI Agent.app" into ./build — no Xcode project required.
+# Builds "Loupe.app" into ./build — no Xcode project required.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
-APP_NAME="Local AI Agent"
+APP_NAME="Loupe"
 EXECUTABLE="LocalAIAgent"
+# Kept from the original "Local AI Agent" name so existing settings carry over.
 BUNDLE_ID="com.localaiagent.app"
 VERSION="1.0.0"
 APP="build/${APP_NAME}.app"
@@ -42,7 +43,7 @@ rm -rf "$APP"
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
 cp "$BIN_DIR/$EXECUTABLE" "$APP/Contents/MacOS/$EXECUTABLE"
 
-if [[ ! -f build/AppIcon.icns ]]; then
+if [[ ! -f build/AppIcon.icns || scripts/make-icon.swift -nt build/AppIcon.icns ]]; then
     echo "→ Rendering icon"
     TMP="$(mktemp -d)"
     unset SDKROOT

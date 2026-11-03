@@ -1,6 +1,9 @@
-# Local AI Agent
+<p align="center"><img src="assets/icon.png" width="128" alt="Loupe icon"></p>
 
-A native macOS app (SwiftUI, Apple Silicon) for chatting with local LLMs. It includes live observability and a curated list of verified models. Everything runs on your Mac.
+<h1 align="center">Loupe</h1>
+<p align="center"><b>Local AI, up close.</b></p>
+
+Loupe is a native macOS app (SwiftUI, Apple Silicon) for chatting with local LLMs. It includes live observability and a curated list of verified models. Everything runs on your Mac.
 
 ## Features
 
@@ -22,13 +25,14 @@ A native macOS app (SwiftUI, Apple Silicon) for chatting with local LLMs. It inc
   - Six colour themes (View › Theme, or Settings › Appearance) and a static ambient mesh background
   - Liquid Glass for the composer and controls on macOS 26+
   - Green, yellow and red always keep their health meaning, whatever the theme
+  - The Loupe mark: a lens with a spark inside and a measuring bezel whose ticks run green → yellow → red. The in-app mark and wordmark follow the theme. The icon is drawn by `scripts/make-icon.swift`.
 
 ## Run it
 
 Requirements: an Apple Silicon Mac, macOS 14 or later, and Command Line Tools or Xcode.
 
 ```bash
-make run        # builds "build/Local AI Agent.app" and opens it
+make run        # builds "build/Loupe.app" and opens it
 make install    # copies it to /Applications
 ```
 

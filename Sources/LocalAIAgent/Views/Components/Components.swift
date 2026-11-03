@@ -265,23 +265,6 @@ struct Chip: View {
     }
 }
 
-/// App-wide brand mark.
-struct BrandMark: View {
-    var size: CGFloat = 28
-
-    var body: some View {
-        RoundedRectangle(cornerRadius: size * 0.28, style: .continuous)
-            .fill(Palette.gradient)
-            .overlay(
-                Image(systemName: "sparkles")
-                    .font(.system(size: size * 0.5, weight: .semibold))
-                    .foregroundStyle(.white)
-            )
-            .frame(width: size, height: size)
-            .shadow(color: Palette.accent.opacity(0.35), radius: size * 0.12, y: size * 0.05)
-    }
-}
-
 extension View {
     /// Liquid Glass capsule on macOS 26+, frosted material before that. Use only for floating controls.
     /// (Avoid tinted glass: it made the whole chat column drop out of window captures.)

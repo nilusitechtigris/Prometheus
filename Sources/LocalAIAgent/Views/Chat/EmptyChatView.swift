@@ -44,14 +44,19 @@ private struct WelcomeHero: View {
 
     var body: some View {
         VStack(spacing: 22) {
-            BrandMark(size: 64)
-            VStack(spacing: 6) {
-                Text("What can I help with?")
-                    .font(.system(size: 28, weight: .semibold, design: .rounded))
+            VStack(spacing: 12) {
+                BrandMark(size: 84)
+                    .padding(.bottom, 4)
+                BrandWordmark(size: 44)
+                Text(Brand.tagline.uppercased())
+                    .font(.system(size: 11, weight: .semibold, design: .rounded))
+                    .tracking(2.4)
+                    .foregroundStyle(Palette.gradient)
                 if let model = backends.selectedModel {
-                    Text("Running **\(model.displayName)** locally on your \(monitor.chipName) — nothing leaves this Mac.")
+                    Text("Running **\(model.displayName)** on your \(monitor.chipName) — nothing leaves this Mac.")
                         .foregroundStyle(.secondary)
                         .multilineTextAlignment(.center)
+                        .padding(.top, 4)
                 }
             }
             LazyVGrid(columns: [GridItem(.flexible(), spacing: 12), GridItem(.flexible(), spacing: 12)], spacing: 12) {

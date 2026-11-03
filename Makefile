@@ -1,4 +1,4 @@
-APP := build/Local AI Agent.app
+APP := build/Loupe.app
 
 .PHONY: app run install clean
 
@@ -9,9 +9,9 @@ run: app
 	@open "$(APP)"
 
 install: app
-	@rm -rf "/Applications/Local AI Agent.app"
+	@rm -rf "/Applications/Loupe.app" "/Applications/Local AI Agent.app"
 	@cp -R "$(APP)" /Applications/
-	@echo "✓ Installed to /Applications/Local AI Agent.app"
+	@echo "✓ Installed to /Applications/Loupe.app"
 
 clean:
 	@rm -rf .build build

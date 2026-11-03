@@ -25,7 +25,7 @@ struct ContentView: View {
                         }
                 }
         }
-        .navigationTitle(chat.selected?.title ?? "Local AI Agent")
+        .navigationTitle(chat.selected?.title ?? Brand.name)
         .navigationSubtitle(backends.selectedModel.map { "\($0.displayName) · \($0.quantLabel) · \(backends.kind.displayName)" } ?? backends.kind.displayName)
         .toolbar {
             // Compact vitals only while the full telemetry panel is closed.

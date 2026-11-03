@@ -51,7 +51,7 @@ struct LocalAIAgentApp: App {
     }
 
     var body: some Scene {
-        WindowGroup("Local AI Agent", id: "main") {
+        WindowGroup(Brand.name, id: "main") {
             ContentView()
                 .environment(settings)
                 .environment(backends)
@@ -69,6 +69,17 @@ struct LocalAIAgentApp: App {
         }
         .defaultSize(width: 1380, height: 880)
         .commands {
+            CommandGroup(replacing: .appInfo) {
+                Button("About \(Brand.name)") {
+                    let centered = NSMutableParagraphStyle()
+                    centered.alignment = .center
+                    let credits = NSAttributedString(
+                        string: "\(Brand.tagline)\nOpen models running on this Mac. Nothing leaves it.",
+                        attributes: [.font: NSFont.systemFont(ofSize: 11), .foregroundColor: NSColor.secondaryLabelColor,
+                                     .paragraphStyle: centered])
+                    NSApp.orderFrontStandardAboutPanel(options: [.applicationName: Brand.name, .credits: credits])
+                }
+            }
             CommandGroup(replacing: .newItem) {
                 Button("New Chat") {
                     chat.newConversation()
