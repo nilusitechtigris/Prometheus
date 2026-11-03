@@ -11,9 +11,9 @@ enum Format {
         String(format: "%.1f GB", Double(b) / 1_073_741_824)
     }
 
+    /// Always seconds with two decimals (0.20 s, never "200 ms") so values compare at a glance.
     static func seconds(_ s: Double?) -> String {
         guard let s else { return "—" }
-        if s < 1 { return String(format: "%.0f ms", s * 1000) }
         if s < 60 { return String(format: "%.2f s", s) }
         return String(format: "%dm %02ds", Int(s) / 60, Int(s) % 60)
     }

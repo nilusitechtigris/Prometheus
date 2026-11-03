@@ -22,6 +22,8 @@ final class AppSettings {
     var showInspector: Bool { didSet { defaults.set(showInspector, forKey: "showInspector") } }
     /// Unload the previous model when switching, so two models don't compete for unified memory.
     var unloadOnSwitch: Bool { didSet { defaults.set(unloadOnSwitch, forKey: "unloadOnSwitch") } }
+    /// Whether the stats card under each reply is expanded (applies to every reply).
+    var replyStatsExpanded: Bool { didSet { defaults.set(replyStatsExpanded, forKey: "replyStatsExpanded") } }
 
     init() {
         backendKind = BackendKind(rawValue: defaults.string(forKey: "backendKind") ?? "") ?? .ollama
@@ -36,6 +38,7 @@ final class AppSettings {
         maxResponseTokens = defaults.integer(forKey: "maxResponseTokens")
         showInspector = defaults.object(forKey: "showInspector") as? Bool ?? true
         unloadOnSwitch = defaults.object(forKey: "unloadOnSwitch") as? Bool ?? true
+        replyStatsExpanded = defaults.object(forKey: "replyStatsExpanded") as? Bool ?? true
     }
 
     func baseURL(for kind: BackendKind) -> String {

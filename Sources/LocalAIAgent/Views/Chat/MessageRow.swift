@@ -181,33 +181,19 @@ private struct ErrorCard: View {
 }
 
 /// One card of per-reply stats: speed · time (first token + generation) · tokens (output + thinking).
+/// Collapses to a small arrow; the choice applies to every reply and is remembered.
 struct MetricsFooter: View {
+    @Environment(AppSettings.self) private var settings
     let metrics: GenerationMetrics
 
     var body: some View {
         HStack(spacing: 8) {
-            // One row when there's room, two rows when the chat column is narrow.
-            ViewThatFits(in: .horizontal) {
-                HStack(alignment: .top, spacing: 0) {
-                    speed
-                    divider
-                    time
-                    divider
-                    tokens
-                }
-                .fixedSize()
-                .statsCard()
-
-                Grid(alignment: .topLeading, horizontalSpacing: 18, verticalSpacing: 9) {
-                    GridRow { speed; time }
-                    Rectangle()
-                        .fill(Color.primary.opacity(0.08))
-                        .frame(height: 1)
-                        .gridCellColumns(2)
-                    GridRow { tokens.gridCellColumns(2) }
-                }
-                .fixedSize()
-                .statsCard()
+            if settings.replyStatsExpanded {
+                expandedCard
+                    .transition(.opacity.combined(with: .scale(scale: 0.97, anchor: .leading)))
+            } else {
+                collapsedPill
+                    .transition(.opacity.combined(with: .scale(scale: 0.97, anchor: .leading)))
             }
             if metrics.stopReason == "stopped" {
                 Chip(text: "Stopped", symbol: "stop.circle")
@@ -215,6 +201,68 @@ struct MetricsFooter: View {
                 Chip(text: "Hit length limit", symbol: "scissors")
             }
         }
+    }
+
+    private func toggle() {
+        withAnimation(.snappy(duration: 0.25)) { settings.replyStatsExpanded.toggle() }
+    }
+
+    private var expandedCard: some View {
+        // One row when there's room, two rows when the chat column is narrow.
+        ViewThatFits(in: .horizontal) {
+            HStack(alignment: .center, spacing: 0) {
+                HStack(alignment: .top, spacing: 0) {
+                    speed
+                    divider
+                    time
+                    divider
+                    tokens
+                }
+                collapseButton.padding(.leading, 12)
+            }
+            .fixedSize()
+            .statsCard()
+
+            Grid(alignment: .topLeading, horizontalSpacing: 18, verticalSpacing: 9) {
+                GridRow { speed; time }
+                Rectangle()
+                    .fill(Color.primary.opacity(0.08))
+                    .frame(height: 1)
+                    .gridCellColumns(2)
+                GridRow { tokens.gridCellColumns(2) }
+            }
+            .fixedSize()
+            .padding(.trailing, 22)
+            .overlay(alignment: .topTrailing) { collapseButton }
+            .statsCard()
+        }
+    }
+
+    private var collapseButton: some View {
+        Button(action: toggle) {
+            Image(systemName: "chevron.up")
+                .font(.system(size: 9, weight: .bold))
+                .frame(width: 18, height: 18)
+                .background(Circle().fill(Color.primary.opacity(0.07)))
+                .foregroundStyle(.secondary)
+                .contentShape(Circle())
+        }
+        .buttonStyle(.plain)
+        .help("Collapse stats")
+    }
+
+    /// Collapsed: just a small arrow to bring the stats back.
+    private var collapsedPill: some View {
+        Button(action: toggle) {
+            Image(systemName: "chevron.down")
+                .font(.system(size: 9, weight: .bold))
+                .frame(width: 18, height: 18)
+                .background(Circle().fill(Color.primary.opacity(0.07)))
+                .foregroundStyle(.secondary)
+                .contentShape(Circle())
+        }
+        .buttonStyle(.plain)
+        .help("Show stats")
     }
 
     private var divider: some View {
