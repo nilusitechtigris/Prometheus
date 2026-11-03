@@ -56,6 +56,20 @@ private struct AssistantMessage: View {
                     Text(message.createdAt, style: .time)
                         .font(.caption)
                         .foregroundStyle(.tertiary)
+                    Spacer(minLength: 8)
+                    // Up here so the stats card below can use the full width.
+                    if !isStreaming && !message.content.isEmpty {
+                        HStack(spacing: 2) {
+                            CopyButton(text: message.content)
+                            if isLast {
+                                Button { chat.regenerate() } label: { Image(systemName: "arrow.clockwise") }
+                                    .buttonStyle(.borderless)
+                                    .help("Regenerate (⌘R)")
+                                    .disabled(!chat.canSend)
+                            }
+                        }
+                        .opacity(hovering || isLast ? 1 : 0)
+                    }
                 }
 
                 if let thinking = message.thinking, !thinking.isEmpty {
@@ -75,20 +89,8 @@ private struct AssistantMessage: View {
                 }
 
                 if let metrics = message.metrics, !isStreaming {
-                    HStack(alignment: .center, spacing: 10) {
-                        MetricsFooter(metrics: metrics)
-                        Spacer(minLength: 0)
-                        HStack(spacing: 2) {
-                            CopyButton(text: message.content)
-                            if isLast {
-                                Button { chat.regenerate() } label: { Image(systemName: "arrow.clockwise") }
-                                    .buttonStyle(.borderless)
-                                    .help("Regenerate (⌘R)")
-                                    .disabled(!chat.canSend)
-                            }
-                        }
-                        .opacity(hovering || isLast ? 1 : 0)
-                    }
+                    MetricsFooter(metrics: metrics)
+                        .padding(.top, 2)
                 }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
@@ -210,24 +212,22 @@ struct MetricsFooter: View {
     private var expandedCard: some View {
         // One row when there's room, two rows when the chat column is narrow.
         ViewThatFits(in: .horizontal) {
-            HStack(alignment: .center, spacing: 0) {
-                HStack(alignment: .top, spacing: 0) {
-                    speed
+            HStack(alignment: .top, spacing: 0) {
+                speed
+                divider
+                time
+                divider
+                tokens
+                if metrics.temperature != nil {
                     divider
-                    time
-                    divider
-                    tokens
-                    if metrics.temperature != nil {
-                        divider
-                        temperature
-                    }
+                    temperature
                 }
-                collapseButton.padding(.leading, 12)
             }
             .fixedSize()
             .statsCard()
+            .overlay(alignment: .topTrailing) { collapseButton.offset(x: 7, y: -7) }
 
-            Grid(alignment: .topLeading, horizontalSpacing: 18, verticalSpacing: 9) {
+            Grid(alignment: .topLeading, horizontalSpacing: 16, verticalSpacing: 9) {
                 GridRow { speed; time }
                 Rectangle()
                     .fill(Color.primary.opacity(0.08))
@@ -243,18 +243,19 @@ struct MetricsFooter: View {
                 }
             }
             .fixedSize()
-            .padding(.trailing, 22)
-            .overlay(alignment: .topTrailing) { collapseButton }
             .statsCard()
+            .overlay(alignment: .topTrailing) { collapseButton.offset(x: 7, y: -7) }
         }
+        .padding(.trailing, 7)
     }
 
     private var collapseButton: some View {
         Button(action: toggle) {
             Image(systemName: "chevron.up")
-                .font(.system(size: 9, weight: .bold))
+                .font(.system(size: 8, weight: .bold))
                 .frame(width: 18, height: 18)
-                .background(Circle().fill(Color.primary.opacity(0.07)))
+                .background(Circle().fill(Color(nsColor: .windowBackgroundColor)))
+                .overlay(Circle().strokeBorder(Color.primary.opacity(0.14), lineWidth: 0.5))
                 .foregroundStyle(.secondary)
                 .contentShape(Circle())
         }
@@ -280,7 +281,7 @@ struct MetricsFooter: View {
         Rectangle()
             .fill(Color.primary.opacity(0.08))
             .frame(width: 1, height: 30)
-            .padding(.horizontal, 14)
+            .padding(.horizontal, 10)
             .padding(.top, 2)
     }
 
@@ -289,7 +290,7 @@ struct MetricsFooter: View {
         StatSegment(label: "Speed", symbol: "speedometer", help: "Generation speed") {
             StatusDot(level: Thresholds.tokensPerSecond.level(tps), size: 6)
             Text(Format.rate(tps))
-            Text("tok/s").font(.system(size: 11)).foregroundStyle(.secondary)
+            Text("tok/s").font(.system(size: 10.5)).foregroundStyle(.secondary)
         }
     }
 
@@ -388,7 +389,7 @@ private struct StatSegment<Value: View>: View {
             HStack(alignment: .firstTextBaseline, spacing: 5) {
                 value
             }
-            .font(.system(size: 13.5, weight: .semibold, design: .rounded))
+            .font(.system(size: 13, weight: .semibold, design: .rounded))
             .monospacedDigit()
         }
         .help(help)
@@ -407,7 +408,7 @@ private struct SplitValues: View {
     let parts: [SplitPart]
 
     var body: some View {
-        let values = HStack(spacing: 10) {
+        let values = HStack(spacing: 8) {
             ForEach(parts.indices, id: \.self) { i in
                 LabeledValue(value: parts[i].value, label: parts[i].label, color: parts[i].color)
             }
@@ -432,7 +433,7 @@ private struct LabeledValue: View {
         HStack(alignment: .firstTextBaseline, spacing: 4) {
             Circle().fill(color).frame(width: 6, height: 6).alignmentGuide(.firstTextBaseline) { $0[.bottom] }
             Text(value)
-            Text(label).font(.system(size: 11, weight: .regular)).foregroundStyle(.secondary)
+            Text(label).font(.system(size: 10.5, weight: .regular)).foregroundStyle(.secondary)
         }
     }
 }
@@ -460,7 +461,7 @@ private extension View {
     func statsCard() -> some View {
         let shape = RoundedRectangle(cornerRadius: 12, style: .continuous)
         return self
-            .padding(.horizontal, 12)
+            .padding(.horizontal, 11)
             .padding(.vertical, 8)
             .background(shape.fill(Color.primary.opacity(0.045)))
             .overlay(shape.strokeBorder(Color.primary.opacity(0.08), lineWidth: 0.5))
