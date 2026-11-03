@@ -248,7 +248,7 @@ struct GenerationOptionsView: View {
                 }
                 TextEditor(text: $settings.systemPrompt)
                     .font(.callout)
-                    .frame(height: 110)
+                    .frame(height: 170)
                     .scrollContentBackground(.hidden)
                     .padding(6)
                     .background(Color(nsColor: .textBackgroundColor), in: RoundedRectangle(cornerRadius: 8))

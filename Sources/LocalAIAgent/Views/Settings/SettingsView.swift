@@ -106,7 +106,7 @@ private struct GeneralSettings: View {
             Section("System instructions") {
                 TextEditor(text: $settings.systemPrompt)
                     .font(.callout)
-                    .frame(minHeight: 90)
+                    .frame(minHeight: 240)
                 Button("Reset to Default") { settings.systemPrompt = AppSettings.defaultSystemPrompt }
             }
         }
