@@ -2,30 +2,51 @@ import SwiftUI
 
 /// Name and voice in one place, so a rename is a one-line change.
 enum Brand {
-    static let name = "Loupe"
-    static let tagline = "Local AI, up close."
+    static let name = "Medonom"
+    static let tagline = "Local AI, measured."
 }
 
-/// The Loupe mark: a lens with a spark inside, on a night tile, like the app icon.
-/// Larger sizes add the measuring bezel with its green / yellow / red zone.
+/// The Medonom mark: an "M" drawn as a glowing telemetry line, with a spark on its peak and the
+/// app's green / yellow / red range bar underneath. Same drawing as the app icon
+/// (scripts/make-icon.swift), with the line in the current theme's colours.
 struct BrandMark: View {
     var size: CGFloat = 28
 
     var body: some View {
         let tile = RoundedRectangle(cornerRadius: size * 0.28, style: .continuous)
+        let detailed = size >= 44
+        let lineColors = [Palette.accent2, Palette.accent, Palette.glow]
         tile
             .fill(LinearGradient(colors: [Color(red: 0.12, green: 0.11, blue: 0.29), Color(red: 0.04, green: 0.04, blue: 0.12)],
                                  startPoint: .top, endPoint: .bottom))
             .overlay {
-                RadialGradient(colors: [Palette.accent.opacity(0.6), .clear], center: .center,
-                               startRadius: 0, endRadius: size * 0.5)
+                RadialGradient(colors: [Palette.accent.opacity(0.5), .clear], center: .center,
+                               startRadius: 0, endRadius: size * 0.6)
             }
             .overlay {
-                if size >= 44 { BezelTicks().padding(size * 0.07) }
-            }
-            .overlay {
-                LensGlyph(lineWidth: size * 0.075, spark: AnyShapeStyle(.white), detailed: size >= 44)
-                    .padding(size * (size >= 44 ? 0.22 : 0.18))
+                Canvas { ctx, canvas in
+                    let m = MarkGeometry(side: canvas.width)
+                    if detailed {
+                        for y in MarkGeometry.gridLines {
+                            var line = Path()
+                            line.move(to: m.point(180, y))
+                            line.addLine(to: m.point(844, y))
+                            ctx.stroke(line, with: .color(.white.opacity(0.06)), lineWidth: max(m.scale(4), 0.5))
+                        }
+                        for segment in m.rangeSegments {
+                            ctx.fill(Path(roundedRect: segment.rect, cornerRadius: segment.rect.height / 2), with: .color(segment.color))
+                        }
+                        ctx.fill(Path(ellipseIn: m.circle(m.marker, radius: m.scale(20))), with: .color(.white))
+                    }
+                    let stroke = StrokeStyle(lineWidth: m.scale(detailed ? 80 : 104), lineCap: .round, lineJoin: .round)
+                    var glow = ctx
+                    glow.addFilter(.shadow(color: Palette.accent.opacity(0.9), radius: m.scale(36)))
+                    glow.stroke(m.letter, with: .linearGradient(Gradient(colors: lineColors), startPoint: m.point(240, 0), endPoint: m.point(784, 0)),
+                                style: stroke)
+                    var spark = ctx
+                    spark.addFilter(.shadow(color: .white.opacity(0.85), radius: m.scale(30)))
+                    spark.fill(SparkShape().path(in: m.circle(m.sparkCenter, radius: m.scale(detailed ? 92 : 120))), with: .color(.white))
+                }
             }
             .clipShape(tile)
             .overlay(tile.strokeBorder(.white.opacity(0.14), lineWidth: 0.5))
@@ -34,50 +55,42 @@ struct BrandMark: View {
     }
 }
 
-/// The lens on its own: a ring in the theme colours with a spark inside.
-/// It also stands in for the "o" of the wordmark.
-struct LensGlyph: View {
-    var lineWidth: CGFloat
-    var spark: AnyShapeStyle? = nil
-    /// Glass fill, highlight and the second, smaller spark — only where there's room to see them.
-    var detailed = false
+/// Mark geometry in the 1024-point icon space (y up, tile from 100 to 924), mapped onto a square view.
+struct MarkGeometry {
+    let side: CGFloat
 
-    var body: some View {
-        GeometryReader { geo in
-            let d = min(geo.size.width, geo.size.height)
-            ZStack {
-                if detailed {
-                    Circle().fill(RadialGradient(colors: [.white.opacity(0.18), .white.opacity(0.02)],
-                                                 center: UnitPoint(x: 0.35, y: 0.3), startRadius: 0, endRadius: d * 0.6))
-                }
-                Circle().strokeBorder(
-                    AngularGradient(colors: [Palette.accent2, Palette.accent, Palette.glow, Palette.accent2], center: .center),
-                    lineWidth: lineWidth)
-                if detailed {
-                    // Specular highlight on the glass, upper left.
-                    Circle()
-                        .trim(from: 0.56, to: 0.68)
-                        .stroke(.white.opacity(0.55), style: StrokeStyle(lineWidth: lineWidth * 0.32, lineCap: .round))
-                        .padding(lineWidth * 1.7)
-                }
-                if let spark {
-                    SparkShape()
-                        .fill(spark)
-                        .frame(width: d * 0.44, height: d * 0.44)
-                        .offset(x: detailed ? -d * 0.03 : 0, y: detailed ? d * 0.03 : 0)
-                        .shadow(color: .white.opacity(detailed ? 0.6 : 0), radius: d * 0.06)
-                    if detailed {
-                        SparkShape()
-                            .fill(spark)
-                            .frame(width: d * 0.14, height: d * 0.14)
-                            .offset(x: d * 0.17, y: -d * 0.17)
-                    }
-                }
-            }
-            .frame(width: d, height: d)
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
+    func scale(_ v: CGFloat) -> CGFloat { v / 824 * side }
+    func point(_ x: CGFloat, _ y: CGFloat) -> CGPoint { CGPoint(x: (x - 100) / 824 * side, y: (924 - y) / 824 * side) }
+    func circle(_ c: CGPoint, radius r: CGFloat) -> CGRect { CGRect(x: c.x - r, y: c.y - r, width: r * 2, height: r * 2) }
+
+    /// The "M": two peaks, like a telemetry line.
+    static let letterPoints: [CGPoint] = [
+        CGPoint(x: 252, y: 330), CGPoint(x: 352, y: 700), CGPoint(x: 512, y: 450),
+        CGPoint(x: 672, y: 700), CGPoint(x: 772, y: 330),
+    ]
+    static let gridLines: [CGFloat] = [330, 453, 577, 700, 823]
+
+    var letter: Path {
+        var p = Path()
+        p.addLines(Self.letterPoints.map { point($0.x, $0.y) })
+        return p
+    }
+
+    var sparkCenter: CGPoint { point(672, 790) }
+
+    struct Segment { let rect: CGRect; let color: Color }
+
+    /// The range bar under the letter: green, yellow, red, like every metric in the app.
+    var rangeSegments: [Segment] {
+        let y: CGFloat = 214, h: CGFloat = 26, gap: CGFloat = 12
+        let spans: [(CGFloat, CGFloat, Color)] = [(252, 500, Palette.good), (500, 664, Palette.warning), (664, 772, Palette.critical)]
+        return spans.enumerated().map { i, s in
+            let x0 = s.0 + (i == 0 ? 0 : gap / 2), x1 = s.1 - (i == spans.count - 1 ? 0 : gap / 2)
+            return Segment(rect: CGRect(origin: point(x0, y + h / 2), size: CGSize(width: scale(x1 - x0), height: scale(h))), color: s.2)
         }
     }
+
+    var marker: CGPoint { point(430, 227) }
 }
 
 /// Four-point spark with pinched sides.
@@ -97,52 +110,14 @@ struct SparkShape: Shape {
     }
 }
 
-/// Measuring ring around the lens. The lower-right ticks run green → yellow → red,
-/// the same ranges the telemetry uses.
-struct BezelTicks: View {
-    var count = 48
-
-    var body: some View {
-        Canvas { ctx, size in
-            let c = CGPoint(x: size.width / 2, y: size.height / 2)
-            let r = min(size.width, size.height) / 2
-            let zone = (count * 7 / 24)...(count * 10 / 24)
-            for i in 0..<count {
-                let angle = Double(i) / Double(count) * 2 * .pi - .pi / 2
-                let major = i % 4 == 0
-                let inner = r * (major ? 0.88 : 0.93)
-                var tick = Path()
-                tick.move(to: CGPoint(x: c.x + cos(angle) * inner, y: c.y + sin(angle) * inner))
-                tick.addLine(to: CGPoint(x: c.x + cos(angle) * r, y: c.y + sin(angle) * r))
-                let color: Color
-                if zone.contains(i) {
-                    let t = Double(i - zone.lowerBound) / Double(zone.upperBound - zone.lowerBound)
-                    color = t < 0.4 ? Palette.good : t < 0.75 ? Palette.warning : Palette.critical
-                } else {
-                    color = .white.opacity(major ? 0.5 : 0.25)
-                }
-                ctx.stroke(tick, with: .color(color), style: StrokeStyle(lineWidth: max(r * 0.03, 0.8), lineCap: .round))
-            }
-        }
-    }
-}
-
-/// "Loupe" in the brand type, with the lens standing in for the "o".
+/// "Medonom" in the brand type, its "M" in the theme gradient like the mark.
 struct BrandWordmark: View {
     var size: CGFloat = 28
 
     var body: some View {
-        HStack(alignment: .firstTextBaseline, spacing: 0) {
-            Text("L")
-            LensGlyph(lineWidth: size * 0.12, spark: size >= 24 ? AnyShapeStyle(Palette.gradient) : nil)
-                .frame(width: size * 0.56, height: size * 0.56)
-                .alignmentGuide(.firstTextBaseline) { d in d[.bottom] - size * 0.01 }
-                .padding(.leading, size * 0.02)
-                .padding(.trailing, size * 0.03)
-            Text("upe")
-        }
-        .font(.system(size: size, weight: .bold, design: .rounded))
-        .accessibilityElement(children: .ignore)
-        .accessibilityLabel(Brand.name)
+        (Text("M").foregroundStyle(Palette.gradient) + Text("edonom"))
+            .font(.system(size: size, weight: .heavy, design: .rounded))
+            .tracking(-size * 0.01)
+            .accessibilityLabel(Brand.name)
     }
 }
