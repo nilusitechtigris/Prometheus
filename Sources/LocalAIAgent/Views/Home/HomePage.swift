@@ -111,7 +111,7 @@ private struct ModePicker: View {
         Button { open.toggle() } label: {
             HStack(spacing: 7) {
                 Circle().fill(harness ? Palette.warning : Palette.good).frame(width: 8, height: 8)
-                Text(harness ? "Harness On" : "Local Mode").font(.uiCaption.weight(.medium))
+                Text(harness ? "Harness \(settings.harnessVersion.short)" : "Local Mode").font(.uiCaption.weight(.medium))
                 Image(systemName: "chevron.down").font(.system(size: 9, weight: .semibold)).foregroundStyle(Forge.dim)
             }
             .padding(.horizontal, 12)

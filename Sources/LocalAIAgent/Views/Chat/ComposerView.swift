@@ -60,7 +60,7 @@ struct ComposerView: View {
                     .transition(.scale.combined(with: .opacity))
                 }
             }
-            .animation(.snappy, value: chat.isGenerating)
+            .animation(Motion.quick, value: chat.isGenerating)
             .padding(.leading, 18)
             .padding(.trailing, 8)
             .padding(.vertical, 8)
@@ -81,7 +81,7 @@ struct ComposerView: View {
             .padding(.horizontal, 4)
 
             if harnessOn {
-                Label("Harness on: search terms go to Wikipedia, Stack Overflow, arXiv and MDN. Code runs in a sandbox on this Mac.", systemImage: "globe")
+                Label(harnessNote, systemImage: "globe")
                     .font(.uiCaption2)
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
@@ -96,7 +96,8 @@ struct ComposerView: View {
         .padding(.bottom, 16)
         .frame(maxWidth: 900)
         .frame(maxWidth: .infinity)
-        .animation(.snappy, value: chat.isGenerating)
+        .animation(Motion.quick, value: chat.isGenerating)
+        .animation(Motion.quick, value: harnessOn)
         .onAppear { focused = true }
         .onChange(of: ui.composerFocusRequest) { focused = true }
     }
@@ -146,6 +147,11 @@ struct ComposerView: View {
 
     private var harnessOn: Bool { settings.harnessEnabled && backends.kind.supportsTools }
 
+    private var harnessNote: String {
+        let version = settings.harnessVersion
+        return "Harness \(version.short) on: \(version == .tools ? "the model picks its own searches, which go" : "search terms go") to Wikipedia, Stack Overflow, arXiv and MDN. Code runs in a sandbox on this Mac."
+    }
+
     private var canSend: Bool {
         chat.canSend && !ui.draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
@@ -173,7 +179,7 @@ private struct ThinkPill: View {
     var body: some View {
         let on = settings.thinkingEnabled
         Button {
-            withAnimation(.snappy) { settings.thinkingEnabled.toggle() }
+            withAnimation(Motion.quick) { settings.thinkingEnabled.toggle() }
         } label: {
             HStack(spacing: 5) {
                 Image(systemName: "brain.head.profile")
@@ -197,37 +203,88 @@ private struct ThinkPill: View {
     }
 }
 
-/// Turns the harness on or off for the next reply, at any point in a chat.
+/// Picks the version of the harness for the next reply, or turns it off, at any point in a chat.
 private struct HarnessPill: View {
     @Environment(AppSettings.self) private var settings
     @Environment(BackendController.self) private var backends
     var compact = false
+    @State private var show = false
 
     var body: some View {
         let on = settings.harnessEnabled && backends.kind.supportsTools
+        let version = settings.harnessVersion
         Button {
-            withAnimation(.snappy) { settings.harnessEnabled.toggle() }
+            show.toggle()
         } label: {
-            HStack(spacing: 5) {
+            PickerPill {
                 Image(systemName: "shield.lefthalf.filled")
                     .symbolEffect(.bounce, value: on)
-                if !compact { Text("Harness") }
+                if on {
+                    Text(compact ? version.short : "Harness \(version.short)")
+                } else if !compact {
+                    Text("Harness")
+                }
             }
             .font(.uiCallout.weight(on ? .semibold : .regular))
             .foregroundStyle(on ? Palette.accent : .secondary)
-            .padding(.horizontal, 11)
-            .padding(.vertical, 5)
-            .contentShape(Capsule())
         }
         .buttonStyle(.plain)
         .glassCapsule(interactive: true)
         .overlay(Capsule().strokeBorder(on ? Palette.accent.opacity(0.6) : .clear, lineWidth: 1))
         .disabled(!backends.kind.supportsTools)
         .help(backends.kind.supportsTools
-              ? (on ? "Harness on: it picks tools for each message, so search terms leave this Mac. Click to turn it off."
+              ? (on ? "Harness \(version.title): it uses tools for each message, so search terms leave this Mac. Click to change the version or turn it off."
                     : "Harness off: everything stays on this Mac. Click to give the model web search and a code sandbox.")
               : "The harness needs Ollama for now")
-        .accessibilityLabel("Harness, \(on ? "on" : "off")")
+        .accessibilityLabel(on ? "Harness, \(version.title)" : "Harness, off")
+        .popover(isPresented: $show, arrowEdge: .top) {
+            HarnessPopover { show = false }
+        }
+    }
+}
+
+struct HarnessPopover: View {
+    @Environment(AppSettings.self) private var settings
+    @Environment(BackendController.self) private var backends
+    let dismiss: () -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text("Harness").font(.uiHeadline).padding(.horizontal, 8).padding(.bottom, 4)
+            PopoverRow(selected: !settings.harnessEnabled) {
+                settings.harnessEnabled = false
+                dismiss()
+            } content: {
+                VStack(alignment: .leading, spacing: 1) {
+                    Text("Off").font(.uiCallout.weight(.semibold))
+                    Text("Everything stays on this Mac.").font(.uiCaption).foregroundStyle(.secondary)
+                }
+                Spacer(minLength: 0)
+            }
+            ForEach(HarnessVersion.allCases) { version in
+                PopoverRow(selected: settings.harnessEnabled && settings.harnessVersion == version) {
+                    settings.harnessVersion = version
+                    settings.harnessEnabled = true
+                    dismiss()
+                } content: {
+                    HarnessVersionLabel(version: version)
+                }
+            }
+            Text(footnote)
+                .font(.uiCaption2)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+                .padding(.horizontal, 8)
+                .padding(.top, 6)
+        }
+        .padding(12)
+        .frame(width: 380)
+    }
+
+    private var footnote: String {
+        let canCall = backends.details?.capabilities.contains("tools") ?? true
+        return (canCall ? "" : "This model can't call tools, so v1 would answer without them. ")
+            + "Applies from your next message. Compare the versions on the Tests page."
     }
 }
 
@@ -239,7 +296,7 @@ private struct TelemetryPill: View {
     var body: some View {
         let on = settings.telemetryOpen
         Button {
-            withAnimation(.snappy) { settings.telemetryOpen.toggle() }
+            withAnimation(Motion.quick) { settings.telemetryOpen.toggle() }
         } label: {
             HStack(spacing: 5) {
                 Image(systemName: "gauge.with.dots.needle.67percent")

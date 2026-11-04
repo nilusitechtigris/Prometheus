@@ -12,6 +12,7 @@ enum SettingsTab: String, CaseIterable, Identifiable {
 /// Settings, as a page in the main window like Tests and Models.
 struct SettingsView: View {
     @Environment(UIState.self) private var ui
+    @Namespace private var underline
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -22,19 +23,20 @@ struct SettingsView: View {
                         Button {
                             ui.settingsTab = tab
                         } label: {
-                            UnderlineTab(title: tab.title, selected: ui.settingsTab == tab)
+                            UnderlineTab(title: tab.title, selected: ui.settingsTab == tab, bar: underline)
                         }
                         .buttonStyle(.plain)
                     }
                     Spacer()
                 }
+                .animation(Motion.page, value: ui.settingsTab)
             }
             .padding(.horizontal, 24)
             .padding(.top, 18)
             .frame(maxWidth: 1180)
             .frame(maxWidth: .infinity)
 
-            Group {
+            PageSwap(value: ui.settingsTab) {
                 switch ui.settingsTab {
                 case .general: GeneralSettings()
                 case .appearance: AppearanceSettings()
@@ -62,7 +64,7 @@ private struct AppearanceSettings: View {
                 LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 14), count: 3), spacing: 14) {
                     ForEach(AppTheme.allCases) { theme in
                         ThemeSwatch(theme: theme, selected: store.theme == theme) {
-                            withAnimation(.snappy) { store.theme = theme }
+                            withAnimation(Motion.quick) { store.theme = theme }
                         }
                     }
                 }
@@ -109,7 +111,7 @@ private struct ThemeSwatch: View {
             }
         }
         .buttonStyle(.plain)
-        .onHover { h in withAnimation(.snappy(duration: 0.2)) { hovering = h } }
+        .onHover { h in withAnimation(Motion.quick) { hovering = h } }
     }
 }
 
@@ -228,13 +230,16 @@ private struct SafetySettings: View {
                     .foregroundStyle(.secondary)
             }
             Section {
+                Picker("Version in chat", selection: $settings.harnessVersion) {
+                    ForEach(HarnessVersion.allCases) { Text($0.title).tag($0) }
+                }
                 Picker("Rounds per task", selection: $settings.harnessMaxRounds) {
                     ForEach(AppSettings.harnessRoundOptions, id: \.self) { Text("\($0)").tag($0) }
                 }
             } header: {
                 Text("Harness")
             } footer: {
-                Text("How many times the harness may go back and try again when a reply fails its checks, in chat and in the Harness Test. More rounds can fix more replies, and take longer.")
+                Text("Rounds are for \(HarnessVersion.loop.title): how many times it may go back and try again when a reply fails its checks, in chat and in the Harness Test. More rounds can fix more replies, and take longer.")
                     .font(.uiCaption)
                     .foregroundStyle(.secondary)
             }

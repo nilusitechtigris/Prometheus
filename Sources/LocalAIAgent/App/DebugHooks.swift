@@ -12,6 +12,7 @@ import SwiftUI
 ///   LOCALAI_DATA_DIR=/path          keep chats in this folder instead of the user's
 ///   LOCALAI_DESTINATION=model|hardware|harness|library   open that page after launch
 ///   LOCALAI_AUTOTEST=model|hardware|harness      run that test after launch
+///   LOCALAI_PAGE_TOUR=tests,harness  move through these pages, writing frames of each move to LOCALAI_TOUR_DIR
 ///   LOCALAI_TEST_MODEL=tag          model the model test runs on (the chat's model stays as it is)
 ///   LOCALAI_SHOW_TEST_PICKER=1      open the model test's model picker after launch
 ///   LOCALAI_EXPAND_TESTS=id,id      open these questions in the model test dashboard
@@ -25,6 +26,7 @@ import SwiftUI
 ///   LOCALAI_CHAT_SEARCH=text        search the chats for this after launch
 ///   LOCALAI_HARNESS_SAMPLE=id,id    run these questions through the harness; LOCALAI_SAMPLE_OUT=/path gets the report
 ///   LOCALAI_CHAT_HARNESS=1          turn the harness on for chat
+///   LOCALAI_HARNESS_VERSION=tools|pipeline|loop   the version chat, the sample and the Harness tab use
 ///   LOCALAI_SETTINGS_TAB=safety     open that section of the Settings page
 ///   LOCALAI_PICK_CHATS=all|2        start in the chats' Select mode with these chats ticked
 ///   LOCALAI_DELETE_PICKED=1         delete the ticked chats after 3 s
@@ -70,14 +72,36 @@ enum DebugHooks {
         }
         if let chats = env["LOCALAI_CHATS"] { settings.chatsOpen = chats != "0" }
         if let search = env["LOCALAI_CHAT_SEARCH"] { ui.chatSearch = search }
-        switch env["LOCALAI_DESTINATION"] {
-        case "model": ui.openTests(.model)
-        case "hardware": ui.openTests(.hardware)
-        case "harness": ui.openTests(.harness)
-        case "library": ui.destination = .library
-        case "chat": ui.destination = .chat
-        case "settings": ui.destination = .settings
-        default: break
+        func go(to page: String?) {
+            switch page {
+            case "model": ui.openTests(.model)
+            case "hardware": ui.openTests(.hardware)
+            case "harness": ui.openTests(.harness)
+            case "library": ui.destination = .library
+            case "chat": ui.destination = .chat
+            case "settings": ui.destination = .settings
+            case "home": ui.destination = .home
+            default: break
+            }
+        }
+        go(to: env["LOCALAI_DESTINATION"])
+        if let tour = env["LOCALAI_PAGE_TOUR"], let dir = env["LOCALAI_TOUR_DIR"] {
+            Task {
+                try? await Task.sleep(for: .seconds(3))
+                for (index, page) in tour.split(separator: ",").enumerated() {
+                    go(to: String(page))
+                    // Frames are kept in memory and written afterwards, so saving them doesn't stall the move.
+                    var frames: [NSBitmapImageRep] = []
+                    for _ in 0..<8 {
+                        try? await Task.sleep(for: .milliseconds(25))
+                        if let frame = tourFrame() { frames.append(frame) }
+                    }
+                    for (number, frame) in frames.enumerated() {
+                        try? frame.representation(using: .png, properties: [:])?.write(to: URL(fileURLWithPath: "\(dir)/tour-\(index)-\(number).png"))
+                    }
+                    try? await Task.sleep(for: .seconds(1))
+                }
+            }
         }
         if let telemetry = env["LOCALAI_TELEMETRY"] {
             settings.telemetryOpen = telemetry != "0"
@@ -96,6 +120,8 @@ enum DebugHooks {
                                                   ("hardware", AnyView(HardwareTestDashboard(scrollable: false))),
                                                   ("hardware-steps", AnyView(HardwareTestDashboard(scrollable: false, detail: .phases))),
                                                   ("harness", AnyView(HarnessTestDashboard(scrollable: false))),
+                                                  ("harness-versions", AnyView(HarnessTestDashboard(scrollable: false, detail: .versions))),
+                                                  ("harness-picker", AnyView(HarnessPopover {})),
                                                   ("harness-changes", AnyView(HarnessTestDashboard(scrollable: false, detail: .changes))),
                                                   ("harness-tools", AnyView(HarnessTestDashboard(scrollable: false, detail: .tools))),
                                                   ("harness-sites", AnyView(HarnessTestDashboard(scrollable: false, detail: .sites)))]
@@ -124,6 +150,10 @@ enum DebugHooks {
             }
         }
         lab.testModelID = env["LOCALAI_TEST_MODEL"]
+        if let version = env["LOCALAI_HARNESS_VERSION"].flatMap(HarnessVersion.init(rawValue:)) {
+            settings.harnessVersion = version
+            lab.harnessChoice = version
+        }
         if let sample = env["LOCALAI_HARNESS_SAMPLE"], let out = env["LOCALAI_SAMPLE_OUT"] {
             Task {
                 for _ in 0..<40 where !chat.canSend { try? await Task.sleep(for: .milliseconds(250)) }
@@ -304,6 +334,35 @@ enum DebugHooks {
         let ranked = HarnessText.ranked([SearchHit(title: "Hittites", url: "https://en.wikipedia.org/wiki/Hittites"),
                                          SearchHit(title: "Egyptian–Hittite peace treaty", url: "https://en.wikipedia.org/wiki/Treaty")], for: "peace treaty Hittite")
         expect("best title first", ranked.first?.title.contains("treaty") == true)
+        // The arithmetic shortcut has to be right or stay out of the way.
+        for (task, result) in [("What is 47 × 23?", "1081"), ("What is 7^222 mod 1000?", "49"),
+                               ("What is the remainder when 7^2025 is divided by 1000?", "807")] {
+            expect("sum in \(task) is \(result)", TestLab.exactArithmetic(in: task)?.1 == result)
+        }
+        for task in ["What is 7^2025?", "What is 2^300?", "What is 17 + 5 modulo 3?", "What are the last two digits of 3 * 77777?"] {
+            expect("no shortcut for \(task)", TestLab.exactArithmetic(in: task) == nil)
+        }
+        // The gate, once the web has been read.
+        var gate = ToolGate()
+        let search = ToolCall(name: "web_search", arguments: ["query": "bees"])
+        let link = "https://en.wikipedia.org/wiki/Bee"
+        func open(_ address: String) -> ToolCall { ToolCall(name: "open_page", arguments: ["url": address]) }
+        expect("gate lets the first search through", gate.refusal(of: search) == nil)
+        gate.note(search, result: "1. Bee — \(link)\n   Bees are insects.")
+        expect("gate refuses a second search", gate.refusal(of: search) != nil)
+        expect("gate opens a link it was given", gate.refusal(of: open(link)) == nil)
+        expect("gate refuses any other page", gate.refusal(of: open("https://en.wikipedia.org/wiki/my-secret-chat")) != nil)
+        expect("gate leaves the calculator open", gate.refusal(of: ToolCall(name: "calculate", arguments: ["expression": "1+1"])) == nil)
+        // Which version older runs were.
+        func oldRun(rounds: Int?, log: [String]) -> ModelTestResult {
+            var run = ModelTestResult(harness: true, harnessRounds: rounds, model: "m", displayName: "m", quant: "q", quantProvider: "p",
+                                      backend: "b", thinking: false, contextLength: 1)
+            run.items = [ModelTestItemResult(id: "a", category: .math, title: "t", expected: "e", answer: "a", passed: true, seconds: 1, toolLog: log)]
+            return run
+        }
+        expect("old run with rounds is the loop", oldRun(rounds: 3, log: ["Understood: fact task"]).version == .loop)
+        expect("old run that logged a task is the pipeline", oldRun(rounds: nil, log: ["Understood: fact task"]).version == .pipeline)
+        expect("old run that logged nothing is model tools", oldRun(rounds: nil, log: []).version == .tools)
         // The code runner, against code trying to get out. Every attempt has to fail.
         let home = NSHomeDirectory()
         let attacks: [(String, String)] = [
@@ -338,6 +397,14 @@ enum DebugHooks {
         let disk = await CodeRunner.run("print('started', flush=True)\nf=open('big','wb')\nwhile True: f.write(b'x'*1000000); f.flush()\n", language: .python)
         expect("disk filler stopped: \(disk.output.suffix(50))", !disk.succeeded && disk.output.hasPrefix("started"))
         return lines.joined(separator: "\n")
+    }
+
+    private static func tourFrame() -> NSBitmapImageRep? {
+        guard let window = NSApp.windows.first(where: { $0.isVisible && $0.className.contains("AppKitWindow") }) ?? NSApp.mainWindow,
+              let view = window.contentView?.superview ?? window.contentView,
+              let frame = view.bitmapImageRepForCachingDisplay(in: view.bounds) else { return nil }
+        view.cacheDisplay(in: view.bounds, to: frame)
+        return frame
     }
 
     static func snapshot(to path: String) {

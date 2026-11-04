@@ -1,7 +1,7 @@
 import SwiftUI
 
-/// What the harness does to a task, step by step: the same four steps the pipeline runs, with the
-/// task's type choosing the route through step 2.
+/// What the newest harness does to a task, step by step: the four steps of its loop, with the task's
+/// type choosing the route through step 2. The Versions tab shows the older ones.
 struct HarnessFlowDiagram: View {
     private struct Route: Identifiable {
         let kind: String
@@ -36,7 +36,7 @@ struct HarnessFlowDiagram: View {
             }
             loopNote
             guardrails
-            Text("Off in chat until you turn it on with the Harness button under the message box. With it on, search terms go to Wikipedia, Stack Overflow, arXiv and MDN, pages come from the trusted sites, and every search and page is listed above the reply. Test questions are fixed, so a test sends nothing of yours. In a test the model can also call the web search, page reader, calculator and code runner itself. In chat only the harness uses them, so a web page can't steer a tool while your chat is in view. The guard is basic protection: it blocks common attacks like the ones in this test, not every possible one. Code runs on this Mac only.")
+            Text("This is \(HarnessVersion.latest.title), the newest version. It's off in chat until you pick a version with the Harness button under the message box. With it on, search terms go to Wikipedia, Stack Overflow, arXiv and MDN, pages come from the trusted sites, and every search and page is listed above the reply. Test questions are fixed, so a test sends nothing of yours. In a test the model can also call the web search, page reader, calculator and code runner itself. In chat, v2 and v3 keep those tools with the harness, so a web page can't steer one while your chat is in view. In v1 the model holds them, so once it has read the web it can't search again and can only open links it was given. The guard is basic protection: it blocks common attacks like the ones in this test, not every possible one. Code runs on this Mac only.")
                 .font(.uiCaption)
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)

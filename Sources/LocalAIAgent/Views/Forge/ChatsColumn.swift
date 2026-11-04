@@ -25,11 +25,14 @@ struct ChatsColumn: View {
         VStack(spacing: 0) {
             header
             searchField
-            if ui.selectingChats { selectionBar }
+            if ui.selectingChats { selectionBar.transition(.opacity) }
             Forge.rule()
             list
-            if ui.selectingChats { deleteBar }
+            if ui.selectingChats { deleteBar.transition(.opacity) }
         }
+        .animation(Motion.quick, value: ui.selectingChats)
+        // A chat that's deleted or moves to the top slides rather than jumps.
+        .animation(Motion.quick, value: chat.conversations.map(\.id))
         .frame(width: Self.width)
         .background(Forge.panel)
         .task(id: ui.wantsChatSearchFocus) {
@@ -141,7 +144,7 @@ struct ChatsColumn: View {
             .help("Select several chats to delete them")
             .disabled(chat.conversations.isEmpty)
             Button {
-                withAnimation(.snappy) { settings.chatsOpen = false }
+                withAnimation(Motion.quick) { settings.chatsOpen = false }
             } label: {
                 Label("Collapse", systemImage: "sidebar.leading").labelStyle(.iconOnly)
             }

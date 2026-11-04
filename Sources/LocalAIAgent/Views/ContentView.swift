@@ -26,7 +26,7 @@ struct MainPage: View {
                     }
                     .transition(.move(edge: .leading))
                 }
-                Group {
+                PageSwap(value: ui.destination) {
                     switch ui.destination {
                     case .home: HomePage()
                     case .chat: ChatView()
@@ -41,5 +41,8 @@ struct MainPage: View {
                 TelemetryPanel().transition(.move(edge: .bottom))
             }
         }
+        .animation(Motion.page, value: ui.destination)
+        .animation(Motion.quick, value: settings.chatsOpen)
+        .animation(Motion.quick, value: settings.telemetryOpen)
     }
 }

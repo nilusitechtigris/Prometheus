@@ -21,7 +21,7 @@ struct HardwareTestDashboard: View {
                  caption: "\(ProcessInfo.processInfo.activeProcessorCount) CPU cores · Takes about 30 seconds",
                  progress: lab.hardwareProgress,
                  progressNote: "Keep other heavy apps closed for steady numbers. The last step holds the GPU at full load to check for throttling.",
-                 onStop: { lab.cancelHardwareTest() }, scrollable: scrollable) {
+                 onStop: { lab.cancelHardwareTest() }, scrollable: scrollable, shownRun: lab.selectedHardwareRun?.id) {
             Text(monitor.chipName)
                 .font(.uiCallout.weight(.medium))
                 .padding(.horizontal, 11)

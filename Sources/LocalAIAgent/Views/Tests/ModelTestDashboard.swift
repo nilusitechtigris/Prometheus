@@ -17,7 +17,7 @@ struct ModelTestDashboard: View {
     var body: some View {
         TestPage(title: "Model Test",
                  subtitle: "How capable and how fast local models are: \(ModelTestSuite.questionCount) auto-graded questions across six topics and four levels. 100 is the level of \(ModelTestSuite.referenceModel).",
-                 caption: setupCaption, notice: notice, progress: lab.modelProgress, onStop: { lab.cancelModelTest() }, scrollable: scrollable) {
+                 caption: setupCaption, notice: notice, progress: lab.modelProgress, onStop: { lab.cancelModelTest() }, scrollable: scrollable, shownRun: lab.selectedModelRun?.id) {
             TestModelPicker()
             RunTestButton(title: "Run test", disabled: !canRun) {
                 lab.runModelTest(backends: backends, settings: settings)
@@ -191,7 +191,9 @@ struct ModelTestDashboard: View {
                     .foregroundStyle(run.configurationKey == selected.configurationKey ? AnyShapeStyle(Palette.gradient) : AnyShapeStyle(Color.secondary.opacity(0.6)))
                     // Alternate above / below so neighbouring labels don't collide.
                     .annotation(position: index.isMultiple(of: 2) ? .top : .bottom, spacing: 4) {
-                        Text("\(run.displayName) \(run.quant)\(run.setupLabel)").font(.uiCaption2).foregroundStyle(.secondary)
+                        // Harness runs sit close to their model's own run, so they get a short label.
+                        Text(run.version.map { "\(run.quant) \($0.short)" } ?? "\(run.displayName) \(run.quant)\(run.setupLabel)")
+                            .font(.uiCaption2).foregroundStyle(.secondary)
                     }
             }
             .chartYScale(domain: 0...110)
@@ -218,7 +220,7 @@ struct ModelTestDashboard: View {
                 Text("\(run.passed) passed · \(run.items.count - run.passed) failed").font(.uiCaption).foregroundStyle(.secondary)
                 Spacer()
                 Button(allOpen ? "Collapse all" : "Expand all") {
-                    withAnimation(.snappy(duration: 0.2)) {
+                    withAnimation(Motion.quick) {
                         if allOpen { lab.expandedQuestions.subtract(ids) } else { lab.expandedQuestions.formUnion(ids) }
                     }
                 }
@@ -318,7 +320,7 @@ struct QuestionRow: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             Button {
-                withAnimation(.snappy(duration: 0.2)) { expanded.toggle() }
+                withAnimation(Motion.quick) { expanded.toggle() }
             } label: {
                 header.contentShape(Rectangle())
             }

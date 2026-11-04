@@ -24,10 +24,12 @@ struct TestsPage: View {
     var body: some View {
         VStack(spacing: 0) {
             TestTabBar()
-            switch ui.testTab {
-            case .model: ModelTestDashboard()
-            case .hardware: HardwareTestDashboard()
-            case .harness: HarnessTestDashboard()
+            PageSwap(value: ui.testTab) {
+                switch ui.testTab {
+                case .model: ModelTestDashboard()
+                case .hardware: HardwareTestDashboard()
+                case .harness: HarnessTestDashboard()
+                }
             }
         }
     }
@@ -37,12 +39,14 @@ private struct TestTabBar: View {
     @Environment(UIState.self) private var ui
     @Environment(TestLab.self) private var lab
     @Environment(BackendController.self) private var backends
+    @Namespace private var underline
 
     var body: some View {
         HStack(spacing: 22) {
             ForEach(TestTab.allCases) { tab(for: $0) }
             Spacer()
         }
+        .animation(Motion.page, value: ui.testTab)
         .padding(.horizontal, 24)
         .padding(.top, 18)
         .frame(maxWidth: 1180)
@@ -54,7 +58,7 @@ private struct TestTabBar: View {
             ui.testTab = tab
         } label: {
             HStack(alignment: .firstTextBaseline, spacing: 7) {
-                UnderlineTab(title: tab.title, selected: ui.testTab == tab)
+                UnderlineTab(title: tab.title, selected: ui.testTab == tab, bar: underline)
                 if isRunning(tab) {
                     ProgressView().controlSize(.mini)
                 } else if let status = status(of: tab) {

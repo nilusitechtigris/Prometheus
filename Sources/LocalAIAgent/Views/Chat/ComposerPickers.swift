@@ -181,6 +181,22 @@ private struct ContextPopover: View {
     }
 }
 
+/// A version of the harness in a list: what it's called and what it does.
+struct HarnessVersionLabel: View {
+    let version: HarnessVersion
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 1) {
+            HStack(spacing: 6) {
+                Text(version.title).font(.uiCallout.weight(.semibold))
+                if version == .latest { Chip(text: "Newest", tint: Palette.accent) }
+            }
+            Text(version.summary).font(.uiCaption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+        }
+        Spacer(minLength: 0)
+    }
+}
+
 /// Selectable row used inside the composer popovers.
 struct PopoverRow<Content: View>: View {
     let selected: Bool

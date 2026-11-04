@@ -21,6 +21,8 @@ final class TestLab {
     var selectedModelRunID: UUID?
     var selectedHarnessRunID: UUID?
     var selectedHardwareRunID: UUID?
+    /// The version of the harness to test and show; nil means every version in turn.
+    var harnessChoice: HarnessVersion? = .latest
 
     private var modelTask: Task<Void, Never>?
     private var hardwareTask: Task<Void, Never>?
@@ -112,10 +114,10 @@ final class TestLab {
         guard let model = testModel(in: backends) else { return }
         Task {
             let setup = await Self.prepare(model, backends: backends, settings: settings)
-            var lines: [String] = ["model \(model.id) tools \(setup.supportsTools)"]
+            var lines: [String] = ["model \(model.id) tools \(setup.supportsTools) harness \(settings.harnessVersion.title)"]
             for question in ModelTestSuite.questions(contextLength: setup.context) where ids.contains(question.id) {
-                let (item, _) = await Self.ask(question, setup: setup, harness: true)
-                lines.append("\(item.passed ? "PASS" : "FAIL") \(item.id) (\(item.weight) pts, \(Int(item.seconds)) s) expected \(item.expected)")
+                let (item, _) = await Self.ask(question, setup: setup, harness: settings.harnessVersion)
+                lines.append("\(item.passed ? "PASS" : "FAIL") \(item.id) (\(item.weight) pts, \(Int(item.seconds)) s, \(item.modelToolCalls ?? 0) model calls) expected \(item.expected)")
                 if !item.passed { lines.append("   full: \(item.answer.suffix(260))") }
                 lines.append("   answer: \(ModelTestSuite.finalAnswer(item.answer).prefix(90))")
                 for step in item.toolLog ?? [] { lines.append("   \(step.prefix(100))") }
@@ -157,7 +159,7 @@ final class TestLab {
 
         modelTask = Task { [weak self] in
             let setup = await Self.prepare(model, backends: backends, settings: settings)
-            let result = await self?.runSuite(setup, harness: false) { index, total, question in
+            let result = await self?.runSuite(setup, harness: nil) { index, total, question in
                 self?.modelProgress = TestProgress(step: question.category.name,
                                                    detail: "Question \(index + 1) of \(total) · \(question.title)",
                                                    fraction: Double(index) / Double(total), startedAt: start)
@@ -178,11 +180,37 @@ final class TestLab {
 
     // MARK: - Harness test
 
-    /// Newest harness run of this model, or of any model if it has none.
+    /// The run to show: the one picked, else the newest of the chosen version on this model, else whatever
+    /// this model has, else any model's.
     func harnessRun(for modelID: String?) -> ModelTestResult? {
         modelResults.first { $0.id == selectedHarnessRunID }
+            ?? modelResults.first { $0.usesHarness && $0.isCurrentSuite && $0.model == modelID && (harnessChoice == nil || $0.version == harnessChoice) }
             ?? modelResults.first { $0.usesHarness && $0.isCurrentSuite && $0.model == modelID }
             ?? modelResults.first { $0.usesHarness && $0.isCurrentSuite }
+    }
+
+    /// Picks the version to test and shows its newest run, if it has one.
+    func chooseHarness(_ version: HarnessVersion?) {
+        harnessChoice = version
+        selectedHarnessRunID = nil
+    }
+
+    /// Shows a past harness run, and makes its model and version the ones to test next.
+    func show(harnessRun run: ModelTestResult) {
+        selectedHarnessRunID = run.id
+        testModelID = run.model
+        harnessChoice = run.version
+    }
+
+    /// The newest run of each version that compares with this one: same questions, model, context and thinking.
+    func comparableRuns(to run: ModelTestResult) -> [HarnessVersion: ModelTestResult] {
+        var runs: [HarnessVersion: ModelTestResult] = [:]
+        for candidate in modelResults where candidate.isCurrentSuite && candidate.model == run.model
+            && candidate.contextLength == run.contextLength && candidate.thinking == run.thinking {
+            if let version = candidate.version, runs[version] == nil { runs[version] = candidate }
+        }
+        if let version = run.version { runs[version] = run }
+        return runs
     }
 
     func baseline(of run: ModelTestResult) -> ModelTestResult? {
@@ -199,10 +227,12 @@ final class TestLab {
         }
     }
 
-    /// The same questions on the same model, without and then with the harness, followed by the
-    /// poisoned pages both ways. A matching run without the harness is reused rather than repeated.
+    /// The same questions on the same model without the harness, the poisoned pages both ways, then the
+    /// questions through each chosen version. A matching run without the harness is reused rather than
+    /// repeated. The pages run once, since every version guards them the same way.
     func runHarnessTest(backends: BackendController, settings: AppSettings) {
         guard !isRunning, backends.activeTest == nil, let model = testModel(in: backends) else { return }
+        let versions = harnessChoice.map { [$0] } ?? HarnessVersion.allCases
         let start = Date()
         lastError = nil
         harnessProgress = TestProgress(step: "Loading \(model.displayName)…", startedAt: start)
@@ -212,16 +242,17 @@ final class TestLab {
             guard let self else { return }
             let setup = await Self.prepare(model, backends: backends, settings: settings)
             var baseline = existingBaseline(setup)
-            let reused = baseline != nil
 
             @MainActor func report(_ step: String, _ detail: String, _ fraction: Double) {
                 self.harnessProgress = TestProgress(step: step, detail: detail, fraction: fraction, startedAt: start)
             }
-            // Share of the bar for each part, depending on whether the first part is needed.
-            let withoutShare = reused ? 0 : 0.42, withShare = reused ? 0.88 : 0.48
+            // Every set of questions gets the same share of the bar, and the poisoned pages a tenth.
+            let pagesShare = 0.1
+            let suiteShare = (1 - pagesShare) / Double(versions.count + (baseline == nil ? 1 : 0))
+            let withoutShare = baseline == nil ? suiteShare : 0
 
             if baseline == nil {
-                baseline = await runSuite(setup, harness: false) { index, total, question in
+                baseline = await runSuite(setup, harness: nil) { index, total, question in
                     report("Without the harness", "Question \(index + 1) of \(total) · \(question.title)",
                            withoutShare * Double(index) / Double(total))
                 }
@@ -231,26 +262,31 @@ final class TestLab {
                 }
             }
 
-            if let baseline, !Task.isCancelled,
-               var run = await runSuite(setup, harness: true, report: { index, total, question in
-                   report("With the harness", "Question \(index + 1) of \(total) · \(question.title)",
-                          withoutShare + withShare * Double(index) / Double(total))
-               }) {
+            var without: [InjectionResult] = [], with: [InjectionResult] = []
+            if baseline != nil {
                 let cases = InjectionSuite.cases
-                var without: [InjectionResult] = [], with: [InjectionResult] = []
                 for (i, attack) in cases.enumerated() where !Task.isCancelled {
                     report("Injection test", "Page \(i + 1) of \(cases.count) · \(attack.title)",
-                           withoutShare + withShare + (1 - withoutShare - withShare) * Double(i) / Double(cases.count))
+                           withoutShare + pagesShare * Double(i) / Double(cases.count))
                     without.append(await Self.attack(attack, setup: setup, harness: false))
                     with.append(await Self.attack(attack, setup: setup, harness: true))
                 }
-                if !Task.isCancelled {
+            }
+
+            if let baseline {
+                for (position, version) in versions.enumerated() where !Task.isCancelled {
+                    let began = Date()
+                    let step = versions.count > 1 ? "\(version.title), \(position + 1) of \(versions.count)" : "With \(version.title)"
+                    let done = withoutShare + pagesShare + suiteShare * Double(position)
+                    guard var run = await runSuite(setup, harness: version, report: { index, total, question in
+                        report(step, "Question \(index + 1) of \(total) · \(question.title)", done + suiteShare * Double(index) / Double(total))
+                    }) else { break }
                     run.baselineRunID = baseline.id
                     run.toolsAvailable = setup.supportsTools
-                    run.harnessRounds = setup.maxRounds
+                    run.harnessRounds = version == .loop ? setup.maxRounds : nil
                     run.injectionWithout = without
                     run.injectionWith = with
-                    run.duration = Date().timeIntervalSince(start) - (reused ? 0 : baseline.duration)
+                    run.duration = Date().timeIntervalSince(began)
                     modelResults.insert(run, at: 0)
                     selectedHarnessRunID = nil
                     save()
@@ -285,11 +321,11 @@ final class TestLab {
     // MARK: - Running the questions
 
     /// Runs every question once. Returns nil if it was stopped or failed.
-    private func runSuite(_ setup: TestSetup, harness: Bool,
+    private func runSuite(_ setup: TestSetup, harness: HarnessVersion?,
                           report: @MainActor (Int, Int, ModelTestQuestion) -> Void) async -> ModelTestResult? {
         let start = Date()
         let questions = ModelTestSuite.questions(contextLength: setup.context)
-        var result = ModelTestResult(suiteVersion: ModelTestSuite.version, harness: harness ? true : nil,
+        var result = ModelTestResult(suiteVersion: ModelTestSuite.version, harness: harness == nil ? nil : true, harnessVersion: harness,
                                      model: setup.model.id, displayName: setup.model.displayName, quant: setup.model.quantLabel,
                                      quantProvider: setup.model.quantProvider, backend: setup.backend.kind.displayName,
                                      thinking: setup.think ?? false, contextLength: setup.context)
@@ -325,15 +361,17 @@ final class TestLab {
         return result
     }
 
-    private static func ask(_ question: ModelTestQuestion, setup: TestSetup, harness: Bool) async -> (ModelTestItemResult, BackendStats?) {
-        let useTools = harness && setup.supportsTools
-        let system = ModelTestSuite.systemPrompt
+    private static func ask(_ question: ModelTestQuestion, setup: TestSetup, harness: HarnessVersion?) async -> (ModelTestItemResult, BackendStats?) {
         let start = Date()
         let limit = tokenLimit(question, context: setup.context)
-        let reply = harness
-            ? await pipelineReply(prompt: question.prompt, setup: setup, maxTokens: limit, useTools: useTools)
-            : await converse([ChatTurn(role: "system", content: system), ChatTurn(role: "user", content: question.prompt)],
-                             setup: setup, maxTokens: limit, useTools: false)
+        let reply: Reply
+        if let harness {
+            reply = await harnessReply(harness, prompt: question.prompt, setup: setup, maxTokens: limit)
+        } else {
+            let system = ModelTestSuite.systemPrompt
+            reply = await converse([ChatTurn(role: "system", content: system), ChatTurn(role: "user", content: question.prompt)],
+                                   setup: setup, maxTokens: limit, useTools: false)
+        }
         let stats = reply.stats
         var item = ModelTestItemResult(
             id: question.id, category: question.category, title: question.title, expected: question.expected,
@@ -350,9 +388,10 @@ final class TestLab {
         item.summary = question.summary
         item.prompt = question.shortPrompt ?? question.prompt
         item.stopReason = stats?.stopReason
-        if harness {
+        if harness != nil {
             item.toolLog = reply.toolLog
             item.guardRemoved = reply.guardRemoved
+            item.modelToolCalls = reply.modelToolCalls
         }
         return (item, stats)
     }
@@ -365,6 +404,8 @@ final class TestLab {
         var error: String?
         var toolLog: [String] = [] { didSet { onLog?(toolLog) } }
         var guardRemoved = 0
+        /// Tools the model called by itself, as opposed to the harness running them for it.
+        var modelToolCalls = 0
         /// Set by whoever wants to follow along as the harness works.
         var onLog: (([String]) -> Void)?
         /// The step under way, and which round of the loop it's in.
@@ -374,13 +415,14 @@ final class TestLab {
     }
 
     /// Rounds of tool use a question gets. After that the model has to answer with what it has.
-    private static let maxToolRounds = 4
+    static let maxToolRounds = 4
 
     /// Gets a reply from the model, running any tools it asks for along the way.
     static func converse(_ startingTurns: [ChatTurn], setup: TestSetup, maxTokens: Int, useTools: Bool,
                          think: Bool?? = .none) async -> Reply {
         var turns = startingTurns
         var reply = Reply()
+        var gate = ToolGate()
         for round in 0...maxToolRounds {
             let request = ChatRequest(model: setup.model.id, messages: turns, temperature: setup.temperature, contextLength: setup.context,
                                       maxTokens: maxTokens, think: think ?? setup.think,
@@ -413,12 +455,7 @@ final class TestLab {
             if calls.isEmpty || reply.error != nil || Task.isCancelled { break }
 
             turns.append(ChatTurn(role: "assistant", content: text, toolCalls: calls))
-            for call in calls {
-                let (result, removed, failed) = await HarnessTools.run(call)
-                reply.toolLog.append(HarnessTools.describe(call) + (failed ? HarnessTools.failedMark : ""))
-                reply.guardRemoved += removed
-                turns.append(ChatTurn(role: "tool", content: result, toolName: call.name))
-            }
+            turns += await runTools(calls, gate: &gate, reply: &reply)
         }
         return reply
     }

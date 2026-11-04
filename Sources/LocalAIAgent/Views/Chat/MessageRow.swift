@@ -72,7 +72,8 @@ private struct AssistantMessage: View {
                 }
 
                 if let steps = message.harnessSteps, !steps.isEmpty {
-                    HarnessStepsView(steps: steps, isLive: isStreaming && message.content.isEmpty)
+                    HarnessStepsView(steps: steps, version: message.harnessVersion, isLive: isStreaming && message.content.isEmpty)
+                        .animation(Motion.quick, value: steps.count)
                 }
 
                 if let thinking = message.thinking, !thinking.isEmpty {
@@ -105,6 +106,7 @@ private struct AssistantMessage: View {
 /// What the harness did for a reply, including every search that left this Mac.
 private struct HarnessStepsView: View {
     let steps: [String]
+    let version: HarnessVersion?
     let isLive: Bool
     @State private var expanded: Bool?
 
@@ -112,7 +114,8 @@ private struct HarnessStepsView: View {
     private var rounds: Int { 1 + steps.filter { $0.hasPrefix("Round ") }.count }
 
     private var title: String {
-        let name = rounds > 1 ? "Harness · round \(rounds)" : "Harness"
+        let harness = version.map { "Harness \($0.short)" } ?? "Harness"
+        let name = rounds > 1 ? "\(harness) · round \(rounds)" : harness
         if isLive { return "\(name) working…" }
         return "\(name) · \(steps.count) step\(steps.count == 1 ? "" : "s")"
     }
@@ -121,7 +124,7 @@ private struct HarnessStepsView: View {
         let isOpen = expanded ?? isLive
         VStack(alignment: .leading, spacing: 6) {
             Button {
-                withAnimation(.snappy) { expanded = !isOpen }
+                withAnimation(Motion.quick) { expanded = !isOpen }
             } label: {
                 HStack(spacing: 6) {
                     Image(systemName: "shield.lefthalf.filled")
@@ -165,7 +168,7 @@ private struct ThinkingView: View {
         let isOpen = expanded ?? isLive
         VStack(alignment: .leading, spacing: 6) {
             Button {
-                withAnimation(.snappy) { expanded = !isOpen }
+                withAnimation(Motion.quick) { expanded = !isOpen }
             } label: {
                 HStack(spacing: 6) {
                     Image(systemName: "brain.head.profile")
@@ -262,7 +265,7 @@ struct MetricsFooter: View {
     }
 
     private func toggle() {
-        withAnimation(.snappy(duration: 0.25)) { settings.replyStatsExpanded.toggle() }
+        withAnimation(Motion.quick) { settings.replyStatsExpanded.toggle() }
     }
 
     private var expandedCard: some View {

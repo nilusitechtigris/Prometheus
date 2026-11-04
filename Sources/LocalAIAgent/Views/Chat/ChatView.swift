@@ -3,13 +3,21 @@ import SwiftUI
 struct ChatView: View {
     @Environment(ChatController.self) private var chat
 
+    /// The open chat, or nil for the empty page. The first message moves from one to the other.
+    private var openChat: Conversation? {
+        chat.selected.flatMap { $0.messages.isEmpty ? nil : $0 }
+    }
+
     var body: some View {
         VStack(spacing: 0) {
-            if let conv = chat.selected, !conv.messages.isEmpty {
-                MessageList(conversation: conv)
-            } else {
-                EmptyChatView()
+            PageSwap(value: openChat?.id) {
+                if let openChat {
+                    MessageList(conversation: openChat)
+                } else {
+                    EmptyChatView()
+                }
             }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
             ComposerView()
         }
     }
@@ -36,9 +44,12 @@ private struct MessageList: View {
                                    isStreaming: message.id == chat.streamingMessageID,
                                    isLast: message.id == conversation.messages.last?.id)
                             .id(message.id)
+                            .transition(.arrive)
                     }
                     Color.clear.frame(height: 1).id("bottom")
                 }
+                // On the count, so a streaming reply's text isn't animated as it comes in.
+                .animation(Motion.quick, value: conversation.messages.count)
                 .padding(.horizontal, 32)
                 .padding(.top, 24)
                 .padding(.bottom, 12)

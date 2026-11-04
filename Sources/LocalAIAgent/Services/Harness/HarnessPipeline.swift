@@ -250,12 +250,29 @@ extension TestLab {
         return text.isEmpty ? "no output" : String(text.prefix(70))
     }
 
-    /// A plain sum in a short task, which needs no model at all.
-    private static func exactArithmetic(in text: String) -> (String, String)? {
+    /// A plain sum in a short task, which needs no model at all. Only a sum the whole question is about, with
+    /// an exact result, counts: a shortcut that's wrong here overrides a reply the model got right.
+    static func exactArithmetic(in text: String) -> (String, String)? {
         guard text.count < 160, let expression = capture(#"(\d[\d.]*(?:\s*[×x*/÷+^]\s*\d[\d.]*)+)"#, in: text) else { return nil }
+        if let parts = powerRemainder(in: text) {
+            let call = "powmod(\(parts.base),\(parts.exponent),\(parts.modulus))"
+            return (call, Calculator.evaluate(call))
+        }
+        if matches(#"\b(mod|modulo|remainder|divided by|digits?|percent)\b"#, text) { return nil }
         let plain = expression.replacingOccurrences(of: "×", with: "*").replacingOccurrences(of: "x", with: "*").replacingOccurrences(of: "÷", with: "/")
         let value = Calculator.evaluate(plain)
-        return value.hasPrefix("Error") ? nil : (expression, value)
+        // Past what a Double holds exactly, the digits are wrong, or it's "inf".
+        guard !value.hasPrefix("Error"), value.rangeOfCharacter(from: .letters) == nil else { return nil }
+        return (expression, value)
+    }
+
+    /// "7^222 mod 1000", or "the remainder when 7^222 is divided by 1000".
+    private static func powerRemainder(in text: String) -> (base: String, exponent: String, modulus: String)? {
+        let pattern = #"(\d+)\s*\^\s*(\d+)\s*(?:mod(?:ulo)?|%|(?:is\s+)?divided\s+by)\s*(\d+)"#
+        guard let regex = try? NSRegularExpression(pattern: pattern, options: .caseInsensitive),
+              let match = regex.firstMatch(in: text, range: NSRange(text.startIndex..., in: text)) else { return nil }
+        let parts = (1...3).compactMap { Range(match.range(at: $0), in: text).map { String(text[$0]) } }
+        return parts.count == 3 ? (parts[0], parts[1], parts[2]) : nil
     }
 
     /// The code in a task: the paragraphs that read like code rather than sentences.

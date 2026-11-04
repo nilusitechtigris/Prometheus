@@ -13,6 +13,8 @@ struct ChatMessage: Identifiable, Codable, Equatable {
     var errorText: String?
     /// What the harness did for this reply, one line per step. Nil when it was off.
     var harnessSteps: [String]?
+    /// The version of the harness that worked on this reply. Nil when it was off.
+    var harnessVersion: HarnessVersion?
 }
 
 struct GenerationMetrics: Codable, Equatable {

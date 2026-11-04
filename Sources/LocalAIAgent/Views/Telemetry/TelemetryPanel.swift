@@ -25,7 +25,7 @@ struct TelemetryPanelToggle: View {
 
     var body: some View {
         Button {
-            withAnimation(.snappy) { settings.telemetryOpen = false }
+            withAnimation(Motion.quick) { settings.telemetryOpen = false }
         } label: {
             Image(systemName: "chevron.down")
                 .font(.system(size: 11, weight: .semibold))

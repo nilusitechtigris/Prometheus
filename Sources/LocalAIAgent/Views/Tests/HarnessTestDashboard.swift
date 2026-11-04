@@ -1,8 +1,9 @@
 import SwiftUI
 
-/// The same model, with and without the harness: tools from trusted sites plus prompt injection protection.
+/// The same model with the harness off and through each version of it: tools from trusted sites plus
+/// prompt injection protection.
 struct HarnessTestDashboard: View {
-    enum Detail: Hashable { case howItWorks, changes, tools, sites }
+    enum Detail: Hashable { case howItWorks, versions, changes, tools, sites }
 
     @Environment(TestLab.self) private var lab
     @Environment(BackendController.self) private var backends
@@ -17,12 +18,14 @@ struct HarnessTestDashboard: View {
         let run = lab.harnessRun(for: testModel?.id)
         let pair = run.flatMap { run in lab.baseline(of: run).map { (run: run, baseline: $0) } }
         TestPage(title: "Harness Test",
-                 subtitle: "What tools and protection add: the same \(ModelTestSuite.questionCount) questions with the harness off and on, then \(InjectionSuite.cases.count) poisoned pages both ways.",
+                 subtitle: "The same \(ModelTestSuite.questionCount) questions with each version, then \(InjectionSuite.cases.count) poisoned pages.",
                  caption: backends.kind.supportsTools ? setupCaption : "Harness tools need Ollama for now",
                  notice: notice(showing: run),
-                 progress: lab.harnessProgress, onStop: { lab.cancelHarnessTest() }, scrollable: scrollable) {
+                 progress: lab.harnessProgress, onStop: { lab.cancelHarnessTest() }, scrollable: scrollable, shownRun: run?.id) {
             TestModelPicker()
-            RunTestButton(title: "Run test", disabled: !canRun || !backends.kind.supportsTools) {
+            HarnessVersionPicker()
+            RunTestButton(title: lab.harnessChoice == nil ? "Run all \(HarnessVersion.allCases.count)" : "Run test",
+                          disabled: !canRun || !backends.kind.supportsTools) {
                 lab.runHarnessTest(backends: backends, settings: settings)
             }
         } content: {
@@ -46,16 +49,22 @@ struct HarnessTestDashboard: View {
     private var testModel: LocalModel? { lab.testModel(in: backends) }
     private var canRun: Bool { !lab.isRunning && !chat.isGenerating && backends.status.isOnline && testModel != nil }
 
-    /// The chosen model has no run of its own, so the page is showing another model's.
+    /// The chosen model or version has no run of its own, so the page is showing another one.
     private func notice(showing run: ModelTestResult?) -> String? {
-        guard let model = testModel, let run, model.id != run.model, lab.harnessProgress == nil else { return nil }
-        return "Not tested yet. Showing \(run.displayName) \(run.quant)."
+        guard let model = testModel, let run, lab.harnessProgress == nil else { return nil }
+        if model.id != run.model { return "Not tested yet. Showing \(run.displayName) \(run.quant)." }
+        if let choice = lab.harnessChoice, let shown = run.version, choice != shown {
+            return "\(choice.title) not tested on this model yet. Showing \(shown.title)."
+        }
+        return nil
     }
 
     private var setupCaption: String {
         let context = testModel.map { Format.tokens(backends.estimatedContext(for: $0)) } ?? "—"
         let thinking = testModel?.catalog?.thinking == true && settings.thinkingEnabled && backends.kind == .ollama
-        return "\(backends.kind.displayName) · \(context) context · " + (thinking ? "Thinking on, can take 2+ hours" : "Takes up to an hour")
+        let versions = lab.harnessChoice == nil ? HarnessVersion.allCases.count : 1
+        let time = thinking ? "Thinking on, can take \(versions * 2)+ hours" : "Takes up to \(versions == 1 ? "an hour" : "\(versions) hours")"
+        return "\(backends.kind.displayName) · \(context) context · \(time)"
     }
 
     // MARK: Overview
@@ -69,7 +78,7 @@ struct HarnessTestDashboard: View {
                            caption: "Was \(without.filter(\.passed).count)/\(without.count) without the harness", symbol: "shield.lefthalf.filled",
                            level: with.allSatisfy(\.passed) ? .good : .warning),
                 MetricTile(title: "Tool calls", value: "\(toolLog.count)",
-                           caption: failedCalls > 0 ? "\(failedCalls) failed, across \(questionsWithTools) questions" : "Across \(questionsWithTools) of \(run.items.count) questions",
+                           caption: toolCaption(run, questions: questionsWithTools, failed: failedCalls),
                            symbol: "wrench.and.screwdriver", level: failedCalls > 0 ? .warning : nil),
                 MetricTile(title: "Points", value: "\(run.points)", unit: "of \(run.maxPoints)",
                            caption: "Was \(baseline.points) without the harness", symbol: "star"),
@@ -77,11 +86,17 @@ struct HarnessTestDashboard: View {
                            caption: "Was \(Format.seconds(baseline.duration)) without the harness", symbol: "clock"))
     }
 
+    private func toolCaption(_ run: ModelTestResult, questions: Int, failed: Int) -> String {
+        let spread = failed > 0 ? "\(failed) failed, across \(questions) questions" : "Across \(questions) of \(run.items.count) questions"
+        return run.modelToolCalls.map { "\($0) by the model itself. \(spread)" } ?? spread
+    }
+
     private func hero(_ run: ModelTestResult, _ baseline: ModelTestResult) -> some View {
         let off = TestFormat.score(baseline.score), on = TestFormat.score(run.score)
         let delta = Int(run.score) - Int(baseline.score)
+        let version = run.version?.title ?? "the harness"
         return TestHero(score: run.score,
-                        headline: delta == 0 ? "No change" : "\(delta > 0 ? "+" : "")\(delta) with the harness",
+                        headline: delta == 0 ? "No change with \(version)" : "\(delta > 0 ? "+" : "")\(delta) with \(version)",
                         aside: "\(off) → \(on)",
                         detail: "\(run.quant) by \(run.quantProvider) · \(run.backend)",
                         note: run.toolsAvailable == false
@@ -100,10 +115,11 @@ struct HarnessTestDashboard: View {
     @ViewBuilder
     private func details(_ pair: (run: ModelTestResult, baseline: ModelTestResult)?) -> some View {
         let tabs: [(id: Detail, title: String)] = pair == nil
-            ? [(.howItWorks, "How it works"), (.sites, "Trusted sites")]
-            : [(.howItWorks, "How it works"), (.changes, "What changed"), (.tools, "Tool use"), (.sites, "Trusted sites")]
+            ? [(.howItWorks, "How it works"), (.versions, "Versions"), (.sites, "Trusted sites")]
+            : [(.howItWorks, "How it works"), (.versions, "Versions"), (.changes, "What changed"), (.tools, "Tool use"), (.sites, "Trusted sites")]
         TestDetails(tabs: tabs, selection: $detail) {
             switch (detail, pair) {
+            case (.versions, _): versions(pair)
             case (.changes, let pair?): changes(pair.run, pair.baseline)
             case (.tools, let pair?): toolActivity(pair.run)
             case (.sites, _): TrustedSiteList()
@@ -114,33 +130,73 @@ struct HarnessTestDashboard: View {
 
     // MARK: Topics
 
+    /// Every version beside the run with the harness off, so the results sit side by side.
     private func topics(_ run: ModelTestResult, _ baseline: ModelTestResult) -> some View {
-        TestPanel(title: "By topic", symbol: "square.grid.3x2.fill", note: "score within each topic") {
-            Grid(alignment: .leading, horizontalSpacing: 12, verticalSpacing: 18) {
+        let runs = lab.comparableRuns(to: run)
+        return TestPanel(title: "By topic", symbol: "square.grid.3x2.fill", note: "score, on this model and setup") {
+            Grid(alignment: .leading, horizontalSpacing: 12, verticalSpacing: 16) {
                 GridRow {
                     Text("")
                     Text("Off").gridColumnAlignment(.trailing)
-                    Text("On").gridColumnAlignment(.trailing)
-                    Text("Change").gridColumnAlignment(.trailing)
+                    ForEach(HarnessVersion.allCases) { version in
+                        Text(version.short)
+                            .foregroundStyle(version == run.version ? AnyShapeStyle(Palette.accent) : AnyShapeStyle(.secondary))
+                            .gridColumnAlignment(.trailing)
+                    }
                 }
                 .font(.uiCaption.weight(.semibold))
                 .foregroundStyle(.secondary)
                 ForEach(ModelTestCategory.allCases) { category in
-                    let off = baseline.score(for: category) ?? 0, on = run.score(for: category) ?? 0
                     GridRow {
                         HStack(spacing: 6) {
                             Image(systemName: category.symbol).font(.uiCaption).foregroundStyle(.secondary).frame(width: 16)
                             Text(category.name).frame(maxWidth: .infinity, alignment: .leading)
                         }
-                        Text(Format.percent(off)).monospacedDigit().foregroundStyle(.secondary)
-                        Text(Format.percent(on)).monospacedDigit().fontWeight(.medium)
-                        Text(on == off ? "—" : String(format: "%+.0f", on - off))
-                            .monospacedDigit()
-                            .foregroundStyle(on > off ? Palette.good : (on < off ? Palette.critical : .secondary))
+                        Text(baseline.score(for: category).map(Format.percent) ?? "—").monospacedDigit().foregroundStyle(.secondary)
+                        ForEach(HarnessVersion.allCases) { version in
+                            topicCell(runs[version]?.score(for: category).map(Format.percent), chosen: version == run.version)
+                        }
                     }
                     .font(.uiCallout)
                 }
+                GridRow {
+                    Text("All topics").frame(maxWidth: .infinity, alignment: .leading)
+                    Text(TestFormat.score(baseline.score)).monospacedDigit().foregroundStyle(.secondary)
+                    ForEach(HarnessVersion.allCases) { version in
+                        topicCell(runs[version].map { TestFormat.score($0.score) }, chosen: version == run.version)
+                    }
+                }
+                .font(.uiCallout.weight(.semibold))
             }
+        }
+    }
+
+    private func topicCell(_ text: String?, chosen: Bool) -> some View {
+        Text(text ?? "—")
+            .monospacedDigit()
+            .fontWeight(chosen ? .semibold : .regular)
+            .foregroundStyle(chosen ? AnyShapeStyle(Palette.accent) : AnyShapeStyle(.secondary))
+    }
+
+    // MARK: Versions
+
+    /// What each version does, how it scored on this setup, and every question side by side.
+    @ViewBuilder
+    private func versions(_ pair: (run: ModelTestResult, baseline: ModelTestResult)?) -> some View {
+        let runs = pair.map { lab.comparableRuns(to: $0.run) } ?? [:]
+        VStack(alignment: .leading, spacing: 12) {
+            Text(pair.map { "Scores for \($0.run.displayName) \($0.run.quant) at \(Format.tokens($0.run.contextLength)) context, thinking \($0.run.thinking ? "on" : "off"). Only runs on this same setup are compared." }
+                 ?? "Run the test to score a version.")
+                .font(.uiCaption).foregroundStyle(.secondary)
+            VStack(spacing: 8) {
+                ForEach(HarnessVersion.allCases) { version in
+                    VersionCard(version: version, run: runs[version], baseline: pair?.baseline,
+                                selected: version == pair?.run.version) {
+                        if let run = runs[version] { lab.show(harnessRun: run) }
+                    }
+                }
+            }
+            if let pair { VersionQuestionGrid(run: pair.run, baseline: pair.baseline, runs: runs) }
         }
     }
 
@@ -240,13 +296,180 @@ struct HarnessTestDashboard: View {
         TestRunList(runs: lab.harnessRuns) { run in
             TestRunRow(level: TestScoring.modelScore.level(run.score), date: run.date,
                        title: "\(run.displayName) · \(run.quant)\(run.thinking ? " · thinking" : "")",
+                       tag: run.version?.title,
                        result: "\(lab.baseline(of: run).map { TestFormat.score($0.score) } ?? "—") → \(TestFormat.score(run.score))",
                        selected: run.id == selected.id,
-                       onSelect: {
-                           lab.selectedHarnessRunID = run.id
-                           lab.testModelID = run.model
-                       },
+                       onSelect: { lab.show(harnessRun: run) },
                        onDelete: { lab.delete(modelRun: run.id) })
+        }
+    }
+}
+
+/// Chooses the version to test and show, or every version in turn.
+private struct HarnessVersionPicker: View {
+    @Environment(TestLab.self) private var lab
+    @State private var show = false
+
+    var body: some View {
+        Button {
+            show.toggle()
+        } label: {
+            PickerPill {
+                Text(lab.harnessChoice?.title ?? "All versions").fontWeight(.medium).lineLimit(1)
+            }
+        }
+        .buttonStyle(.plain)
+        .foregroundStyle(.primary)
+        .background(Color.primary.opacity(0.08), in: Capsule())
+        .overlay(Capsule().strokeBorder(Color.primary.opacity(0.12), lineWidth: 0.5))
+        .opacity(lab.isRunning ? 0.5 : 1)
+        .disabled(lab.isRunning)
+        .help("Choose which version of the harness to test")
+        .popover(isPresented: $show, arrowEdge: .bottom) {
+            VStack(alignment: .leading, spacing: 4) {
+                Text("Version to test").font(.uiHeadline).padding(.horizontal, 8).padding(.bottom, 4)
+                ForEach(HarnessVersion.allCases) { version in
+                    PopoverRow(selected: lab.harnessChoice == version) {
+                        lab.chooseHarness(version)
+                        show = false
+                    } content: {
+                        HarnessVersionLabel(version: version)
+                    }
+                }
+                Divider().padding(.vertical, 4)
+                PopoverRow(selected: lab.harnessChoice == nil) {
+                    lab.chooseHarness(nil)
+                    show = false
+                } content: {
+                    VStack(alignment: .leading, spacing: 1) {
+                        Text("All versions").font(.uiCallout.weight(.semibold))
+                        Text("Runs each one in turn, so you can leave it and compare them after.")
+                            .font(.uiCaption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                    }
+                    Spacer(minLength: 0)
+                }
+            }
+            .padding(12)
+            .frame(width: 380)
+        }
+    }
+}
+
+/// One version: what it does, the steps it takes, and how it did. Choosing it shows that run above.
+private struct VersionCard: View {
+    let version: HarnessVersion
+    let run: ModelTestResult?
+    let baseline: ModelTestResult?
+    let selected: Bool
+    let onSelect: () -> Void
+
+    var body: some View {
+        let shape = RoundedRectangle(cornerRadius: 10, style: .continuous)
+        Button(action: onSelect) {
+            HStack(alignment: .center, spacing: 16) {
+                VStack(alignment: .leading, spacing: 6) {
+                    HStack(spacing: 6) {
+                        Text(version.title).font(.uiHeadline)
+                        if version == .latest { Chip(text: "Newest", tint: Palette.accent) }
+                    }
+                    Text(version.summary).font(.uiCaption).foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                    FlowLayout(spacing: 4) {
+                        ForEach(Array(version.route.enumerated()), id: \.offset) { index, step in
+                            HStack(spacing: 4) {
+                                if index > 0 {
+                                    Image(systemName: "arrow.right").font(.system(size: 8, weight: .bold)).foregroundStyle(Palette.accent.opacity(0.8))
+                                }
+                                Text(step)
+                                    .font(.uiCaption2)
+                                    .padding(.horizontal, 6)
+                                    .padding(.vertical, 3)
+                                    .background(Palette.accent.opacity(0.10), in: RoundedRectangle(cornerRadius: 6, style: .continuous))
+                            }
+                        }
+                        if version == .loop {
+                            Label("Fails? Back to Act", systemImage: "arrow.counterclockwise")
+                                .font(.uiCaption2)
+                                .foregroundStyle(Palette.accent)
+                                .padding(.leading, 4)
+                        }
+                    }
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                if let run {
+                    HStack(spacing: 18) {
+                        stat("Score", TestFormat.score(run.score), lit: true)
+                        stat("Points", "\(run.points)/\(run.maxPoints)")
+                        stat("Gain", baseline.map { signed(Int(run.score) - Int($0.score)) } ?? "—")
+                        stat("Model called", run.modelToolCalls.map(String.init) ?? "—")
+                        stat("Time", Format.seconds(run.duration))
+                    }
+                } else {
+                    Text("Not run on this setup").font(.uiCaption).foregroundStyle(.secondary)
+                }
+            }
+            .padding(10)
+            .background(selected ? Palette.accent.opacity(0.10) : Color.primary.opacity(0.04), in: shape)
+            .overlay(shape.strokeBorder(selected ? Palette.accent.opacity(0.45) : .clear, lineWidth: 1))
+            .contentShape(shape)
+        }
+        .buttonStyle(.plain)
+        .disabled(run == nil)
+    }
+
+    private func signed(_ value: Int) -> String { value == 0 ? "0" : String(format: "%+d", value) }
+
+    private func stat(_ title: String, _ value: String, lit: Bool = false) -> some View {
+        VStack(alignment: .trailing, spacing: 2) {
+            Text(value)
+                .font(.uiDisplay(size: 17, weight: .semibold))
+                .monospacedDigit()
+                .foregroundStyle(lit ? AnyShapeStyle(Palette.accent) : AnyShapeStyle(.primary))
+            Text(title).font(.uiCaption2).foregroundStyle(.secondary).lineLimit(1)
+        }
+    }
+}
+
+/// Every question, passed or failed, with the harness off and in each version.
+private struct VersionQuestionGrid: View {
+    let run: ModelTestResult
+    let baseline: ModelTestResult
+    let runs: [HarnessVersion: ModelTestResult]
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("Question by question").font(.uiCallout.weight(.semibold))
+            Grid(alignment: .leading, horizontalSpacing: 14, verticalSpacing: 5) {
+                GridRow {
+                    Text("Question")
+                    Text("Points").gridColumnAlignment(.trailing)
+                    Text("Off").gridColumnAlignment(.center)
+                    ForEach(HarnessVersion.allCases) { Text($0.short).gridColumnAlignment(.center) }
+                }
+                .font(.uiCaption.weight(.semibold))
+                .foregroundStyle(.secondary)
+                ForEach(run.items) { item in
+                    GridRow {
+                        Text(item.title).font(.uiCallout).lineLimit(1).frame(maxWidth: .infinity, alignment: .leading)
+                        Text("\(item.weight)").font(.uiCaption.monospacedDigit()).foregroundStyle(.secondary)
+                        mark(baseline.items.first { $0.id == item.id })
+                        ForEach(HarnessVersion.allCases) { version in
+                            mark(runs[version]?.items.first { $0.id == item.id })
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func mark(_ item: ModelTestItemResult?) -> some View {
+        if let item {
+            Image(systemName: item.passed ? "checkmark.circle.fill" : "xmark.circle.fill")
+                .font(.uiCaption)
+                .foregroundStyle(item.passed ? Palette.good : Palette.critical.opacity(0.75))
+        } else {
+            Text("—").font(.uiCaption).foregroundStyle(.tertiary)
         }
     }
 }
@@ -266,7 +489,7 @@ private struct InjectionRow: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             Button {
-                withAnimation(.snappy(duration: 0.2)) { expanded.toggle() }
+                withAnimation(Motion.quick) { expanded.toggle() }
             } label: {
                 HStack(spacing: 8) {
                     Image(systemName: "chevron.right")

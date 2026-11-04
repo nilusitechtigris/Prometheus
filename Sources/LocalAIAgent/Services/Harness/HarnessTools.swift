@@ -32,6 +32,12 @@ enum HarnessTools {
     without commenting on the tools, and name the source when you use a web page. If it doesn't answer the question, say so.
     """
 
+    /// Added to the chat's system prompt for v1, where the model holds the tools itself.
+    static let chatToolRules = """
+    The harness is on for this reply, so anything above about having no internet or tools doesn't apply here. \
+    \(systemRules) \(PromptGuard.systemRules) Name the source when you use a web page.
+    """
+
     /// Runs one tool call. Returns what the model should read, how much the guard removed from it,
     /// and whether the call failed.
     static func run(_ call: ToolCall) async -> (text: String, removed: Int, failed: Bool) {
@@ -67,10 +73,12 @@ enum HarnessTools {
 
     /// Marks a tool log line whose call failed.
     static let failedMark = " (failed)"
+    /// Marks a tool log line whose call the gate turned down.
+    static let refusedMark = " (refused)"
 
     /// Whether a log line is a real tool run, as opposed to a note about a step of the pipeline.
     static func isToolCall(_ line: String) -> Bool {
-        ["Searched", "Opened", "Calculated", "Ran"].contains { line.hasPrefix($0) }
+        !line.hasSuffix(refusedMark) && ["Searched", "Opened", "Calculated", "Ran"].contains { line.hasPrefix($0) }
     }
 
     /// One readable line per call, for the test results.
@@ -82,6 +90,34 @@ enum HarnessTools {
         case "run_code": return "Ran \(call.arguments["language"] ?? "code")"
         default: return "Tried unknown tool: \(call.name)"
         }
+    }
+}
+
+/// Stops what a model reads from steering what it sends out. Once the web is in front of it, it can't search
+/// again, and the only pages it can open are links it was handed, so a poisoned page can't carry your chat
+/// out in a search or an address. The calculator and the sandbox can't reach the internet, so they stay open.
+struct ToolGate {
+    private var readTheWeb = false
+    private var links: Set<String> = []
+
+    /// Why this call isn't allowed, to tell the model. Nil when it is.
+    func refusal(of call: ToolCall) -> String? {
+        guard readTheWeb else { return nil }
+        switch call.name {
+        case "web_search":
+            return "Refused: you've already read the web for this reply, so you can't search again. Answer from what you have."
+        case "open_page" where !links.contains(call.arguments["url"]?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""):
+            return "Refused: you can only open a link your search returned."
+        default:
+            return nil
+        }
+    }
+
+    /// Remembers what a call that ran brought back.
+    mutating func note(_ call: ToolCall, result: String) {
+        guard call.name == "web_search" || call.name == "open_page" else { return }
+        readTheWeb = true
+        links.formUnion(HarnessText.hits(in: result).map(\.url))
     }
 }
 

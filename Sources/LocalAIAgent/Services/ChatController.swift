@@ -140,7 +140,7 @@ final class ChatController {
         guard let model = backends.selectedModel, let ci = index(of: convID) else { return }
         let backend = backends.backend
         let context = backends.effectiveContext
-        let useHarness = settings.harnessEnabled && backend.kind.supportsTools
+        let harness = settings.harnessEnabled && backend.kind.supportsTools ? settings.harnessVersion : nil
 
         let messages = conversations[ci].messages
         let (turns, trimmed, estimatedPrompt) = buildTurns(messages, context: context)
@@ -154,7 +154,8 @@ final class ChatController {
             think: backend.kind == .ollama && backends.supportsThinking ? settings.thinkingEnabled : nil
         )
 
-        let assistant = ChatMessage(role: .assistant, content: "", modelName: model.id)
+        var assistant = ChatMessage(role: .assistant, content: "", modelName: model.id)
+        assistant.harnessVersion = harness
         conversations[ci].messages.append(assistant)
         conversations[ci].updatedAt = Date()
         moveToTop(convID)
@@ -165,8 +166,8 @@ final class ChatController {
 
         generationTask = Task { [weak self] in
             guard let self else { return }
-            if useHarness {
-                await runHarness(request, messages: messages, model: model, estimatedPrompt: estimatedPrompt, messageID: assistant.id, convID: convID)
+            if let harness {
+                await runHarness(harness, request, messages: messages, model: model, messageID: assistant.id, convID: convID)
             } else {
                 await stream(request, backend: backend, messageID: assistant.id, convID: convID, estimatedPrompt: estimatedPrompt)
             }
@@ -180,12 +181,14 @@ final class ChatController {
 
     // MARK: Harness
 
-    /// Runs a reply through the harness's loop, streaming each attempt into the message. Only the harness
-    /// uses tools here. The model never gets them, so a page it reads can't steer one with this chat in view.
-    private func runHarness(_ request: ChatRequest, messages: [ChatMessage], model: LocalModel, estimatedPrompt: Int,
+    /// Runs a reply through a version of the harness, streaming each attempt into the message. In v2 and v3
+    /// only the harness uses tools, so a page the model reads can't steer one with this chat in view. In v1
+    /// the model holds them, and the gate is what stops a page steering them.
+    private func runHarness(_ version: HarnessVersion, _ request: ChatRequest, messages: [ChatMessage], model: LocalModel,
                             messageID: UUID, convID: UUID) async {
+        let canCall = version == .tools ? await backends.capabilities(of: model).supportsTools : false
         let setup = TestLab.TestSetup(model: model, backend: backends.backend, context: request.contextLength, think: request.think,
-                                      supportsTools: false, temperature: request.temperature, maxRounds: settings.harnessMaxRounds)
+                                      supportsTools: canCall, temperature: request.temperature, maxRounds: settings.harnessMaxRounds)
         var reply = TestLab.Reply()
         reply.onStage = { [weak self] stage, round in
             self?.live?.stage = stage
@@ -200,8 +203,12 @@ final class ChatController {
         let earlier = messages.dropLast().filter { !$0.content.isEmpty }.suffix(2)
             .map { "\($0.role == .user ? "User" : "Assistant"): \($0.content.prefix(600))" }
             .joined(separator: "\n")
-        await TestLab.runLoop(prompt: messages.last?.content ?? "", earlier: earlier, setup: setup, total: &reply) { [weak self] plan in
+        await TestLab.work(version, prompt: messages.last?.content ?? "", earlier: earlier, setup: setup,
+                           maxTokens: request.maxTokens ?? 2_048, total: &reply) { [weak self] plan in
             guard let self else { return TestLab.Reply() }
+            if version == .tools {
+                return await streamWithTools(plan, canCall: canCall, base: request, messages: messages, messageID: messageID, convID: convID)
+            }
             return await streamAttempt(plan, base: request, messages: messages, messageID: messageID, convID: convID)
         }
     }
@@ -225,7 +232,40 @@ final class ChatController {
         live = fresh
         await stream(request, backend: backends.backend, messageID: messageID, convID: convID, estimatedPrompt: built.estimated,
                      keepIfStopped: !firstAttempt)
+        return replySoFar(in: messageID, convID: convID)
+    }
 
+    /// v1: the model holds the tools, so it can go back and forth with them before it replies. Its last round
+    /// comes without them, so it has to answer with what it has.
+    private func streamWithTools(_ plan: TestLab.AnswerPlan, canCall: Bool, base: ChatRequest, messages: [ChatMessage],
+                                 messageID: UUID, convID: UUID) async -> TestLab.Reply {
+        let built = buildTurns(messages, context: base.contextLength, harness: (HarnessTools.chatToolRules, plan.task, ""))
+        trimmedMessageCount = built.trimmed
+        var request = base
+        request.messages = built.turns
+        var log = TestLab.Reply()
+        log.onLog = { [weak self] steps in
+            self?.update(messageID, in: convID) { $0.harnessSteps = steps }
+        }
+        var gate = ToolGate()
+        for round in 0...TestLab.maxToolRounds {
+            request.tools = canCall && round < TestLab.maxToolRounds ? HarnessTools.definitions : []
+            live = LiveGeneration()
+            let calls = await stream(request, backend: backends.backend, messageID: messageID, convID: convID,
+                                     estimatedPrompt: built.estimated, keepIfStopped: round > 0)
+            if calls.isEmpty || Task.isCancelled { break }
+            request.messages.append(ChatTurn(role: "assistant", content: replySoFar(in: messageID, convID: convID).answer, toolCalls: calls))
+            request.messages += await TestLab.runTools(calls, gate: &gate, reply: &log)
+        }
+        var reply = replySoFar(in: messageID, convID: convID)
+        reply.toolLog = log.toolLog
+        reply.guardRemoved = log.guardRemoved
+        reply.modelToolCalls = log.modelToolCalls
+        return reply
+    }
+
+    /// What a message holds right now, in the form the harness reads a reply.
+    private func replySoFar(in messageID: UUID, convID: UUID) -> TestLab.Reply {
         var reply = TestLab.Reply()
         guard let ci = index(of: convID), let message = conversations[ci].messages.first(where: { $0.id == messageID }) else { return reply }
         reply.answer = message.content
@@ -237,9 +277,10 @@ final class ChatController {
     }
 
     /// `keepIfStopped` leaves the message in place when Stop comes before any text, for a retry whose
-    /// earlier attempt is worth keeping.
+    /// earlier attempt is worth keeping. Returns any tools the model asked for.
+    @discardableResult
     private func stream(_ request: ChatRequest, backend: LLMBackend, messageID: UUID, convID: UUID, estimatedPrompt: Int,
-                        keepIfStopped: Bool = false) async {
+                        keepIfStopped: Bool = false) async -> [ToolCall] {
         let start = Date()
         var content = "", thinking = ""
         var parser = ThinkTagParser()
@@ -248,6 +289,7 @@ final class ChatController {
         var lastFlush = Date.distantPast
         var errorText: String?
         var cancelled = false
+        var calls: [ToolCall] = []
 
         func noteToken(isThinking: Bool) {
             guard var l = live else { return }
@@ -276,8 +318,8 @@ final class ChatController {
                     content += parts.answer
                     // A chunk inside <think>…</think> (or the tags themselves) is a thinking token.
                     noteToken(isThinking: parts.answer.isEmpty && (!parts.thinking.isEmpty || parser.isThinking))
-                case .toolCall:
-                    break   // Chat doesn't offer tools.
+                case .toolCall(let call):
+                    calls.append(call)
                 case .finished(let s):
                     stats = s
                 }
@@ -347,6 +389,7 @@ final class ChatController {
             $0.errorText = errorText
         }
         if cancelled, !gotOutput, !keepIfStopped { removeMessage(messageID, in: convID) }
+        return calls
     }
 
     /// Picks the newest messages that fit ~75% of the context window, leaving room for the answer.

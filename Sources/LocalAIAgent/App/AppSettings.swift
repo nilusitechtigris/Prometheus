@@ -60,6 +60,8 @@ final class AppSettings {
     var replyStatsExpanded: Bool { didSet { defaults.set(replyStatsExpanded, forKey: "replyStatsExpanded") } }
     /// Runs chat replies through the harness. Off by default because its web searches leave this Mac.
     var harnessEnabled: Bool { didSet { defaults.set(harnessEnabled, forKey: "harnessEnabled") } }
+    /// The version chat uses when the harness is on.
+    var harnessVersion: HarnessVersion { didSet { defaults.set(harnessVersion.rawValue, forKey: "harnessVersion") } }
     /// Times the harness's loop may go round on a task, in chat and in the Harness Test.
     var harnessMaxRounds: Int { didSet { defaults.set(harnessMaxRounds, forKey: "harnessMaxRounds") } }
     /// Whether the telemetry panel is open along the bottom of the window, and how tall it is.
@@ -83,6 +85,7 @@ final class AppSettings {
         unloadOnSwitch = defaults.object(forKey: "unloadOnSwitch") as? Bool ?? true
         replyStatsExpanded = defaults.object(forKey: "replyStatsExpanded") as? Bool ?? true
         harnessEnabled = defaults.bool(forKey: "harnessEnabled")
+        harnessVersion = HarnessVersion(rawValue: defaults.string(forKey: "harnessVersion") ?? "") ?? .latest
         let rounds = defaults.integer(forKey: "harnessMaxRounds")
         harnessMaxRounds = rounds > 0 ? rounds : 3
         telemetryOpen = defaults.object(forKey: "telemetryOpen") as? Bool ?? true

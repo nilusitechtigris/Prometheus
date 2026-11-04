@@ -109,6 +109,8 @@ struct ModelTestResult: Codable, Identifiable, Equatable {
     var suiteVersion: Int?
     /// True when the run had the harness: tools plus prompt injection protection.
     var harness: Bool?
+    /// Which version of the harness ran. Nil for runs from before versions were saved: see `version`.
+    var harnessVersion: HarnessVersion?
     /// The run without the harness that this one compares against.
     var baselineRunID: UUID?
     /// False when the model can't use tools, so only the injection guard applied.
@@ -159,11 +161,27 @@ struct ModelTestResult: Codable, Identifiable, Equatable {
 
     var usesHarness: Bool { harness == true }
 
+    /// Which version of the harness ran, if any. Older runs are told apart by what they logged: the loop
+    /// saved its rounds, and only the pipeline and the loop write down what they understood.
+    var version: HarnessVersion? {
+        guard usesHarness else { return nil }
+        if let harnessVersion { return harnessVersion }
+        if harnessRounds != nil { return .loop }
+        return items.contains { ($0.toolLog ?? []).contains { $0.hasPrefix("Understood:") } } ? .pipeline : .tools
+    }
+
+    /// Tools the model called by itself, not counting what the harness ran for it. Nil when the run didn't record it.
+    var modelToolCalls: Int? {
+        if version == .tools { return items.flatMap { $0.toolLog ?? [] }.filter(HarnessTools.isToolCall).count }
+        let counts = items.compactMap(\.modelToolCalls)
+        return counts.isEmpty ? nil : counts.reduce(0, +)
+    }
+
     /// Identifies the exact model + quant + framework + thinking + harness setup, for the leaderboard.
-    var configurationKey: String { "\(backend)|\(model)|\(thinking)|\(usesHarness)" }
+    var configurationKey: String { "\(backend)|\(model)|\(thinking)|\(version?.rawValue ?? "off")" }
 
     /// How the run was set up, for labels.
-    var setupLabel: String { (thinking ? " · thinking" : "") + (usesHarness ? " · harness" : "") }
+    var setupLabel: String { (thinking ? " · thinking" : "") + (version.map { " · harness \($0.short)" } ?? "") }
 }
 
 struct ModelTestItemResult: Codable, Equatable, Identifiable {
@@ -190,6 +208,8 @@ struct ModelTestItemResult: Codable, Equatable, Identifiable {
     var toolLog: [String]?
     /// How much the injection guard removed from what the tools returned.
     var guardRemoved: Int?
+    /// Tools the model called by itself. Nil in runs from before this was counted.
+    var modelToolCalls: Int?
 
     var weight: Int { level?.weight ?? 1 }
     /// The model hit the test's token limit before it finished.

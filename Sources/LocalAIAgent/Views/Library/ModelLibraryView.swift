@@ -55,7 +55,7 @@ struct ModelLibraryView: View {
     private func filterButton(_ c: CatalogModel.Category?, title: String, symbol: String) -> some View {
         let active = category == c
         return Button {
-            withAnimation(.snappy) { category = c }
+            withAnimation(Motion.quick) { category = c }
         } label: {
             Label(title, systemImage: symbol)
                 .font(.uiCallout)
@@ -212,7 +212,7 @@ struct ModelCard: View {
     private func variantChip(_ v: QuantVariant, selected: Bool) -> some View {
         let isInstalled = backends.installed(v) != nil
         return Button {
-            withAnimation(.snappy) { chosenTag = v.tag }
+            withAnimation(Motion.quick) { chosenTag = v.tag }
         } label: {
             HStack(spacing: 3) {
                 if isInstalled { Image(systemName: "checkmark").font(.system(size: 8, weight: .bold)) }

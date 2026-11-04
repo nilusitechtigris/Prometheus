@@ -69,18 +69,6 @@ extension TestLab {
     private static let tightTokens = 384
     private static let triesPerUnit = 6
 
-    static func pipelineReply(prompt: String, setup: TestSetup, maxTokens: Int, useTools: Bool) async -> Reply {
-        var total = Reply()
-        await runLoop(prompt: prompt, setup: setup, total: &total) { plan in
-            let tools = useTools && plan.addendum.isEmpty
-            let system = ModelTestSuite.systemPrompt + "\n\n" + PromptGuard.systemRules + (tools ? "\n\n" + HarnessTools.systemRules : "")
-            let think: Bool?? = plan.think == nil ? .none : .some(plan.think)
-            return await converse([ChatTurn(role: "system", content: system), ChatTurn(role: "user", content: plan.task + plan.addendum)],
-                                  setup: setup, maxTokens: plan.maxTokens ?? maxTokens, useTools: tools, think: think)
-        }
-        return total
-    }
-
     /// Works a task through the loop. `answer` is how the caller gets a reply from the model, so chat can
     /// stream it. `earlier` is the chat so far. The result lands in `total.answer`.
     static func runLoop(prompt: String, earlier: String = "", setup: TestSetup, total: inout Reply,
@@ -266,6 +254,7 @@ extension TestLab {
         if total.firstToken == nil { total.firstToken = part.firstToken }
         total.toolLog += part.toolLog
         total.guardRemoved += part.guardRemoved
+        total.modelToolCalls += part.modelToolCalls
         if let stats = part.stats { total.stats = merge(total.stats, stats) }
     }
 }

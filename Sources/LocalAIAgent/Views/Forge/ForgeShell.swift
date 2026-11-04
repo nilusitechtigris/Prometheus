@@ -86,6 +86,8 @@ private struct ForgeSidebar: View {
     @Environment(UIState.self) private var ui
     @Environment(BackendController.self) private var backends
     @Environment(TestLab.self) private var lab
+    /// So the highlight slides from one item to the next.
+    @Namespace private var highlight
 
     var body: some View {
         VStack(spacing: 0) {
@@ -100,7 +102,7 @@ private struct ForgeSidebar: View {
             VStack(spacing: 4) {
                 item("house.fill", "Home", selected: ui.destination == .home) { ui.destination = .home }
                 item("bubble.left.fill", "Chat", selected: ui.destination == .chat) {
-                    withAnimation(.snappy) { ui.toggleChats(in: settings) }
+                    withAnimation(Motion.quick) { ui.toggleChats(in: settings) }
                 }
                 .help("Show your chats, or collapse them if they're showing (⌥⌘2)")
                 item("checklist", "Tests", selected: ui.destination == .tests, busy: lab.isRunning) { ui.destination = .tests }
@@ -115,6 +117,7 @@ private struct ForgeSidebar: View {
                 .padding(.bottom, 14)
         }
         .frame(width: 216)
+        .animation(Motion.page, value: ui.destination)
     }
 
     private func item(_ symbol: String, _ title: String, selected: Bool, lit: Bool = false, busy: Bool = false,
@@ -130,8 +133,13 @@ private struct ForgeSidebar: View {
                 .font(.system(size: 13, weight: .medium))
                 .foregroundStyle(selected ? Palette.onAccent : (lit ? Palette.accent : Forge.dim))
                 .frame(width: 26, height: 26)
-                .background(selected ? AnyShapeStyle(Palette.gradient) : AnyShapeStyle(.clear),
-                            in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+                .background {
+                    if selected {
+                        RoundedRectangle(cornerRadius: 8, style: .continuous)
+                            .fill(Palette.gradient)
+                            .matchedGeometryEffect(id: "icon", in: highlight)
+                    }
+                }
             Text(title).font(.uiCallout).foregroundStyle(selected ? Forge.ink : Forge.dim)
             Spacer(minLength: 0)
             if busy { ProgressView().controlSize(.mini) }
@@ -141,8 +149,11 @@ private struct ForgeSidebar: View {
         .frame(height: 42)
         .background {
             if selected {
-                shape.fill(LinearGradient(colors: [Palette.accent.opacity(0.2), Palette.accent.opacity(0.04)], startPoint: .leading, endPoint: .trailing))
-                shape.strokeBorder(Palette.accent.opacity(0.26), lineWidth: 1)
+                ZStack {
+                    shape.fill(LinearGradient(colors: [Palette.accent.opacity(0.2), Palette.accent.opacity(0.04)], startPoint: .leading, endPoint: .trailing))
+                    shape.strokeBorder(Palette.accent.opacity(0.26), lineWidth: 1)
+                }
+                .matchedGeometryEffect(id: "row", in: highlight)
             }
         }
         .contentShape(shape)
@@ -156,7 +167,7 @@ private struct ForgeSidebar: View {
             Circle().fill(online ? Palette.good : Palette.critical).frame(width: 8, height: 8)
             VStack(alignment: .leading, spacing: 1) {
                 Text(online ? "Ready to run" : "\(backends.kind.displayName) offline").font(.uiCaption.weight(.medium))
-                Text(harnessOn ? "Harness on" : "Local · \(backends.kind.displayName)")
+                Text(harnessOn ? "Harness \(settings.harnessVersion.short)" : "Local · \(backends.kind.displayName)")
                     .font(.uiCaption2).foregroundStyle(Forge.dim)
             }
             Spacer(minLength: 0)
@@ -197,7 +208,7 @@ private struct ToastHost: View {
                     .id(toast.id)
             }
         }
-        .animation(.snappy, value: ui.toast)
+        .animation(Motion.quick, value: ui.toast)
         .allowsHitTesting(false)
     }
 }

@@ -73,6 +73,8 @@ struct TestPage<Controls: View, Content: View>: View {
     let onStop: () -> Void
     /// Off only for debug renders of the whole page.
     var scrollable = true
+    /// The run on show, so moving to another one eases rather than jumps.
+    var shownRun: UUID?
     @ViewBuilder var controls: Controls
     @ViewBuilder var content: Content
 
@@ -96,13 +98,19 @@ struct TestPage<Controls: View, Content: View>: View {
                         Text(progressNote).font(.uiCaption).foregroundStyle(.secondary)
                     }
                 }
+                .transition(.arrive)
             }
-            if let error = lab.lastError { ErrorBanner(text: error) { lab.dismissError() } }
+            if let error = lab.lastError {
+                ErrorBanner(text: error) { lab.dismissError() }.transition(.arrive)
+            }
             content
         }
         .padding(24)
         .frame(maxWidth: 1180)
         .frame(maxWidth: .infinity)
+        .animation(Motion.quick, value: progress != nil)
+        .animation(Motion.quick, value: lab.lastError)
+        .animation(Motion.page, value: shownRun)
     }
 }
 
@@ -223,8 +231,8 @@ struct ModelRunChips: View {
     var body: some View {
         Chip(text: run.thinking ? "Thinking on" : "Thinking off", symbol: "brain", tint: run.thinking ? Palette.accent : .secondary)
         Chip(text: "\(Format.tokens(run.contextLength)) context", symbol: "text.word.spacing", tint: .secondary)
-        if run.usesHarness {
-            Chip(text: run.harnessRounds.map { "Harness · \($0) rounds" } ?? "Harness", symbol: "shield.lefthalf.filled", tint: Palette.accent)
+        if let version = run.version {
+            Chip(text: run.harnessRounds.map { "\(version.short) · \($0) rounds" } ?? version.title, symbol: "shield.lefthalf.filled", tint: Palette.accent)
         }
     }
 }
@@ -250,21 +258,22 @@ struct TestDetails<Tab: Hashable, Content: View>: View {
     let tabs: [(id: Tab, title: String)]
     @Binding var selection: Tab
     @ViewBuilder var content: Content
+    @Namespace private var underline
 
     var body: some View {
         PanelWidget(title: "Details", symbol: "list.bullet.rectangle.portrait.fill") {
             HStack(spacing: 16) {
                 ForEach(tabs, id: \.id) { tab in
                     Button {
-                        withAnimation(.snappy(duration: 0.2)) { selection = tab.id }
+                        withAnimation(Motion.quick) { selection = tab.id }
                     } label: {
-                        UnderlineTab(title: tab.title, selected: selection == tab.id)
+                        UnderlineTab(title: tab.title, selected: selection == tab.id, bar: underline)
                     }
                     .buttonStyle(.plain)
                 }
             }
         } content: {
-            content
+            PageSwap(value: selection) { content }
         }
     }
 }
@@ -273,6 +282,8 @@ struct TestDetails<Tab: Hashable, Content: View>: View {
 struct UnderlineTab: View {
     let title: String
     let selected: Bool
+    /// Shared by the tabs of one bar, so the underline slides from one to the next.
+    let bar: Namespace.ID
 
     var body: some View {
         Text(title)
@@ -280,7 +291,9 @@ struct UnderlineTab: View {
             .foregroundStyle(selected ? Palette.accent : Forge.dim)
             .padding(.bottom, 5)
             .overlay(alignment: .bottom) {
-                Palette.accent.frame(height: 2).opacity(selected ? 1 : 0)
+                if selected {
+                    Palette.accent.frame(height: 2).matchedGeometryEffect(id: "underline", in: bar)
+                }
             }
             .contentShape(Rectangle())
     }
