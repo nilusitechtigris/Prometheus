@@ -11,7 +11,6 @@ struct MarkdownView: View {
                 BlockView(block: block)
             }
         }
-        .font(.uiBody)
         .frame(maxWidth: .infinity, alignment: .leading)
     }
 }
@@ -141,19 +140,12 @@ enum MarkdownParser {
         return digits + "."
     }
 
-    @MainActor static func inline(_ s: String) -> AttributedString {
+    static func inline(_ s: String) -> AttributedString {
         let options = AttributedString.MarkdownParsingOptions(
             interpretedSyntax: .inlineOnlyPreservingWhitespace,
             failurePolicy: .returnPartiallyParsedIfPossible
         )
-        var text = (try? AttributedString(markdown: s, options: options)) ?? AttributedString(s)
-        // The pixel font has one weight, so bold shows as colour, and inline code needs its columns.
-        for run in text.runs {
-            guard let intent = run.inlinePresentationIntent else { continue }
-            if intent.contains(.stronglyEmphasized) { text[run.range].foregroundColor = Palette.accent }
-            if intent.contains(.code) { text[run.range].font = .code(12.5) }
-        }
-        return text
+        return (try? AttributedString(markdown: s, options: options)) ?? AttributedString(s)
     }
 }
 
@@ -164,7 +156,7 @@ private struct BlockView: View {
         switch block {
         case .heading(let level, let text):
             Text(MarkdownParser.inline(text))
-                .font(level == 1 ? .uiTitle2 : level == 2 ? .uiTitle3 : .uiHeadline)
+                .font(level == 1 ? .title2.bold() : level == 2 ? .title3.bold() : .headline)
                 .padding(.top, 4)
         case .paragraph(let text):
             Text(MarkdownParser.inline(text))
@@ -183,7 +175,7 @@ private struct BlockView: View {
             .padding(.leading, CGFloat(indent) * 18)
         case .quote(let text):
             HStack(spacing: 10) {
-                PixelRect(radius: 1.5).fill(Palette.accent.opacity(0.6)).frame(width: 3)
+                RoundedRectangle(cornerRadius: 1.5).fill(Palette.accent.opacity(0.6)).frame(width: 3)
                 Text(MarkdownParser.inline(text)).foregroundStyle(.secondary).italic()
             }
             .fixedSize(horizontal: false, vertical: true)
@@ -215,7 +207,7 @@ struct CodeBlockView: View {
                     copied = true
                     Task { try? await Task.sleep(for: .seconds(1.5)); copied = false }
                 } label: {
-                    PixelLabel(copied ? "Copied" : "Copy", systemImage: copied ? "checkmark" : "doc.on.doc")
+                    Label(copied ? "Copied" : "Copy", systemImage: copied ? "checkmark" : "doc.on.doc")
                         .font(.uiCaption)
                 }
                 .buttonStyle(.borderless)
@@ -226,15 +218,15 @@ struct CodeBlockView: View {
 
             ScrollView(.horizontal, showsIndicators: false) {
                 Text(code)
-                    .font(.code(12.5))
+                    .font(.system(size: 12.5, design: .monospaced))
                     .textSelection(.enabled)
                     .padding(12)
                     .fixedSize(horizontal: true, vertical: true)
             }
         }
         .background(Color(nsColor: .textBackgroundColor).opacity(0.6))
-        .clipShape(PixelRect(radius: 10))
-        .overlay(PixelRect(radius: 10).strokeBorder(.separator, lineWidth: Pixel.line))
+        .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous).strokeBorder(.separator, lineWidth: 0.5))
     }
 }
 
@@ -248,7 +240,7 @@ private struct TableBlockView: View {
                 GridRow {
                     ForEach(0..<columns, id: \.self) { c in
                         Text(MarkdownParser.inline(c < row.count ? row[c] : ""))
-                            .font(.uiCallout)
+                            .font(r == 0 ? .callout.weight(.semibold) : .callout)
                             .fixedSize(horizontal: false, vertical: true)
                             .padding(.horizontal, 10)
                             .padding(.vertical, 6)
@@ -259,7 +251,7 @@ private struct TableBlockView: View {
                 if r < rows.count - 1 { Divider().gridCellUnsizedAxes(.horizontal) }
             }
         }
-        .overlay(PixelRect(radius: 8).strokeBorder(.separator, lineWidth: Pixel.line))
-        .clipShape(PixelRect(radius: 8))
+        .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(.separator, lineWidth: 0.5))
+        .clipShape(RoundedRectangle(cornerRadius: 8))
     }
 }

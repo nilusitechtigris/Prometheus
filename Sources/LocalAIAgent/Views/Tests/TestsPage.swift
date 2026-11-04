@@ -15,21 +15,6 @@ enum TestTab: String, CaseIterable, Identifiable {
     }
 
     /// Greek numeral shown on the tab.
-    var letter: String {
-        switch self {
-        case .model: return "α"
-        case .hardware: return "β"
-        case .harness: return "γ"
-        }
-    }
-
-    var symbol: String {
-        switch self {
-        case .model: return "checkmark.seal.fill"
-        case .hardware: return "cpu.fill"
-        case .harness: return "shield.lefthalf.filled"
-        }
-    }
 }
 
 /// The one Tests page: choose which test's results to see, then read them in the same layout.
@@ -55,47 +40,29 @@ private struct TestTabBar: View {
     @Environment(BackendController.self) private var backends
 
     var body: some View {
-        HStack(spacing: 12) {
+        HStack(spacing: 22) {
             ForEach(TestTab.allCases) { tab(for: $0) }
+            Spacer()
         }
         .padding(.horizontal, 24)
-        .padding(.top, 16)
+        .padding(.top, 18)
         .frame(maxWidth: 1180)
         .frame(maxWidth: .infinity)
     }
 
     private func tab(for tab: TestTab) -> some View {
-        let selected = ui.testTab == tab
-        let shape = PixelRect(radius: 12)
-        return Button {
+        Button {
             ui.testTab = tab
         } label: {
-            HStack(spacing: 10) {
-                PixelIcon(tab.symbol)
-                    .font(.system(size: 12, weight: .bold))
-                    .foregroundStyle(selected ? AnyShapeStyle(.white) : AnyShapeStyle(.secondary))
-                    .frame(width: 28, height: 28)
-                    .background(selected ? AnyShapeStyle(Palette.gradient) : AnyShapeStyle(Color.primary.opacity(0.08)),
-                                in: PixelRect(radius: 7))
-                PixelText(tab.letter, size: 15)
-                    .foregroundStyle(selected ? Palette.accent : Color.secondary)
-                    .accessibilityHidden(true)
-                Text(tab.title)
-                    .font(.uiCallout.weight(.semibold))
-                    .foregroundStyle(selected ? .primary : .secondary)
-                Spacer(minLength: 6)
+            HStack(alignment: .firstTextBaseline, spacing: 7) {
+                UnderlineTab(title: tab.title, selected: ui.testTab == tab)
                 if isRunning(tab) {
-                    PixelSpinner(size: 10)
+                    ProgressView().controlSize(.mini)
                 } else if let status = status(of: tab) {
-                    Text(status).font(.uiCaption.monospacedDigit()).foregroundStyle(.secondary).lineLimit(1)
+                    Text(status).font(.uiCaption.monospacedDigit()).foregroundStyle(Forge.faint).lineLimit(1)
                 }
             }
-            .padding(.horizontal, 10)
-            .padding(.vertical, 8)
-            .frame(maxWidth: .infinity)
-            .background(selected ? Palette.accent.opacity(0.12) : Color.primary.opacity(0.04), in: shape)
-            .overlay(shape.strokeBorder(selected ? Palette.accent.opacity(0.55) : Color.primary.opacity(0.09), lineWidth: selected ? 1 : 0.5))
-            .contentShape(shape)
+            .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
         .help("Show the \(tab.title.lowercased()) test results")

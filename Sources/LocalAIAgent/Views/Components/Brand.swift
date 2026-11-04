@@ -3,17 +3,13 @@ import SwiftUI
 /// Name, voice and type in one place, so a rename is a one-line change.
 enum Brand {
     static let name = "Prometheus"
-    static let greekName = "Προμηθεύς"
-    static let tagline = "The fire is yours."
+    static let tagline = "Intelligence, directed."
 
     /// Display type, used for the wordmark and page titles.
-    static func display(_ size: CGFloat) -> Font { .pixel(size) }
+    static func display(_ size: CGFloat) -> Font { .geist(size, weight: .semibold) }
 
-    /// The brand's blue fire in hard bands, the same in every theme.
-    static let fire = LinearGradient(stops: [.init(color: Color(hex: 0xBDE3FF), location: 0), .init(color: Color(hex: 0xBDE3FF), location: 0.4),
-                                             .init(color: Color(hex: 0x6CB6FF), location: 0.4), .init(color: Color(hex: 0x6CB6FF), location: 0.7),
-                                             .init(color: Color(hex: 0x2F7BFF), location: 0.7), .init(color: Color(hex: 0x2F7BFF), location: 1)],
-                                     startPoint: .top, endPoint: .bottom)
+    /// The brand's lime, the same in every theme.
+    static let lime = LinearGradient(colors: [Color(hex: 0xDDFF57), Color(hex: 0xA8E22A)], startPoint: .top, endPoint: .bottom)
 }
 
 private extension Color {
@@ -22,55 +18,46 @@ private extension Color {
     }
 }
 
-/// The Prometheus mark: a pixel-art blue flame with a white-hot heart, on a black tile. The same sprite
-/// as the app icon (scripts/make-icon.swift). Each sprite pixel is a whole or half point, so it stays
-/// sharp at any size.
+/// The Prometheus mark: a faceted flame around a diamond. The same drawing as the app icon
+/// (scripts/make-icon.swift).
 struct BrandMark: View {
     var size: CGFloat = 28
 
-    static let flame = [
-        "........d.......",
-        ".......dd.......",
-        ".......dbd......",
-        "......dbbd...d..",
-        "...d..dbbbd..dd.",
-        "...dd.dbbbbddbd.",
-        "..dbd.dbblbbbbd.",
-        "..dbbddbllbbbbd.",
-        "..dbbbbbllbblbd.",
-        "..dblbbllllllbd.",
-        "..dbllblcclllbd.",
-        "..dbllccccllbd..",
-        "...dblcwwcllbd..",
-        "...dbblcwclbd...",
-        "....ddbbbbbd....",
-        "......dddd......",
-    ]
-    private static let palette: [Character: Color] = [
-        "d": Color(hex: 0x1238C8), "b": Color(hex: 0x2F7BFF), "l": Color(hex: 0x6CB6FF),
-        "c": Color(hex: 0xBDE3FF), "w": .white,
-    ]
-
     var body: some View {
-        let tile = PixelRect(radius: size * 0.2)
-        ZStack {
-            tile.fill(Color(hex: 0x05070D))
-            PixelSprite(rows: Self.flame, palette: Self.palette, cell: max(1, (size / 18 * 2).rounded(.down) / 2))
-        }
-        .overlay(tile.strokeBorder(Color(hex: 0x2F7BFF).opacity(0.5), lineWidth: Pixel.line))
-        .frame(width: size, height: size)
+        FlameMark()
+            .fill(Brand.lime, style: FillStyle(eoFill: true))
+            .frame(width: size, height: size)
+            .accessibilityHidden(true)
     }
 }
 
-/// "PROMETHEUS" in the display type and the brand's blue fire.
+/// The mark on a 100-point grid: the flame's outline, a diamond cut from it, and a smaller diamond inside.
+struct FlameMark: Shape {
+    static let outline: [CGPoint] = [(50, 3), (63, 27), (73, 15), (91, 50), (68, 94), (32, 94), (9, 50), (27, 15), (37, 27)]
+        .map { CGPoint(x: $0.0, y: $0.1) }
+    static let cut: [CGPoint] = [(50, 38), (69, 63), (50, 88), (31, 63)].map { CGPoint(x: $0.0, y: $0.1) }
+    static let core: [CGPoint] = [(50, 53), (58, 63), (50, 73), (42, 63)].map { CGPoint(x: $0.0, y: $0.1) }
+
+    func path(in rect: CGRect) -> Path {
+        let scale = min(rect.width, rect.height) / 100
+        var path = Path()
+        for shape in [Self.outline, Self.cut, Self.core] {
+            path.addLines(shape.map { CGPoint(x: rect.minX + $0.x * scale, y: rect.minY + $0.y * scale) })
+            path.closeSubpath()
+        }
+        return path
+    }
+}
+
+/// "PROMETHEUS", widely spaced.
 struct BrandWordmark: View {
     var size: CGFloat = 28
 
     var body: some View {
         Text(Brand.name.uppercased())
-            .font(Brand.display(size))
-            .tracking(size * 0.02)
-            .foregroundStyle(Brand.fire)
+            .font(.geist(size, weight: .semibold))
+            .tracking(size * 0.16)
+            .foregroundStyle(.white)
             .fixedSize()
             .accessibilityLabel(Brand.name)
     }

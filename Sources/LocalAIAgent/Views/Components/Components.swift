@@ -1,3 +1,4 @@
+import Charts
 import SwiftUI
 
 enum Format {
@@ -51,9 +52,10 @@ struct StatusDot: View {
     var size: CGFloat = 8
 
     var body: some View {
-        Rectangle()
+        Circle()
             .fill(level.color)
             .frame(width: size, height: size)
+            .shadow(color: level.color.opacity(level == .unknown ? 0 : 0.6), radius: 2)
     }
 }
 
@@ -66,7 +68,7 @@ struct LevelPill: View {
             .font(.uiCaption2.weight(.semibold))
             .padding(.horizontal, 7)
             .padding(.vertical, 2.5)
-            .background(level.color.opacity(0.18), in: PixelRect.pill)
+            .background(level.color.opacity(0.18), in: Capsule())
             .foregroundStyle(level == .warning ? Color.primary.opacity(0.85) : (level == .unknown ? .secondary : level.color))
     }
 }
@@ -78,25 +80,41 @@ struct RangeBar: View {
     var height: CGFloat = 7
 
     var body: some View {
-        let zones = zones()
-        let lo = threshold.displayMin, span = max(threshold.displayMax - lo, 0.0001)
-        let shown = value.flatMap { $0.isFinite ? min(max($0, lo), threshold.displayMax) : nil }
-        let litColor = threshold.level(value).color
-        Canvas { context, size in
-            let pitch = max((height / 2).rounded() * 2, 4)
-            let count = Int(size.width / pitch)
-            let top = (size.height - height) / 2
-            for index in 0..<count {
-                let at = lo + (Double(index) + 0.5) / Double(count) * span
-                let zone = zones.first { at < $0.end } ?? zones[zones.count - 1]
-                let lit = shown.map { at <= $0 } ?? false
-                context.fill(Path(CGRect(x: CGFloat(index) * pitch, y: top, width: pitch - 1, height: height)),
-                             with: .color(lit ? litColor : zone.level.color.opacity(0.28)))
+        GeometryReader { geo in
+            let w = geo.size.width
+            let lo = threshold.displayMin, hi = threshold.displayMax
+            let span = max(hi - lo, 0.0001)
+            let x: (Double) -> CGFloat = { CGFloat((min(max($0, lo), hi) - lo) / span) * w }
+            let zones = zones()
+            ZStack(alignment: .leading) {
+                ZStack(alignment: .leading) {
+                    ForEach(zones.indices, id: \.self) { i in
+                        let z = zones[i]
+                        Rectangle()
+                            .fill(z.level.color.opacity(0.28))
+                            .frame(width: max(x(z.end) - x(z.start) - 1.5, 0), height: height)
+                            .offset(x: x(z.start))
+                    }
+                    if let value, value.isFinite {
+                        Rectangle()
+                            .fill(threshold.level(value).color.opacity(0.85))
+                            .frame(width: max(x(value), 2), height: height)
+                    }
+                }
+                .frame(width: w, height: height, alignment: .leading)
+                .clipShape(Capsule())
+
+                if let value, value.isFinite {
+                    let d = height + 6
+                    Circle()
+                        .fill(threshold.level(value).color)
+                        .overlay(Circle().stroke(.white, lineWidth: 2))
+                        .frame(width: d, height: d)
+                        .shadow(color: .black.opacity(0.25), radius: 1.5, y: 0.5)
+                        .offset(x: min(max(x(value) - d / 2, 0), w - d))
+                }
             }
-            if let shown {
-                let x = min(CGFloat((shown - lo) / span) * size.width, size.width - 4)
-                context.fill(Path(CGRect(x: x, y: 0, width: 4, height: size.height)), with: .color(.white))
-            }
+            .frame(width: w, height: geo.size.height, alignment: .leading)
         }
         .frame(height: height + 8)
         .accessibilityElement()
@@ -119,29 +137,36 @@ struct RangeBar: View {
     }
 }
 
-/// Recent values as a skyline of pixel columns.
 struct Sparkline: View {
     let points: [SamplePoint]
     var color: Color = Palette.accent
     var domain: ClosedRange<Double>?
+    var rules: [Double] = []
     var height: CGFloat = 38
 
     var body: some View {
         let top = domain?.upperBound ?? max((points.map(\.value).max() ?? 1) * 1.2, 1)
         let bottom = domain?.lowerBound ?? 0
-        Canvas { context, size in
-            guard points.count > 1 else { return }
-            let cell = Pixel.unit
-            let columns = Int(size.width / cell)
-            for column in 0..<columns {
-                let point = points[column * points.count / columns]
-                let share = min(max((point.value - bottom) / max(top - bottom, 0.0001), 0), 1)
-                let bar = max((CGFloat(share) * size.height / cell).rounded() * cell, cell)
-                let x = CGFloat(column) * cell
-                context.fill(Path(CGRect(x: x, y: size.height - bar, width: cell, height: bar)), with: .color(color.opacity(0.24)))
-                context.fill(Path(CGRect(x: x, y: size.height - bar, width: cell, height: cell)), with: .color(color))
+        Chart {
+            ForEach(points) { p in
+                AreaMark(x: .value("Time", p.id), yStart: .value("Base", bottom), yEnd: .value("Value", p.value))
+                    .foregroundStyle(LinearGradient(colors: [color.opacity(0.35), color.opacity(0.02)], startPoint: .top, endPoint: .bottom))
+                    .interpolationMethod(.monotone)
+                LineMark(x: .value("Time", p.id), y: .value("Value", p.value))
+                    .foregroundStyle(color)
+                    .lineStyle(StrokeStyle(lineWidth: 1.6, lineCap: .round))
+                    .interpolationMethod(.monotone)
+            }
+            ForEach(rules, id: \.self) { r in
+                RuleMark(y: .value("Threshold", r))
+                    .foregroundStyle(.secondary.opacity(0.35))
+                    .lineStyle(StrokeStyle(lineWidth: 0.8, dash: [3, 3]))
             }
         }
+        .chartXAxis(.hidden)
+        .chartYAxis(.hidden)
+        .chartYScale(domain: bottom...top)
+        .chartLegend(.hidden)
         .frame(height: height)
         .overlay {
             if points.count < 2 {
@@ -198,8 +223,8 @@ struct Card<Content: View>: View {
         content
             .padding(padding)
             .frame(maxWidth: .infinity, alignment: .leading)
-            .background(.background.opacity(0.65), in: PixelRect(radius: 12))
-            .overlay(PixelRect(radius: 12).strokeBorder(.separator.opacity(0.6), lineWidth: Pixel.line))
+            .background(Color.white.opacity(0.03), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+            .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).strokeBorder(Forge.line, lineWidth: 1))
     }
 }
 
@@ -210,7 +235,7 @@ struct SectionHeader: View {
 
     var body: some View {
         HStack(spacing: 6) {
-            if let symbol { PixelIcon(symbol).foregroundStyle(.secondary).font(.uiCaption) }
+            if let symbol { Image(systemName: symbol).foregroundStyle(.secondary).font(.uiCaption) }
             Text(title.uppercased())
                 .font(.uiCaption.weight(.semibold))
                 .foregroundStyle(.secondary)
@@ -229,13 +254,13 @@ struct Chip: View {
 
     var body: some View {
         HStack(spacing: 4) {
-            if let symbol { PixelIcon(symbol).imageScale(.small) }
+            if let symbol { Image(systemName: symbol).imageScale(.small) }
             Text(text)
         }
         .font(.uiCaption.monospacedDigit())
         .padding(.horizontal, 7)
         .padding(.vertical, 3)
-        .background(tint.opacity(0.12), in: PixelRect.pill)
+        .background(tint.opacity(0.12), in: Capsule())
         .foregroundStyle(tint == .secondary ? Color.secondary : tint)
     }
 }
@@ -246,18 +271,18 @@ private struct GlassBackground<S: InsettableShape>: ViewModifier {
 
     func body(content: Content) -> some View {
         content.background(Color.white.opacity(0.07), in: shape)
-            .overlay(shape.strokeBorder(Color.white.opacity(0.12), lineWidth: Pixel.line))
+            .overlay(shape.strokeBorder(Color.white.opacity(0.12), lineWidth: 0.5))
     }
 }
 
 extension View {
     /// Use only for floating controls.
     func glassCapsule(interactive: Bool = false) -> some View {
-        modifier(GlassBackground(shape: PixelRect.pill))
+        modifier(GlassBackground(shape: Capsule()))
     }
 
     func glassPanel(cornerRadius: CGFloat) -> some View {
-        modifier(GlassBackground(shape: PixelRect(radius: cornerRadius)))
+        modifier(GlassBackground(shape: RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)))
     }
 }
 
@@ -271,32 +296,57 @@ struct GlassGroup<Content: View>: View {
     }
 }
 
-/// The theme's glow rising from the foot of the window in ordered dither, like a hearth. Drawn once and
-/// deliberately not animated, so it never adds GPU load to the numbers the app is measuring.
+/// A faint glow and a few fine curves behind each page. Deliberately static, so the background never adds
+/// GPU load to the numbers the app is measuring.
 struct AmbientBackground: View {
-    private static let cell: CGFloat = 4
-    private static let bayer: [[Double]] = [[0, 8, 2, 10], [12, 4, 14, 6], [3, 11, 1, 9], [15, 7, 13, 5]]
-
     var body: some View {
-        let glow = [Palette.accent2.opacity(0.06), Palette.accent.opacity(0.1), Palette.accent.opacity(0.15)]
         Canvas { context, size in
-            context.fill(Path(CGRect(origin: .zero, size: size)), with: .color(Forge.black))
-            let rows = Int(size.height * 0.26 / Self.cell), columns = Int(size.width / Self.cell) + 1
-            var bands = [Path](repeating: Path(), count: glow.count)
-            for row in 0..<rows {
-                let rise = Double(row) / Double(max(rows - 1, 1))
-                for column in 0..<columns {
-                    let across = Double(column) / Double(columns)
-                    let strength = pow(1 - rise, 2.2) * (0.72 + 0.28 * sin(across * .pi)) * Double(glow.count)
-                    let level = Int((strength + Self.bayer[row % 4][column % 4] / 16 - 1).rounded(.down))
-                    guard level >= 0 else { continue }
-                    bands[min(level, glow.count - 1)].addRect(CGRect(x: CGFloat(column) * Self.cell,
-                                                                     y: size.height - CGFloat(row + 1) * Self.cell,
-                                                                     width: Self.cell, height: Self.cell))
-                }
+            let accent = Palette.accent
+            context.fill(Path(CGRect(origin: .zero, size: size)), with: .color(Forge.panel))
+            context.fill(Path(ellipseIn: CGRect(x: size.width * 0.5, y: -260, width: size.width * 0.7, height: 620)),
+                         with: .radialGradient(Gradient(colors: [accent.opacity(0.09), .clear]),
+                                               center: CGPoint(x: size.width * 0.85, y: 50), startRadius: 0, endRadius: size.width * 0.36))
+            for line in 0..<6 {
+                let offset = CGFloat(line) * 9
+                var curve = Path()
+                curve.move(to: CGPoint(x: size.width * 0.34, y: -10 + offset))
+                curve.addCurve(to: CGPoint(x: size.width + 10, y: 180 + offset * 1.5),
+                               control1: CGPoint(x: size.width * 0.6, y: 190 - offset),
+                               control2: CGPoint(x: size.width * 0.8, y: -60 + offset * 2))
+                context.stroke(curve, with: .color(accent.opacity(0.07)), lineWidth: 0.7)
             }
-            for (band, color) in zip(bands, glow) { context.fill(band, with: .color(color)) }
         }
         .ignoresSafeArea()
+    }
+}
+
+/// The main action: the accent colour with a soft glow.
+struct AccentButtonStyle: ButtonStyle {
+    var compact = false
+
+    func makeBody(configuration: Configuration) -> some View {
+        let shape = RoundedRectangle(cornerRadius: compact ? 9 : 14, style: .continuous)
+        configuration.label
+            .font(compact ? .uiCaption.weight(.semibold) : .uiCallout.weight(.semibold))
+            .foregroundStyle(Palette.onAccent)
+            .padding(.horizontal, compact ? 11 : 20)
+            .padding(.vertical, compact ? 5 : 11)
+            .background(Palette.gradient, in: shape)
+            .shadow(color: Palette.accent.opacity(compact ? 0 : 0.35), radius: 12)
+            .opacity(configuration.isPressed ? 0.8 : 1)
+    }
+}
+
+/// A quieter action beside the main one.
+struct OutlineButtonStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        let shape = RoundedRectangle(cornerRadius: 14, style: .continuous)
+        configuration.label
+            .font(.uiCallout.weight(.medium))
+            .foregroundStyle(Forge.ink)
+            .padding(.horizontal, 16)
+            .padding(.vertical, 10)
+            .background(Color.white.opacity(configuration.isPressed ? 0.09 : 0.03), in: shape)
+            .overlay(shape.strokeBorder(Color.white.opacity(0.13), lineWidth: 1))
     }
 }

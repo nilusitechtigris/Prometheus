@@ -6,9 +6,9 @@ import SwiftUI
 @Observable
 final class UIState {
     /// What the main area shows.
-    enum Destination: Hashable { case chat, tests, library }
+    enum Destination: Hashable { case home, chat, tests, library }
 
-    var destination: Destination = .chat
+    var destination: Destination = .home
     /// Which results the Tests page shows.
     var testTab: TestTab = .model
     var showModelPicker = false
@@ -112,8 +112,7 @@ struct LocalAIAgentApp: App {
                 .environment(ui)
                 .environment(lab)
                 // With a panel open the window stays wide enough for the page beside it.
-                .frame(minWidth: (settings.telemetryOpen ? 860 + settings.telemetryWidth : 980) + (settings.chatsOpen ? ChatsColumn.width : 0),
-                       minHeight: 640)
+                .frame(minWidth: 1100 + (settings.telemetryOpen ? settings.telemetryWidth - 200 : 0), minHeight: 680)
                 .task {
                     backends.start()
                     monitor.start()
@@ -188,8 +187,6 @@ struct LocalAIAgentApp: App {
                 .environment(settings)
                 .environment(backends)
                 .environment(chat)
-                .font(.uiCallout)
-                .buttonStyle(PixelButtonStyle())
         }
     }
 }

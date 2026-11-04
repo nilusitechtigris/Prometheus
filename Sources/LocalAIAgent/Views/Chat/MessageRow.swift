@@ -29,10 +29,10 @@ private struct UserBubble: View {
                 .padding(.horizontal, 14)
                 .padding(.vertical, 10)
                 .background(
-                    Palette.accent.opacity(0.2),
-                    in: PixelRect(radius: 16)
+                    Forge.card,
+                    in: RoundedRectangle(cornerRadius: 16, style: .continuous)
                 )
-                .overlay(PixelRect(radius: 16).strokeBorder(Palette.accent.opacity(0.18), lineWidth: Pixel.line))
+                .overlay(RoundedRectangle(cornerRadius: 16, style: .continuous).strokeBorder(Palette.accent.opacity(0.18), lineWidth: 0.5))
         }
         .onHover { hovering = $0 }
     }
@@ -61,7 +61,7 @@ private struct AssistantMessage: View {
                         HStack(spacing: 2) {
                             CopyButton(text: message.content)
                             if isLast {
-                                Button { chat.regenerate() } label: { PixelIcon("arrow.clockwise") }
+                                Button { chat.regenerate() } label: { Image(systemName: "arrow.clockwise") }
                                     .buttonStyle(.borderless)
                                     .help("Regenerate (⌘R)")
                                     .disabled(!chat.canSend)
@@ -124,10 +124,10 @@ private struct HarnessStepsView: View {
                 withAnimation(.snappy) { expanded = !isOpen }
             } label: {
                 HStack(spacing: 6) {
-                    PixelIcon("shield.lefthalf.filled")
+                    Image(systemName: "shield.lefthalf.filled")
                         .symbolEffect(.pulse, isActive: isLive)
                     Text(title)
-                    PixelIcon("chevron.right")
+                    Image(systemName: "chevron.right")
                         .rotationEffect(.degrees(isOpen ? 90 : 0))
                         .imageScale(.small)
                 }
@@ -168,10 +168,10 @@ private struct ThinkingView: View {
                 withAnimation(.snappy) { expanded = !isOpen }
             } label: {
                 HStack(spacing: 6) {
-                    PixelIcon("brain.head.profile")
+                    Image(systemName: "brain.head.profile")
                         .symbolEffect(.pulse, isActive: isLive)
                     Text(isLive ? "Thinking…" : (duration.map { "Thought for \(Format.seconds($0))" } ?? "Thoughts"))
-                    PixelIcon("chevron.right")
+                    Image(systemName: "chevron.right")
                         .rotationEffect(.degrees(isOpen ? 90 : 0))
                         .imageScale(.small)
                 }
@@ -205,7 +205,7 @@ private struct WaitingIndicator: View {
     var body: some View {
         TimelineView(.periodic(from: .now, by: 0.5)) { _ in
             HStack(spacing: 8) {
-                PixelSpinner()
+                ProgressView().controlSize(.small)
                 Text(label).font(.uiCallout).foregroundStyle(.secondary)
             }
             .padding(.vertical, 4)
@@ -226,7 +226,7 @@ private struct ErrorCard: View {
 
     var body: some View {
         HStack(alignment: .top, spacing: 10) {
-            PixelIcon("exclamationmark.triangle.fill").foregroundStyle(Palette.critical)
+            Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(Palette.critical)
             Text(text).font(.uiCallout).textSelection(.enabled)
             Spacer(minLength: 0)
             if canRetry {
@@ -234,7 +234,7 @@ private struct ErrorCard: View {
             }
         }
         .padding(10)
-        .background(Palette.critical.opacity(0.1), in: PixelRect(radius: 10))
+        .background(Palette.critical.opacity(0.1), in: RoundedRectangle(cornerRadius: 10))
     }
 }
 
@@ -307,13 +307,13 @@ struct MetricsFooter: View {
 
     private var collapseButton: some View {
         Button(action: toggle) {
-            PixelIcon("chevron.up")
+            Image(systemName: "chevron.up")
                 .font(.system(size: 8, weight: .bold))
                 .frame(width: 18, height: 18)
-                .background(PixelRect.round.fill(Color(nsColor: .windowBackgroundColor)))
-                .overlay(PixelRect.round.strokeBorder(Color.primary.opacity(0.14), lineWidth: Pixel.line))
+                .background(Circle().fill(Color(nsColor: .windowBackgroundColor)))
+                .overlay(Circle().strokeBorder(Color.primary.opacity(0.14), lineWidth: 0.5))
                 .foregroundStyle(.secondary)
-                .contentShape(PixelRect.round)
+                .contentShape(Circle())
         }
         .buttonStyle(.plain)
         .help("Collapse stats")
@@ -322,12 +322,12 @@ struct MetricsFooter: View {
     /// Collapsed: just a small arrow to bring the stats back.
     private var collapsedPill: some View {
         Button(action: toggle) {
-            PixelIcon("chevron.down")
+            Image(systemName: "chevron.down")
                 .font(.system(size: 9, weight: .bold))
                 .frame(width: 18, height: 18)
-                .background(PixelRect.round.fill(Color.primary.opacity(0.07)))
+                .background(Circle().fill(Color.primary.opacity(0.07)))
                 .foregroundStyle(.secondary)
-                .contentShape(PixelRect.round)
+                .contentShape(Circle())
         }
         .buttonStyle(.plain)
         .help("Show stats")
@@ -346,7 +346,7 @@ struct MetricsFooter: View {
         StatSegment(label: "Speed", symbol: "speedometer", help: "Generation speed") {
             StatusDot(level: Thresholds.tokensPerSecond.level(tps), size: 6)
             Text(Format.rate(tps))
-            Text("tok/s").font(.uiCaption2).foregroundStyle(.secondary)
+            Text("tok/s").font(.system(size: 10.5)).foregroundStyle(.secondary)
         }
     }
 
@@ -435,10 +435,10 @@ private struct StatSegment<Value: View>: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 3) {
             HStack(spacing: 4) {
-                PixelIcon(symbol).font(.system(size: 9, weight: .semibold))
-                Text(label.uppercased()).font(.uiCaption2).tracking(0.5)
+                Image(systemName: symbol).font(.system(size: 9, weight: .semibold))
+                Text(label.uppercased()).font(.system(size: 9.5, weight: .semibold)).tracking(0.5)
                 if let total {
-                    Text("· \(total)").font(.uiCaption2).monospacedDigit().opacity(0.75)
+                    Text("· \(total)").font(.system(size: 9.5, weight: .semibold)).monospacedDigit().opacity(0.75)
                 }
             }
             .foregroundStyle(.secondary)
@@ -487,9 +487,9 @@ private struct LabeledValue: View {
 
     var body: some View {
         HStack(alignment: .firstTextBaseline, spacing: 4) {
-            PixelRect.round.fill(color).frame(width: 6, height: 6).alignmentGuide(.firstTextBaseline) { $0[.bottom] }
+            Circle().fill(color).frame(width: 6, height: 6).alignmentGuide(.firstTextBaseline) { $0[.bottom] }
             Text(value)
-            Text(label).font(.uiCaption2).foregroundStyle(.secondary)
+            Text(label).font(.system(size: 10.5, weight: .regular)).foregroundStyle(.secondary)
         }
     }
 }
@@ -505,7 +505,7 @@ private struct SplitBar: View {
             HStack(spacing: gap) {
                 ForEach(parts.indices, id: \.self) { i in
                     let width = max(available * CGFloat(parts[i].share / total), parts[i].share > 0 ? 3 : 0)
-                    PixelRect.pill.fill(parts[i].color.opacity(0.85)).frame(width: width)
+                    Capsule().fill(parts[i].color.opacity(0.85)).frame(width: width)
                 }
             }
         }
@@ -515,12 +515,12 @@ private struct SplitBar: View {
 
 private extension View {
     func statsCard() -> some View {
-        let shape = PixelRect(radius: 12)
+        let shape = RoundedRectangle(cornerRadius: 12, style: .continuous)
         return self
             .padding(.horizontal, 11)
             .padding(.vertical, 8)
             .background(shape.fill(Color.primary.opacity(0.045)))
-            .overlay(shape.strokeBorder(Color.primary.opacity(0.08), lineWidth: Pixel.line))
+            .overlay(shape.strokeBorder(Color.primary.opacity(0.08), lineWidth: 0.5))
     }
 }
 
@@ -535,7 +535,7 @@ private struct CopyButton: View {
             copied = true
             Task { try? await Task.sleep(for: .seconds(1.2)); copied = false }
         } label: {
-            PixelIcon(copied ? "checkmark" : "doc.on.doc")
+            Image(systemName: copied ? "checkmark" : "doc.on.doc")
         }
         .buttonStyle(.borderless)
         .help("Copy")

@@ -1,6 +1,5 @@
 // Renders the Prometheus app icon as a 1024×1024 PNG.  Usage: swift scripts/make-icon.swift out.png
-// Pixel art: the blue flame from BrandMark in Brand.swift, on a black stepped tile over a Greek key:
-// the fire, brought down to your own machine.
+// The lime flame and diamond from BrandMark in Brand.swift, on a near-black tile with a soft glow.
 import AppKit
 
 let output = CommandLine.arguments.count > 1 ? CommandLine.arguments[1] : "AppIcon.png"
@@ -11,79 +10,59 @@ let rep = NSBitmapImageRep(bitmapDataPlanes: nil, pixelsWide: size, pixelsHigh: 
 NSGraphicsContext.saveGraphicsState()
 NSGraphicsContext.current = NSGraphicsContext(bitmapImageRep: rep)
 let ctx = NSGraphicsContext.current!.cgContext
+let space = CGColorSpace(name: CGColorSpace.sRGB)!
 
-func rgb(_ hex: UInt32) -> CGColor {
+func rgb(_ hex: UInt32, _ alpha: CGFloat = 1) -> CGColor {
     CGColor(srgbRed: CGFloat((hex >> 16) & 0xFF) / 255, green: CGFloat((hex >> 8) & 0xFF) / 255,
-            blue: CGFloat(hex & 0xFF) / 255, alpha: 1)
+            blue: CGFloat(hex & 0xFF) / 255, alpha: alpha)
 }
 
-let flame = [
-    "........d.......",
-    ".......dd.......",
-    ".......dbd......",
-    "......dbbd...d..",
-    "...d..dbbbd..dd.",
-    "...dd.dbbbbddbd.",
-    "..dbd.dbblbbbbd.",
-    "..dbbddbllbbbbd.",
-    "..dbbbbbllbblbd.",
-    "..dblbbllllllbd.",
-    "..dbllblcclllbd.",
-    "..dbllccccllbd..",
-    "...dblcwwcllbd..",
-    "...dbblcwclbd...",
-    "....ddbbbbbd....",
-    "......dddd......",
-]
-let palette: [Character: UInt32] = ["d": 0x1238C8, "b": 0x2F7BFF, "l": 0x6CB6FF, "c": 0xBDE3FF, "w": 0xFFFFFF]
+func gradient(_ colors: [CGColor]) -> CGGradient { CGGradient(colorsSpace: space, colors: colors as CFArray, locations: nil)! }
 
-// One turn of Greek key, the same path as Meander in GreekMotifs.swift.
-let key = [
-    "#####.",
-    "#...#.",
-    "#.###.",
-    "#.#...",
-    "#.####",
-]
+// Apple's icon grid: 824pt body centred on a 1024 canvas.
+let tileRect = CGRect(x: 100, y: 100, width: 824, height: 824)
+let tile = CGPath(roundedRect: tileRect, cornerWidth: 185, cornerHeight: 185, transform: nil)
 
-// Apple's icon grid is an 824-point body on a 1024 canvas, which here is 24 pixels of 34 points.
-let grid = 24
-let cell: CGFloat = 34
-let origin = (1024 - CGFloat(grid) * cell) / 2
+ctx.saveGState()
+ctx.setShadow(offset: CGSize(width: 0, height: -12), blur: 28, color: rgb(0x000000, 0.35))
+ctx.addPath(tile)
+ctx.setFillColor(rgb(0x000000))
+ctx.fillPath()
+ctx.restoreGState()
 
-/// Fills one pixel. Row 0 is the top.
-func pixel(_ column: Int, _ row: Int, _ color: CGColor) {
-    ctx.setFillColor(color)
-    ctx.fill(CGRect(x: origin + CGFloat(column) * cell, y: 1024 - origin - CGFloat(row + 1) * cell, width: cell, height: cell))
+ctx.saveGState()
+ctx.addPath(tile)
+ctx.clip()
+ctx.drawLinearGradient(gradient([rgb(0x141611), rgb(0x070807)]), start: CGPoint(x: 512, y: 924), end: CGPoint(x: 512, y: 100), options: [])
+ctx.drawRadialGradient(gradient([rgb(0xA8E22A, 0.34), rgb(0xA8E22A, 0)]), startCenter: CGPoint(x: 512, y: 500), startRadius: 0,
+                       endCenter: CGPoint(x: 512, y: 500), endRadius: 400, options: [])
+ctx.restoreGState()
+
+// The mark on its 100-point grid, the same points as FlameMark in Brand.swift. y runs down there.
+let outline: [(CGFloat, CGFloat)] = [(50, 3), (63, 27), (73, 15), (91, 50), (68, 94), (32, 94), (9, 50), (27, 15), (37, 27)]
+let cut: [(CGFloat, CGFloat)] = [(50, 38), (69, 63), (50, 88), (31, 63)]
+let inner: [(CGFloat, CGFloat)] = [(50, 53), (58, 63), (50, 73), (42, 63)]
+let scale: CGFloat = 5.9
+let originX = 512 - 50 * scale, originY = 512 + 50 * scale
+
+let mark = CGMutablePath()
+for shape in [outline, cut, inner] {
+    mark.addLines(between: shape.map { CGPoint(x: originX + $0.0 * scale, y: originY - $0.1 * scale) })
+    mark.closeSubpath()
 }
 
-/// How many pixels the stepped corners cut from each row.
-func cut(_ row: Int) -> Int {
-    let edge = min(row, grid - 1 - row)
-    return edge < 3 ? 3 - edge : 0
-}
+ctx.saveGState()
+ctx.setShadow(offset: .zero, blur: 70, color: rgb(0xC6F135, 0.55))
+ctx.addPath(mark)
+ctx.setFillColor(rgb(0xC6F135))
+ctx.fillPath(using: .evenOdd)
+ctx.restoreGState()
 
-// The stepped tile, with one row of lighter edge along its top.
-for row in 0..<grid {
-    for column in cut(row)..<(grid - cut(row)) {
-        pixel(column, row, rgb(row < 2 ? 0x0F1A30 : (row > 19 ? 0x0A1224 : 0x05070D)))
-    }
-}
-
-// The flame.
-for (y, line) in flame.enumerated() {
-    for (x, character) in line.enumerated() {
-        if let hex = palette[character] { pixel(x + 4, y + 2, rgb(hex)) }
-    }
-}
-
-// Three turns of Greek key along the foot of the tile.
-for (y, line) in key.enumerated() {
-    let cells = Array(String(repeating: line, count: 3))
-    for x in 0..<(cells.count - 1) where cells[x] == "#" {
-        pixel(x + 3, y + 18, rgb(0x6CB6FF))
-    }
-}
+ctx.saveGState()
+ctx.addPath(mark)
+ctx.clip(using: .evenOdd)
+ctx.drawLinearGradient(gradient([rgb(0xE4FF62), rgb(0xA8E22A)]), start: CGPoint(x: 512, y: 810), end: CGPoint(x: 512, y: 230), options: [])
+ctx.restoreGState()
 
 NSGraphicsContext.restoreGraphicsState()
 try! rep.representation(using: .png, properties: [:])!.write(to: URL(fileURLWithPath: output))

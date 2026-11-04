@@ -28,7 +28,7 @@ struct ChatsColumn: View {
             list
         }
         .frame(width: Self.width)
-        .background(Forge.black)
+        .background(Forge.panel)
         .task(id: ui.wantsChatSearchFocus) {
             guard ui.wantsChatSearchFocus else { return }
             ui.wantsChatSearchFocus = false
@@ -56,13 +56,13 @@ struct ChatsColumn: View {
                 chat.newConversation()
                 ui.composerFocusRequest += 1
             } label: {
-                PixelLabel("New Chat", systemImage: "square.and.pencil").labelStyle(.iconOnly)
+                Label("New Chat", systemImage: "square.and.pencil").labelStyle(.iconOnly)
             }
             .help("New chat (⌘N)")
             Button {
                 withAnimation(.snappy) { settings.chatsOpen = false }
             } label: {
-                PixelLabel("Collapse", systemImage: "sidebar.leading").labelStyle(.iconOnly)
+                Label("Collapse", systemImage: "sidebar.leading").labelStyle(.iconOnly)
             }
             .help("Collapse the chats (⌥⌘2)")
         }
@@ -74,7 +74,7 @@ struct ChatsColumn: View {
     private var searchField: some View {
         @Bindable var ui = ui
         return HStack(spacing: 7) {
-            PixelIcon("magnifyingglass")
+            Image(systemName: "magnifyingglass")
                 .font(.system(size: 11))
                 .foregroundStyle(Forge.dim)
             TextField("Search chats", text: $ui.chatSearch)
@@ -89,7 +89,7 @@ struct ChatsColumn: View {
                 Button {
                     ui.chatSearch = ""
                 } label: {
-                    PixelIcon("xmark.circle.fill").foregroundStyle(Forge.dim)
+                    Image(systemName: "xmark.circle.fill").foregroundStyle(Forge.dim)
                 }
                 .buttonStyle(.plain)
                 .help("Clear the search")
@@ -174,7 +174,7 @@ private struct ConversationRow: View {
                     .lineLimit(1)
                     .font(.uiCallout)
                 if isStreaming {
-                    PixelSpinner(size: 10)
+                    ProgressView().controlSize(.mini)
                 }
             }
             if !conversation.preview.isEmpty {

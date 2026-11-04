@@ -15,7 +15,7 @@ struct ModelTestDashboard: View {
     @State var detail = Detail.questions
 
     var body: some View {
-        TestPage(title: "Model Test", symbol: "checkmark.seal.fill",
+        TestPage(title: "Model Test",
                  subtitle: "How capable and how fast local models are: \(ModelTestSuite.questionCount) auto-graded questions across six topics and four levels. 100 is the level of \(ModelTestSuite.referenceModel).",
                  caption: setupCaption, notice: notice, progress: lab.modelProgress, onStop: { lab.cancelModelTest() }, scrollable: scrollable) {
             TestModelPicker()
@@ -103,20 +103,20 @@ struct ModelTestDashboard: View {
                     Color.clear.gridCellUnsizedAxes([.horizontal, .vertical])
                     ForEach(ModelTestLevel.allCases) { level in
                         VStack(spacing: 0) {
-                            Text(level.name).lineLimit(1).minimumScaleFactor(0.7)
+                            Text(level.name).lineLimit(1).minimumScaleFactor(0.8)
                             Text("×\(level.weight)").foregroundStyle(.tertiary)
                         }
-                        .font(.uiCaption2)
+                        .font(.uiCaption2.weight(.medium))
                         .foregroundStyle(.secondary)
-                        .frame(minWidth: 0, maxWidth: .infinity)
+                        .frame(maxWidth: .infinity)
                     }
                     Text("Score").font(.uiCaption2.weight(.medium)).foregroundStyle(.secondary).gridColumnAlignment(.trailing)
                 }
                 ForEach(ModelTestCategory.allCases) { category in
                     GridRow(alignment: .center) {
                         HStack(spacing: 6) {
-                            PixelIcon(category.symbol).font(.uiCaption).foregroundStyle(.secondary).frame(width: 16)
-                            Text(category.name).font(.uiCaption).lineLimit(1).fixedSize()
+                            Image(systemName: category.symbol).font(.uiCaption).foregroundStyle(.secondary).frame(width: 16)
+                            Text(category.name).font(.uiCallout).lineLimit(1).fixedSize()
                         }
                         ForEach(ModelTestLevel.allCases) { level in
                             skillCell(run.items.first { $0.category == category && $0.level == level })
@@ -140,15 +140,15 @@ struct ModelTestDashboard: View {
                 lab.expandedQuestions.insert(item.id)
             }
         } label: {
-            PixelRect(radius: 6)
+            RoundedRectangle(cornerRadius: 6, style: .continuous)
                 .fill((item?.passed == true ? Palette.good : Palette.critical).opacity(item == nil ? 0.1 : 0.75))
                 .frame(height: 26)
-                .frame(minWidth: 0, maxWidth: .infinity)
+                .frame(maxWidth: .infinity)
                 .overlay {
                     if let item {
-                        PixelIcon(item.passed ? "checkmark" : "xmark")
+                        Image(systemName: item.passed ? "checkmark" : "xmark")
                             .font(.system(size: 10, weight: .bold))
-                            .foregroundStyle(.white)
+                            .foregroundStyle(.black)
                     }
                 }
         }
@@ -173,7 +173,7 @@ struct ModelTestDashboard: View {
             .chartXAxis {
                 AxisMarks(values: [0, 25, 50, 75, 100]) { value in
                     AxisGridLine()
-                    AxisValueLabel { Text("\(value.as(Int.self) ?? 0)%").font(.uiCaption2) }
+                    AxisValueLabel { Text("\(value.as(Int.self) ?? 0)%") }
                 }
             }
             .frame(maxHeight: .infinity)
@@ -185,7 +185,6 @@ struct ModelTestDashboard: View {
         return TestPanel(title: "Quality vs speed", symbol: "chart.dots.scatter", note: "newest run per model") {
             Chart(Array(runs.enumerated()), id: \.element.id) { index, run in
                 PointMark(x: .value("Speed", run.tokensPerSecond ?? 0), y: .value("Score", run.score))
-                    .symbol(.square)
                     .symbolSize(run.configurationKey == selected.configurationKey ? 220 : 110)
                     .foregroundStyle(run.configurationKey == selected.configurationKey ? AnyShapeStyle(Palette.gradient) : AnyShapeStyle(Color.secondary.opacity(0.6)))
                     // Alternate above / below so neighbouring labels don't collide.
@@ -194,17 +193,11 @@ struct ModelTestDashboard: View {
                     }
             }
             .chartYScale(domain: 0...110)
-            .chartXAxisLabel { Text("tok/s").font(.uiCaption2) }
-            .chartXAxis {
-                AxisMarks { _ in
-                    AxisGridLine()
-                    AxisValueLabel().font(.uiCaption2)
-                }
-            }
+            .chartXAxisLabel("tok/s")
             .chartYAxis {
                 AxisMarks(values: [0, 25, 50, 75, 100]) { value in
                     AxisGridLine()
-                    AxisValueLabel { Text("\(value.as(Int.self) ?? 0)%").font(.uiCaption2) }
+                    AxisValueLabel { Text("\(value.as(Int.self) ?? 0)%") }
                 }
             }
             .frame(maxHeight: .infinity)
@@ -235,7 +228,7 @@ struct ModelTestDashboard: View {
                 if !items.isEmpty {
                     VStack(alignment: .leading, spacing: 5) {
                         HStack(spacing: 6) {
-                            PixelIcon(category.symbol).font(.uiCaption).foregroundStyle(.secondary)
+                            Image(systemName: category.symbol).font(.uiCaption).foregroundStyle(.secondary)
                             Text(category.name).font(.uiCallout.weight(.semibold))
                             Text(Format.percent(run.score(for: category))).font(.uiCaption.monospacedDigit()).foregroundStyle(.secondary)
                         }
@@ -337,12 +330,12 @@ struct QuestionRow: View {
 
     private var header: some View {
         HStack(spacing: 8) {
-            PixelIcon("chevron.right")
+            Image(systemName: "chevron.right")
                 .font(.system(size: 9, weight: .bold))
                 .foregroundStyle(.tertiary)
                 .rotationEffect(.degrees(expanded ? 90 : 0))
                 .frame(width: 10)
-            PixelIcon(item.passed ? "checkmark.circle.fill" : "xmark.circle.fill")
+            Image(systemName: item.passed ? "checkmark.circle.fill" : "xmark.circle.fill")
                 .foregroundStyle(item.passed ? Palette.good : Palette.critical)
             Text(item.title).fontWeight(.medium).lineLimit(1)
             if let level = item.level {
@@ -351,7 +344,7 @@ struct QuestionRow: View {
                     .foregroundStyle(.secondary)
                     .padding(.horizontal, 6)
                     .padding(.vertical, 1.5)
-                    .background(Color.primary.opacity(0.07), in: PixelRect.pill)
+                    .background(Color.primary.opacity(0.07), in: Capsule())
             }
             Spacer(minLength: 12)
             if !expanded {
@@ -400,7 +393,7 @@ struct QuestionRow: View {
             }
             HStack(spacing: 12) {
                 if item.ranOutOfTokens {
-                    PixelLabel("Ran out of tokens before finishing", systemImage: "exclamationmark.triangle.fill")
+                    Label("Ran out of tokens before finishing", systemImage: "exclamationmark.triangle.fill")
                         .foregroundStyle(Palette.warning)
                 }
                 if let first = item.timeToFirstToken { Text("First token \(Format.seconds(first))") }
@@ -421,7 +414,7 @@ struct QuestionRow: View {
         VStack(alignment: .leading, spacing: 3) {
             Text(title).font(.uiCaption.weight(.semibold)).foregroundStyle(.secondary)
             Text(text)
-                .font(monospaced ? .code(11.5) : .uiCallout)
+                .font(monospaced ? .system(size: 11.5, design: .monospaced) : .callout)
                 .lineLimit(lines)
                 .truncationMode(.head)
                 .textSelection(.enabled)
@@ -452,8 +445,8 @@ struct TestModelPicker: View {
         }
         .buttonStyle(.plain)
         .foregroundStyle(.primary)
-        .background(Color.primary.opacity(0.08), in: PixelRect.pill)
-        .overlay(PixelRect.pill.strokeBorder(Color.primary.opacity(0.12), lineWidth: Pixel.line))
+        .background(Color.primary.opacity(0.08), in: Capsule())
+        .overlay(Capsule().strokeBorder(Color.primary.opacity(0.12), lineWidth: 0.5))
         .opacity(lab.isRunning ? 0.5 : 1)
         .disabled(lab.isRunning)
         .help("Choose the model to test")
@@ -495,7 +488,7 @@ private struct TestModelList: View {
                     onDone()
                     ui.destination = .library
                 } label: {
-                    PixelLabel("Get more models…", systemImage: "square.and.arrow.down")
+                    Label("Get more models…", systemImage: "square.and.arrow.down")
                 }
                 .buttonStyle(.borderless)
             }
@@ -546,12 +539,12 @@ struct ErrorBanner: View {
 
     var body: some View {
         HStack(spacing: 8) {
-            PixelIcon("exclamationmark.triangle.fill").foregroundStyle(Palette.warning)
+            Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(Palette.warning)
             Text(text).font(.uiCallout).lineLimit(3)
             Spacer()
             Button("Dismiss", action: onDismiss).controlSize(.small)
         }
         .padding(12)
-        .background(Palette.warning.opacity(0.12), in: PixelRect(radius: 12))
+        .background(Palette.warning.opacity(0.12), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
     }
 }

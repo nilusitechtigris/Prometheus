@@ -1,22 +1,20 @@
 import AppKit
 import SwiftUI
 
-/// The app's layout: near-black, one accent colour, Geist type, thin rules instead of boxes, and a few
-/// line drawings from Greek pottery and temples.
+/// The app's layout: a sidebar on near-black, with each page in a rounded panel beside it.
 struct ForgeShell: View {
     var body: some View {
         HStack(spacing: 0) {
-            ForgeRail()
-            Forge.rule(vertical: true)
-            VStack(spacing: 0) {
-                ForgeTopBar()
-                MeanderFrieze()
-                MainPage()
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-                Forge.rule()
-                ForgeStatusBar()
-            }
+            ForgeSidebar()
+            MainPage()
+                // Clear of the window's title bar, where clicks would drag the window.
+                .safeAreaPadding(.top, 22)
+                .background(Forge.panel)
+                .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
+                .overlay(RoundedRectangle(cornerRadius: 20, style: .continuous).strokeBorder(Forge.line, lineWidth: 1))
+                .padding([.vertical, .trailing], 10)
         }
+        .background(SidebarBackdrop())
         .background(Forge.black)
         .ignoresSafeArea()
         .preferredColorScheme(.dark)
@@ -27,25 +25,23 @@ struct ForgeShell: View {
 
 /// The look: near-black, one accent colour that follows the theme, and white at a few strengths.
 enum Forge {
-    static let black = Color(red: 0.039, green: 0.039, blue: 0.043)
-    @MainActor static var flame: Color { Palette.accent }
+    static let black = Color(red: 0.027, green: 0.031, blue: 0.027)
+    /// Behind each page.
+    static let panel = Color(red: 0.039, green: 0.043, blue: 0.039)
+    /// Cards on a page.
+    static let card = Color(red: 0.082, green: 0.088, blue: 0.08)
     static let ink = Color.white.opacity(0.94)
-    static let dim = Color.white.opacity(0.56)
-    static let faint = Color.white.opacity(0.28)
+    static let dim = Color.white.opacity(0.58)
+    static let faint = Color.white.opacity(0.3)
     static let line = Color.white.opacity(0.09)
 
-    /// Thin dividers do the work boxes used to.
     static func rule(vertical: Bool = false) -> some View {
         line.frame(width: vertical ? 1 : nil, height: vertical ? nil : 1)
     }
 
-    /// Small monospaced capitals for labels.
+    /// Small labels above a group.
     static func label(_ text: String, color: Color = dim) -> some View {
-        Text(text.uppercased())
-            .font(.pixel(10.5))
-            .tracking(0.9)
-            .foregroundStyle(color)
-            .lineLimit(1)
+        Text(text).font(.uiCaption.weight(.medium)).foregroundStyle(color).lineLimit(1)
     }
 }
 
@@ -55,7 +51,7 @@ private struct ForgeWindowStyle: NSViewRepresentable {
         override func viewDidMoveToWindow() {
             super.viewDidMoveToWindow()
             guard let window else { return }
-            window.backgroundColor = NSColor(srgbRed: 0.039, green: 0.039, blue: 0.043, alpha: 1)
+            window.backgroundColor = NSColor(srgbRed: 0.027, green: 0.031, blue: 0.027, alpha: 1)
             window.titlebarAppearsTransparent = true
             window.titleVisibility = .hidden
             window.styleMask.insert(.fullSizeContentView)
@@ -67,155 +63,119 @@ private struct ForgeWindowStyle: NSViewRepresentable {
     func updateNSView(_ view: StyledView, context: Context) {}
 }
 
-// MARK: - Rail
+/// A soft glow and a few fine curves behind the sidebar. Drawn once, so it adds no load.
+private struct SidebarBackdrop: View {
+    var body: some View {
+        Canvas { context, size in
+            let accent = Palette.accent
+            context.fill(Path(ellipseIn: CGRect(x: -120, y: size.height * 0.1, width: 260, height: 420)),
+                         with: .radialGradient(Gradient(colors: [accent.opacity(0.13), .clear]),
+                                               center: CGPoint(x: 10, y: size.height * 0.1 + 210), startRadius: 0, endRadius: 210))
+            for line in 0..<7 {
+                let offset = CGFloat(line) * 7
+                var curve = Path()
+                curve.move(to: CGPoint(x: -10, y: size.height - 120 + offset))
+                curve.addCurve(to: CGPoint(x: 226, y: size.height - 210 + offset * 1.6),
+                               control1: CGPoint(x: 70, y: size.height - 30 + offset), control2: CGPoint(x: 140, y: size.height - 250 - offset))
+                context.stroke(curve, with: .color(accent.opacity(0.1)), lineWidth: 0.6)
+            }
+        }
+        .accessibilityHidden(true)
+    }
+}
 
-private struct ForgeRail: View {
+// MARK: - Sidebar
+
+private struct ForgeSidebar: View {
     @Environment(AppSettings.self) private var settings
     @Environment(UIState.self) private var ui
+    @Environment(BackendController.self) private var backends
+    @Environment(TestLab.self) private var lab
 
     var body: some View {
-        VStack(spacing: 4) {
-            BrandMark(size: 34)
-                .padding(.top, 44)
-                .padding(.bottom, 16)
-            chats
-            item("checklist", "Tests", .tests)
-            item("square.stack.3d.up", "Library", .library)
-            Forge.rule().padding(.horizontal, 18).padding(.vertical, 6)
-            telemetry
-            // A column stands in the empty stretch of the rail, clear of every label.
-            PixelatedShape(shape: DoricColumn(), stroke: 2)
-                .foregroundStyle(Forge.faint.opacity(0.6))
-                .frame(width: 26)
-                .frame(maxHeight: 260)
-                .padding(.vertical, 14)
-                .frame(maxHeight: .infinity, alignment: .bottom)
-                .accessibilityHidden(true)
-            SettingsLink { rowLabel("gearshape", "Settings", selected: false) }
-                .buttonStyle(.plain)
-                .padding(.bottom, 12)
+        VStack(spacing: 0) {
+            VStack(spacing: 8) {
+                BrandMark(size: 44)
+                BrandWordmark(size: 13)
+                Text(Brand.tagline).font(.uiCaption).foregroundStyle(Palette.accent)
+            }
+            .padding(.top, 46)
+            .padding(.bottom, 26)
+
+            VStack(spacing: 4) {
+                item("house.fill", "Home", selected: ui.destination == .home) { ui.destination = .home }
+                item("bubble.left.fill", "Chat", selected: ui.destination == .chat) {
+                    withAnimation(.snappy) { ui.toggleChats(in: settings) }
+                }
+                .help("Show your chats, or collapse them if they're showing (⌥⌘2)")
+                item("checklist", "Tests", selected: ui.destination == .tests, busy: lab.isRunning) { ui.destination = .tests }
+                item("cube", "Models", selected: ui.destination == .library) { ui.destination = .library }
+                item("gauge.with.dots.needle.67percent", "Telemetry", selected: false, lit: settings.telemetryOpen) {
+                    withAnimation(.snappy) { settings.telemetryOpen.toggle() }
+                }
+                .help("\(settings.telemetryOpen ? "Collapse" : "Open") the telemetry panel (⌥⌘1)")
+                SettingsLink { row("gearshape.fill", "Settings", selected: false) }
+                    .buttonStyle(.plain)
+            }
+            .padding(.horizontal, 14)
+
+            Spacer()
+            status
+                .padding(.horizontal, 14)
+                .padding(.bottom, 14)
         }
-        .frame(width: 72)
+        .frame(width: 216)
     }
 
-    private func item(_ symbol: String, _ title: String, _ target: UIState.Destination) -> some View {
-        Button { ui.destination = target } label: { rowLabel(symbol, title, selected: ui.destination == target) }
+    private func item(_ symbol: String, _ title: String, selected: Bool, lit: Bool = false, busy: Bool = false,
+                      action: @escaping () -> Void) -> some View {
+        Button(action: action) { row(symbol, title, selected: selected, lit: lit, busy: busy) }
             .buttonStyle(.plain)
     }
 
-    /// Opens the Chat page, then opens or collapses the chats beside it.
-    private var chats: some View {
-        Button {
-            withAnimation(.snappy) { ui.toggleChats(in: settings) }
-        } label: {
-            rowLabel("bubble.left", "Chat", selected: ui.destination == .chat)
+    private func row(_ symbol: String, _ title: String, selected: Bool, lit: Bool = false, busy: Bool = false) -> some View {
+        let shape = RoundedRectangle(cornerRadius: 14, style: .continuous)
+        return HStack(spacing: 11) {
+            Image(systemName: symbol)
+                .font(.system(size: 13, weight: .medium))
+                .foregroundStyle(selected ? Palette.onAccent : (lit ? Palette.accent : Forge.dim))
+                .frame(width: 26, height: 26)
+                .background(selected ? AnyShapeStyle(Palette.gradient) : AnyShapeStyle(.clear),
+                            in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+            Text(title).font(.uiCallout).foregroundStyle(selected ? Forge.ink : Forge.dim)
+            Spacer(minLength: 0)
+            if busy { ProgressView().controlSize(.mini) }
+            if lit { Circle().fill(Palette.accent).frame(width: 5, height: 5) }
         }
-        .buttonStyle(.plain)
-        .help("Show your chats, or collapse them if they're showing (⌥⌘2)")
-    }
-
-    /// Opens or collapses the telemetry panel, lit while it's open.
-    private var telemetry: some View {
-        Button {
-            withAnimation(.snappy) { settings.telemetryOpen.toggle() }
-        } label: {
-            rowLabel("gauge.with.dots.needle.67percent", "Telemetry", selected: settings.telemetryOpen)
-        }
-        .buttonStyle(.plain)
-        .help("\(settings.telemetryOpen ? "Collapse" : "Open") the telemetry panel (⌥⌘1)")
-    }
-
-    private func rowLabel(_ symbol: String, _ title: String, selected: Bool) -> some View {
-        VStack(spacing: 4) {
-            PixelIcon(symbol).font(.system(size: 17))
-            Text(title.uppercased()).font(.pixel(8.5)).tracking(0.5)
-        }
-        .foregroundStyle(selected ? Forge.flame : Forge.dim)
-        .frame(width: 72, height: 54)
-        .overlay(alignment: .leading) {
-            if selected { Forge.flame.frame(width: 2, height: 30) }
-        }
-        .contentShape(Rectangle())
-    }
-}
-
-// MARK: - Top and status bars
-
-private struct ForgeTopBar: View {
-    @Environment(BackendController.self) private var backends
-
-    var body: some View {
-        HStack(spacing: 14) {
-            HStack(alignment: .firstTextBaseline, spacing: 10) {
-                Text(Brand.name.uppercased())
-                    .font(.pixel(24))
-                    .foregroundStyle(Forge.ink)
-                PixelText(Brand.greekName, size: 14)
-                    .foregroundStyle(Forge.dim)
-                    .accessibilityHidden(true)
-            }
-            Spacer()
-            if let model = backends.selectedModel {
-                Text(model.displayName).font(.pixel(12)).foregroundStyle(Forge.ink).lineLimit(1)
-                Text(model.quantLabel).font(.pixel(12)).foregroundStyle(Forge.dim)
-                Forge.rule(vertical: true).frame(height: 14)
-            }
-            HStack(spacing: 6) {
-                PixelRect.round.fill(backends.status.isOnline ? Palette.good : Palette.critical).frame(width: 6, height: 6)
-                Forge.label("\(backends.kind.displayName) \(backends.status.isOnline ? "online" : "offline")")
+        .padding(.horizontal, 7)
+        .frame(height: 42)
+        .background {
+            if selected {
+                shape.fill(LinearGradient(colors: [Palette.accent.opacity(0.2), Palette.accent.opacity(0.04)], startPoint: .leading, endPoint: .trailing))
+                shape.strokeBorder(Palette.accent.opacity(0.26), lineWidth: 1)
             }
         }
-        .padding(.horizontal, 20)
-        .padding(.top, 36)
-        .padding(.bottom, 12)
+        .contentShape(shape)
     }
-}
-
-private struct ForgeStatusBar: View {
-    @Environment(SystemMonitor.self) private var monitor
-    @Environment(TestLab.self) private var lab
-    @Environment(BackendController.self) private var backends
-    @Environment(AppSettings.self) private var settings
 
     private var harnessOn: Bool { settings.harnessEnabled && backends.kind.supportsTools }
 
-    private var harnessStatus: (text: String, color: Color) {
-        guard backends.kind.supportsTools else { return ("Needs Ollama", Forge.ink) }
-        return settings.harnessEnabled ? ("On", Forge.flame) : ("Off", Forge.ink)
-    }
-
-    private var load: (text: String, color: Color) {
-        let s = monitor.snapshot
-        let level = max(Thresholds.cpuUsage.level(s.cpuUsage), Thresholds.gpuUsage.level(s.gpuUsage), s.memoryLevel)
-        switch level {
-        case .good, .unknown: return ("Stable", Palette.good)
-        case .warning: return ("Elevated", Palette.warning)
-        case .critical: return ("High", Palette.critical)
+    private var status: some View {
+        let online = backends.status.isOnline
+        return HStack(spacing: 10) {
+            Circle().fill(online ? Palette.good : Palette.critical).frame(width: 8, height: 8)
+            VStack(alignment: .leading, spacing: 1) {
+                Text(online ? "Ready to run" : "\(backends.kind.displayName) offline").font(.uiCaption.weight(.medium))
+                Text(harnessOn ? "Harness on" : "Local · \(backends.kind.displayName)")
+                    .font(.uiCaption2).foregroundStyle(Forge.dim)
+            }
+            Spacer(minLength: 0)
         }
-    }
-
-    private var runningTests: Int {
-        [lab.modelProgress != nil, lab.hardwareProgress != nil, lab.harnessProgress != nil].filter { $0 }.count
-    }
-
-    var body: some View {
-        HStack(spacing: 22) {
-            status("Harness", harnessStatus.text, harnessStatus.color)
-                .help(harnessOn ? "Harness on: search terms go to Wikipedia, Stack Overflow, arXiv and MDN"
-                                : "100% local — prompts and responses never leave this Mac")
-            status("Load", load.text, load.color)
-            status("Tests", runningTests > 0 ? "\(runningTests) running" : "Idle", runningTests > 0 ? Forge.flame : Forge.ink)
-            Spacer()
-            Forge.label(monitor.chipName, color: Forge.faint)
-        }
-        .padding(.horizontal, 20)
-        .padding(.vertical, 7)
-    }
-
-    private func status(_ title: String, _ value: String, _ color: Color) -> some View {
-        HStack(spacing: 6) {
-            Forge.label(title, color: Forge.faint)
-            Forge.label(value, color: color)
-        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 10)
+        .background(Forge.card, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).strokeBorder(Forge.line, lineWidth: 1))
+        .help(harnessOn ? "Harness on: search terms go to Wikipedia, Stack Overflow, arXiv and MDN"
+                        : "100% local — prompts and responses never leave this Mac")
     }
 }

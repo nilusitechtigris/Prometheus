@@ -4,8 +4,6 @@ struct ContentView: View {
     var body: some View {
         ForgeShell()
             .tint(Palette.accent)
-        .font(.uiCallout)
-        .buttonStyle(PixelButtonStyle())
     }
 }
 
@@ -26,13 +24,15 @@ struct MainPage: View {
             }
             Group {
                 switch ui.destination {
+                case .home: HomePage()
                 case .chat: ChatView()
                 case .tests: TestsPage()
                 case .library: ModelLibraryView()
                 }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
-            if settings.telemetryOpen {
+            // Home has its own Active Model card.
+            if settings.telemetryOpen && ui.destination != .home {
                 TelemetryPanel().transition(.move(edge: .trailing))
             }
         }

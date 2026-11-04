@@ -22,7 +22,7 @@ struct TelemetryPanel: View {
                 }
             }
             .frame(width: settings.telemetryWidth)
-            .background(Forge.black)
+            .background(Forge.panel)
         }
     }
 
@@ -46,7 +46,7 @@ struct TelemetryPanelToggle: View {
         Button {
             withAnimation(.snappy) { settings.telemetryOpen.toggle() }
         } label: {
-            PixelLabel("Telemetry", systemImage: "sidebar.trailing").labelStyle(.iconOnly)
+            Label("Telemetry", systemImage: "sidebar.trailing").labelStyle(.iconOnly)
         }
         .help("\(settings.telemetryOpen ? "Collapse" : "Open") the telemetry panel (⌥⌘1)")
     }

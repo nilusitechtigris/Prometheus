@@ -14,7 +14,7 @@ struct ModelPickerButton: View {
         } label: {
             HStack(spacing: 6) {
                 if let model = backends.selectedModel {
-                    PixelIcon(model.isVerified ? "checkmark.shield.fill" : "exclamationmark.shield.fill")
+                    Image(systemName: model.isVerified ? "checkmark.shield.fill" : "exclamationmark.shield.fill")
                         .foregroundStyle(model.isVerified ? Palette.good : Palette.warning)
                     Text(model.displayName)
                         .fontWeight(.medium)
@@ -26,17 +26,17 @@ struct ModelPickerButton: View {
                             .lineLimit(1)
                     }
                 } else {
-                    PixelIcon("cube.transparent")
+                    Image(systemName: "cube.transparent")
                     Text("Choose a model")
                 }
-                PixelIcon("chevron.up.chevron.down")
+                Image(systemName: "chevron.up.chevron.down")
                     .font(.uiCaption2.weight(.semibold))
                     .foregroundStyle(.secondary)
             }
             .font(.uiCallout)
             .padding(.horizontal, 11)
             .padding(.vertical, 5)
-            .contentShape(PixelRect.pill)
+            .contentShape(Capsule())
         }
         .buttonStyle(.plain)
         .glassCapsule(interactive: true)
@@ -54,12 +54,12 @@ struct QuantBadge: View {
 
     var body: some View {
         Text(text)
-            .font(.uiCaption2)
+            .font(.system(size: 10.5, weight: .semibold, design: .monospaced))
             .padding(.horizontal, 6)
             .padding(.vertical, 2)
             .background(selected ? AnyShapeStyle(Palette.accent) : AnyShapeStyle(Palette.accent.opacity(0.16)),
-                        in: PixelRect(radius: 5))
-            .foregroundStyle(selected ? Color.white : Palette.accent)
+                        in: RoundedRectangle(cornerRadius: 5, style: .continuous))
+            .foregroundStyle(selected ? Palette.onAccent : Palette.accent)
     }
 }
 
@@ -74,7 +74,7 @@ private struct ModelPickerPopover: View {
             HStack {
                 Text("Model").font(.uiHeadline)
                 Spacer()
-                PixelLabel(backends.kind.displayName, systemImage: backends.kind.symbol)
+                Label(backends.kind.displayName, systemImage: backends.kind.symbol)
                     .font(.uiCaption)
                     .foregroundStyle(.secondary)
             }
@@ -100,7 +100,7 @@ private struct ModelPickerPopover: View {
 
                     if !backends.unverifiedModels.isEmpty {
                         HStack(spacing: 6) {
-                            PixelIcon("exclamationmark.shield")
+                            Image(systemName: "exclamationmark.shield")
                             Text(settings.allowUnverifiedModels ? "Unverified" : "Unverified — enable in Settings › Safety")
                         }
                         .font(.uiCaption.weight(.semibold))
@@ -127,7 +127,7 @@ private struct ModelPickerPopover: View {
                     dismiss()
                     ui.destination = .library
                 }
-                .buttonStyle(PixelButtonStyle())
+                .controlSize(.small)
             }
             .padding(.horizontal, 14)
             .padding(.vertical, 10)
@@ -162,14 +162,14 @@ private struct CatalogGroupRow: View {
 
         VStack(alignment: .leading, spacing: 8) {
             HStack(spacing: 10) {
-                PixelIcon(isSelected ? "checkmark.circle.fill" : "circle")
+                Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
                     .font(.uiTitle3)
                     .foregroundStyle(isSelected ? Palette.accent : Color.secondary.opacity(0.5))
                 VStack(alignment: .leading, spacing: 1) {
                     HStack(spacing: 6) {
                         Text(catalog.displayName).font(.uiCallout.weight(.semibold))
                         if catalog.thinking {
-                            PixelIcon("brain.head.profile").font(.uiCaption).foregroundStyle(.secondary)
+                            Image(systemName: "brain.head.profile").font(.uiCaption).foregroundStyle(.secondary)
                                 .help("Supports thinking")
                         }
                     }
@@ -191,7 +191,7 @@ private struct CatalogGroupRow: View {
         }
         .padding(10)
         .background(
-            PixelRect(radius: 12)
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
                 .fill(isSelected ? Palette.accent.opacity(0.10) : (hovering ? Color.primary.opacity(0.05) : .clear))
         )
         .contentShape(Rectangle())
@@ -220,27 +220,27 @@ private struct QuantChip: View {
         } label: {
             HStack(spacing: 4) {
                 if let pull {
-                    PixelBar(fraction: pull.fraction).frame(width: 30)
+                    ProgressView(value: pull.fraction).progressViewStyle(.circular).controlSize(.mini)
                 } else if !isInstalled {
-                    PixelIcon("arrow.down.circle")
+                    Image(systemName: "arrow.down.circle")
                 } else {
-                    PixelRect.round.fill(verdict.level.color).frame(width: 6, height: 6)
+                    Circle().fill(verdict.level.color).frame(width: 6, height: 6)
                 }
-                Text(variant.quant).font(.uiCaption2)
+                Text(variant.quant).font(.system(size: 11, weight: .semibold, design: .monospaced))
                 Text(pull.map { "\(Int($0.fraction * 100))%" } ?? variant.size)
-                    .font(.uiCaption2)
+                    .font(.system(size: 10.5).monospacedDigit())
                     .opacity(0.75)
             }
             .padding(.horizontal, 8)
             .padding(.vertical, 4)
             .background(
-                PixelRect.pill.fill(isSelected ? AnyShapeStyle(Palette.accent) : AnyShapeStyle(Color.primary.opacity(isInstalled ? 0.08 : 0.03)))
+                Capsule().fill(isSelected ? AnyShapeStyle(Palette.accent) : AnyShapeStyle(Color.primary.opacity(isInstalled ? 0.08 : 0.03)))
             )
             .overlay(
-                PixelRect.pill.strokeBorder(isInstalled || isSelected ? Color.clear : Color.secondary.opacity(0.35),
+                Capsule().strokeBorder(isInstalled || isSelected ? Color.clear : Color.secondary.opacity(0.35),
                                        style: StrokeStyle(lineWidth: 1, dash: [3, 2]))
             )
-            .foregroundStyle(isSelected ? Color.white : (isInstalled ? Color.primary : Color.secondary))
+            .foregroundStyle(isSelected ? Palette.onAccent : (isInstalled ? Color.primary : Color.secondary))
         }
         .buttonStyle(.plain)
         .disabled(!isInstalled && !backends.kind.supportsModelDownloads)
@@ -260,7 +260,7 @@ private struct PlainModelRow: View {
     var body: some View {
         let isSelected = backends.selectedModel?.id == model.id
         HStack(spacing: 10) {
-            PixelIcon(isSelected ? "checkmark.circle.fill" : "circle")
+            Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
                 .font(.uiTitle3)
                 .foregroundStyle(isSelected ? Palette.accent : Color.secondary.opacity(0.5))
             VStack(alignment: .leading, spacing: 3) {
@@ -273,14 +273,14 @@ private struct PlainModelRow: View {
                     }
                 }
                 if model.displayName != model.id {
-                    Text(model.id).font(.uiCaption2).foregroundStyle(.tertiary).lineLimit(1)
+                    Text(model.id).font(.uiCaption2.monospaced()).foregroundStyle(.tertiary).lineLimit(1)
                 }
             }
             Spacer()
         }
         .padding(10)
         .background(
-            PixelRect(radius: 12)
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
                 .fill(isSelected ? Palette.accent.opacity(0.10) : (hovering ? Color.primary.opacity(0.05) : .clear))
         )
         .opacity(enabled ? 1 : 0.45)

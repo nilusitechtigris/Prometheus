@@ -57,6 +57,7 @@ enum DebugHooks {
         case "hardware": ui.openTests(.hardware)
         case "harness": ui.openTests(.harness)
         case "library": ui.destination = .library
+        case "chat": ui.destination = .chat
         default: break
         }
         if let telemetry = env["LOCALAI_TELEMETRY"] {

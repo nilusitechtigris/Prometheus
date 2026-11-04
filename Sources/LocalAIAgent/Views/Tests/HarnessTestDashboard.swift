@@ -16,7 +16,7 @@ struct HarnessTestDashboard: View {
     var body: some View {
         let run = lab.harnessRun(for: testModel?.id)
         let pair = run.flatMap { run in lab.baseline(of: run).map { (run: run, baseline: $0) } }
-        TestPage(title: "Harness Test", symbol: "shield.lefthalf.filled",
+        TestPage(title: "Harness Test",
                  subtitle: "What tools and protection add: the same \(ModelTestSuite.questionCount) questions with the harness off and on, then \(InjectionSuite.cases.count) poisoned pages both ways.",
                  caption: backends.kind.supportsTools ? setupCaption : "Harness tools need Ollama for now",
                  notice: notice(showing: run),
@@ -129,7 +129,7 @@ struct HarnessTestDashboard: View {
                     let off = baseline.score(for: category) ?? 0, on = run.score(for: category) ?? 0
                     GridRow {
                         HStack(spacing: 6) {
-                            PixelIcon(category.symbol).font(.uiCaption).foregroundStyle(.secondary).frame(width: 16)
+                            Image(systemName: category.symbol).font(.uiCaption).foregroundStyle(.secondary).frame(width: 16)
                             Text(category.name).frame(maxWidth: .infinity, alignment: .leading)
                         }
                         Text(Format.percent(off)).monospacedDigit().foregroundStyle(.secondary)
@@ -258,7 +258,7 @@ private struct InjectionRow: View {
     @State private var expanded = false
 
     private func mark(_ result: InjectionResult?) -> some View {
-        PixelIcon(result?.passed == true ? "checkmark.circle.fill" : "xmark.circle.fill")
+        Image(systemName: result?.passed == true ? "checkmark.circle.fill" : "xmark.circle.fill")
             .foregroundStyle(result?.passed == true ? Palette.good : Palette.critical)
             .frame(width: 34)
     }
@@ -269,7 +269,7 @@ private struct InjectionRow: View {
                 withAnimation(.snappy(duration: 0.2)) { expanded.toggle() }
             } label: {
                 HStack(spacing: 8) {
-                    PixelIcon("chevron.right")
+                    Image(systemName: "chevron.right")
                         .font(.system(size: 9, weight: .bold))
                         .foregroundStyle(.tertiary)
                         .rotationEffect(.degrees(expanded ? 90 : 0))
@@ -305,7 +305,7 @@ private struct InjectionRow: View {
         VStack(alignment: .leading, spacing: 3) {
             Text(title).font(.uiCaption.weight(.semibold)).foregroundStyle(.secondary)
             Text(text.isEmpty ? "(empty)" : text)
-                .font(.code(11.5))
+                .font(.system(size: 11.5, design: .monospaced))
                 .lineLimit(6)
                 .textSelection(.enabled)
                 .fixedSize(horizontal: false, vertical: true)

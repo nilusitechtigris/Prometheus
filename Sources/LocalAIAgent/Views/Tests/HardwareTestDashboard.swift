@@ -16,7 +16,7 @@ struct HardwareTestDashboard: View {
     @State var detail = Detail.localAI
 
     var body: some View {
-        TestPage(title: "Hardware Test", symbol: "cpu.fill",
+        TestPage(title: "Hardware Test",
                  subtitle: "How fast this Mac computes, moves memory and reads its disk: the parts that set how quickly models load, read and write.",
                  caption: "\(ProcessInfo.processInfo.activeProcessorCount) CPU cores · Takes about 30 seconds",
                  progress: lab.hardwareProgress,
@@ -26,8 +26,8 @@ struct HardwareTestDashboard: View {
                 .font(.uiCallout.weight(.medium))
                 .padding(.horizontal, 11)
                 .padding(.vertical, 5)
-                .background(Color.primary.opacity(0.08), in: PixelRect.pill)
-                .overlay(PixelRect.pill.strokeBorder(Color.primary.opacity(0.12), lineWidth: Pixel.line))
+                .background(Color.primary.opacity(0.08), in: Capsule())
+                .overlay(Capsule().strokeBorder(Color.primary.opacity(0.12), lineWidth: 0.5))
             RunTestButton(title: "Run test", disabled: lab.isRunning || chat.isGenerating) {
                 lab.runHardwareTest(monitor: monitor, backends: backends)
             }
@@ -125,7 +125,7 @@ struct HardwareTestDashboard: View {
                             // Only label bands wide enough to hold their name.
                             if phase.end - phase.start >= run.duration * 0.08 {
                                 Text(Self.shortPhaseNames[phase.name] ?? phase.name)
-                                    .font(.uiCaption2).foregroundStyle(.secondary).lineLimit(1).fixedSize()
+                                    .font(.system(size: 9)).foregroundStyle(.secondary).lineLimit(1).fixedSize()
                             }
                         }
                 }
@@ -133,41 +133,29 @@ struct HardwareTestDashboard: View {
                     if let load = s.gpuLoad {
                         AreaMark(x: .value("Time", s.t), y: .value("GPU load", load), series: .value("Series", "GPU load"))
                             .foregroundStyle(Palette.glow.opacity(0.22))
-                            .interpolationMethod(.stepCenter)
+                            .interpolationMethod(.monotone)
                     }
                 }
                 ForEach(run.timeline) { s in
                     if let t = s.cpuTemp {
                         LineMark(x: .value("Time", s.t), y: .value("°C", t), series: .value("Series", "CPU"))
                             .foregroundStyle(Palette.warning)
-                            .lineStyle(StrokeStyle(lineWidth: 2, lineCap: .butt, lineJoin: .miter))
-                            .interpolationMethod(.stepCenter)
+                            .lineStyle(StrokeStyle(lineWidth: 2))
+                            .interpolationMethod(.monotone)
                     }
                 }
                 ForEach(run.timeline) { s in
                     if let t = s.gpuTemp {
                         LineMark(x: .value("Time", s.t), y: .value("°C", t), series: .value("Series", "GPU"))
                             .foregroundStyle(Palette.accent)
-                            .lineStyle(StrokeStyle(lineWidth: 2, lineCap: .butt, lineJoin: .miter))
-                            .interpolationMethod(.stepCenter)
+                            .lineStyle(StrokeStyle(lineWidth: 2))
+                            .interpolationMethod(.monotone)
                     }
                 }
             }
             .chartYScale(domain: 0...105)
             .chartXScale(domain: 0...max(run.duration, 1))
-            .chartXAxisLabel { Text("seconds").font(.uiCaption2) }
-            .chartXAxis {
-                AxisMarks { _ in
-                    AxisGridLine()
-                    AxisValueLabel().font(.uiCaption2)
-                }
-            }
-            .chartYAxis {
-                AxisMarks { _ in
-                    AxisGridLine()
-                    AxisValueLabel().font(.uiCaption2)
-                }
-            }
+            .chartXAxisLabel("seconds")
             .padding(.top, 14)
             .frame(maxHeight: .infinity)
             HStack(spacing: 14) {
@@ -181,7 +169,7 @@ struct HardwareTestDashboard: View {
 
     private func legend(_ title: String, _ color: Color) -> some View {
         HStack(spacing: 4) {
-            PixelRect.round.fill(color).frame(width: 7, height: 7)
+            Circle().fill(color).frame(width: 7, height: 7)
             Text(title).font(.uiCaption2).foregroundStyle(.secondary)
         }
     }
@@ -228,12 +216,12 @@ struct HardwareTestDashboard: View {
                         .frame(width: 210, alignment: .leading)
                         GeometryReader { geo in
                             ZStack(alignment: .leading) {
-                                PixelRect.pill.fill(Color.primary.opacity(0.05))
-                                PixelRect.pill.fill(row.fit.level.color.opacity(0.8).gradient)
+                                Capsule().fill(Color.primary.opacity(0.05))
+                                Capsule().fill(row.fit.level.color.opacity(0.8).gradient)
                                     .frame(width: max(geo.size.width * row.tokensPerSecond / top, 4))
                                 if let measured = row.measured {
-                                    PixelRect.round.fill(.white)
-                                        .overlay(PixelRect.round.strokeBorder(.black.opacity(0.35), lineWidth: 1))
+                                    Circle().fill(.white)
+                                        .overlay(Circle().strokeBorder(.black.opacity(0.35), lineWidth: 1))
                                         .frame(width: 10, height: 10)
                                         .offset(x: min(geo.size.width * measured / top, geo.size.width) - 5)
                                 }

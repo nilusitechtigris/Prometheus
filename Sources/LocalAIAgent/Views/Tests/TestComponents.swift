@@ -1,6 +1,6 @@
 import SwiftUI
 
-/// Score gauge: a ring of pixels, coloured by the score's health band.
+/// Circular score gauge, coloured by the score's health band.
 struct ScoreRing: View {
     let score: Double?
     var size: CGFloat = 64
@@ -8,43 +8,29 @@ struct ScoreRing: View {
     var bands = TestScoring.modelScore
 
     var body: some View {
-        let color = bands.level(score).color
-        let share = (score ?? 0) / 100
+        let level = bands.level(score)
+        let width = max(size * 0.06, 4)
         ZStack {
-            Canvas { context, canvas in
-                let cell = Pixel.unit
-                let middle = canvas.width / 2
-                let outer = middle, inner = middle - cell * 4
-                var track = Path(), lit = Path()
-                let cells = Int(canvas.width / cell)
-                for row in 0..<cells {
-                    for column in 0..<cells {
-                        let x = (CGFloat(column) + 0.5) * cell - middle, y = (CGFloat(row) + 0.5) * cell - middle
-                        let distance = (x * x + y * y).squareRoot()
-                        guard distance <= outer, distance >= inner else { continue }
-                        let turn = (atan2(Double(x), Double(-y)) + 2 * .pi).truncatingRemainder(dividingBy: 2 * .pi) / (2 * .pi)
-                        let rect = CGRect(x: CGFloat(column) * cell, y: CGFloat(row) * cell, width: cell, height: cell)
-                        if turn <= share { lit.addRect(rect) } else { track.addRect(rect) }
-                    }
-                }
-                context.fill(track, with: .color(Color.primary.opacity(0.1)))
-                context.fill(lit, with: .color(color))
-            }
+            Circle().stroke(Color.primary.opacity(0.08), lineWidth: width)
+            Circle()
+                .trim(from: 0, to: (score ?? 0) / 100)
+                .stroke(level.color, style: StrokeStyle(lineWidth: width, lineCap: .round))
+                .rotationEffect(.degrees(-90))
             VStack(spacing: 0) {
                 Text(score.map(TestFormat.score) ?? "—")
-                    .font(.uiDisplay(size: size * 0.3))
+                    .font(.uiDisplay(size: size * 0.32, weight: .bold))
                     .monospacedDigit()
-                Text(unit).font(.uiCaption2).foregroundStyle(.secondary)
+                Text(unit).font(.uiDisplay(size: size * 0.13, weight: .semibold)).foregroundStyle(.secondary)
             }
         }
-        .frame(width: size + 8, height: size + 8)
+        .frame(width: size, height: size)
+        .padding(width / 2)
     }
 }
 
 /// The title block at the top of a page.
 struct PageHeader<Controls: View>: View {
     let title: String
-    let symbol: String
     let subtitle: String
     var caption: String?
     /// A second line under the controls, for what the page is showing instead.
@@ -53,13 +39,8 @@ struct PageHeader<Controls: View>: View {
 
     var body: some View {
         HStack(alignment: .center, spacing: 14) {
-            PixelIcon(symbol)
-                .font(.system(size: 22, weight: .semibold))
-                .foregroundStyle(.white)
-                .frame(width: 46, height: 46)
-                .background(Palette.gradient, in: PixelRect(radius: 12))
-            VStack(alignment: .leading, spacing: 2) {
-                Text(title).font(Brand.display(28))
+            VStack(alignment: .leading, spacing: 4) {
+                Text(title).font(Brand.display(26))
                 // Always two lines' worth, so the blocks below start at the same height on every page.
                 Text(subtitle)
                     .font(.uiCallout)
@@ -84,7 +65,6 @@ struct PageHeader<Controls: View>: View {
 /// The page all three tests share: header, live progress, then the blocks.
 struct TestPage<Controls: View, Content: View>: View {
     let title: String
-    let symbol: String
     let subtitle: String
     var caption: String?
     var notice: String?
@@ -108,7 +88,7 @@ struct TestPage<Controls: View, Content: View>: View {
 
     private var page: some View {
         VStack(alignment: .leading, spacing: 16) {
-            PageHeader(title: title, symbol: symbol, subtitle: subtitle, caption: caption, notice: notice) { controls }
+            PageHeader(title: title, subtitle: subtitle, caption: caption, notice: notice) { controls }
             if let progress {
                 PanelWidget(title: "Running", symbol: "hourglass") { EmptyView() } content: {
                     TestProgressView(progress: progress, onStop: onStop)
@@ -273,18 +253,12 @@ struct TestDetails<Tab: Hashable, Content: View>: View {
 
     var body: some View {
         PanelWidget(title: "Details", symbol: "list.bullet.rectangle.portrait.fill") {
-            HStack(spacing: 4) {
+            HStack(spacing: 16) {
                 ForEach(tabs, id: \.id) { tab in
                     Button {
                         withAnimation(.snappy(duration: 0.2)) { selection = tab.id }
                     } label: {
-                        Text(tab.title)
-                            .font(.uiCaption.weight(.medium))
-                            .foregroundStyle(selection == tab.id ? .white : .secondary)
-                            .padding(.horizontal, 10)
-                            .padding(.vertical, 4)
-                            .background(selection == tab.id ? AnyShapeStyle(Palette.gradient) : AnyShapeStyle(Color.primary.opacity(0.06)), in: PixelRect.pill)
-                            .contentShape(PixelRect.pill)
+                        UnderlineTab(title: tab.title, selected: selection == tab.id)
                     }
                     .buttonStyle(.plain)
                 }
@@ -292,6 +266,23 @@ struct TestDetails<Tab: Hashable, Content: View>: View {
         } content: {
             content
         }
+    }
+}
+
+/// A tab label: lit and underlined when it's the chosen one.
+struct UnderlineTab: View {
+    let title: String
+    let selected: Bool
+
+    var body: some View {
+        Text(title)
+            .font(.uiCallout.weight(.medium))
+            .foregroundStyle(selected ? Palette.accent : Forge.dim)
+            .padding(.bottom, 5)
+            .overlay(alignment: .bottom) {
+                Palette.accent.frame(height: 2).opacity(selected ? 1 : 0)
+            }
+            .contentShape(Rectangle())
     }
 }
 
@@ -347,14 +338,14 @@ struct TestRunRow: View {
             }
             Spacer()
             Text(result).font(.uiCallout.monospacedDigit()).foregroundStyle(.secondary)
-            Button(action: onDelete) { PixelIcon("trash") }
+            Button(action: onDelete) { Image(systemName: "trash") }
                 .buttonStyle(.borderless)
                 .help("Delete this run")
         }
         .padding(.horizontal, 10)
         .padding(.vertical, 6)
         .background(selected ? Palette.accent.opacity(0.10) : Color.primary.opacity(0.03),
-                    in: PixelRect(radius: 8))
+                    in: RoundedRectangle(cornerRadius: 8, style: .continuous))
         .contentShape(Rectangle())
         .onTapGesture(perform: onSelect)
     }
@@ -373,7 +364,7 @@ struct MetricTile: View {
         Card(padding: 12) {
             VStack(alignment: .leading, spacing: 6) {
                 HStack(spacing: 6) {
-                    if let symbol { PixelIcon(symbol).font(.uiCaption).foregroundStyle(Palette.accent) }
+                    if let symbol { Image(systemName: symbol).font(.uiCaption).foregroundStyle(Palette.accent) }
                     Text(title).font(.uiCaption.weight(.medium)).foregroundStyle(.secondary).lineLimit(1)
                     Spacer(minLength: 0)
                     if let level { StatusDot(level: level, size: 7) }
@@ -395,6 +386,22 @@ struct MetricTile: View {
     }
 }
 
+/// Thin progress bar in the theme gradient.
+struct ProgressStrip: View {
+    let fraction: Double
+
+    var body: some View {
+        GeometryReader { geo in
+            ZStack(alignment: .leading) {
+                Capsule().fill(Color.primary.opacity(0.08))
+                Capsule().fill(Palette.gradient).frame(width: max(geo.size.width * min(max(fraction, 0), 1), 6))
+            }
+        }
+        .frame(height: 6)
+        .animation(.easeOut(duration: 0.3), value: fraction)
+    }
+}
+
 /// Live status of a running test: step, detail, bar, elapsed time and a Stop button.
 struct TestProgressView: View {
     let progress: TestProgress
@@ -403,7 +410,7 @@ struct TestProgressView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack(spacing: 8) {
-                PixelSpinner()
+                ProgressView().controlSize(.small)
                 VStack(alignment: .leading, spacing: 1) {
                     Text(progress.step).font(.uiCallout.weight(.semibold))
                     if !progress.detail.isEmpty {
@@ -418,7 +425,7 @@ struct TestProgressView: View {
                 }
                 Button("Stop", action: onStop).controlSize(.small)
             }
-            PixelBar(fraction: progress.fraction)
+            ProgressStrip(fraction: progress.fraction)
         }
     }
 }
@@ -431,15 +438,11 @@ struct RunTestButton: View {
 
     var body: some View {
         Button(action: action) {
-            PixelLabel(title, systemImage: "play.fill")
-                .font(.uiCallout.weight(.semibold))
-                .foregroundStyle(.white)
-                .padding(.horizontal, 14)
-                .padding(.vertical, 7)
-                .background(Palette.gradient, in: PixelRect.pill)
-                .opacity(disabled ? 0.45 : 1)
+            Label(title, systemImage: "play.fill")
         }
-        .buttonStyle(.plain)
+        .buttonStyle(AccentButtonStyle(compact: true))
+        .controlSize(.large)
+        .opacity(disabled ? 0.45 : 1)
         .disabled(disabled)
     }
 }

@@ -28,7 +28,7 @@ enum HealthLevel: Int, Comparable {
 
 enum Palette {
     // Status colours stay fixed so green / yellow / red always mean the same thing.
-    static let good = Color(red: 0.20, green: 0.78, blue: 0.40)
+    static let good = Color(red: 0.55, green: 0.86, blue: 0.2)
     static let warning = Color(red: 1.00, green: 0.76, blue: 0.03)
     static let critical = Color(red: 1.00, green: 0.27, blue: 0.23)
 
@@ -37,11 +37,10 @@ enum Palette {
     @MainActor static var accent2: Color { ThemeStore.shared.theme.accent2 }
     @MainActor static var glow: Color { ThemeStore.shared.theme.glow }
     @MainActor static var gradient: LinearGradient {
-        // Two flat bands with a hard edge, the way pixel art shades a surface.
-        LinearGradient(stops: [.init(color: accent2, location: 0), .init(color: accent2, location: 0.32),
-                               .init(color: accent, location: 0.32), .init(color: accent, location: 1)],
-                       startPoint: .top, endPoint: .bottom)
+        LinearGradient(colors: [accent, accent2], startPoint: .top, endPoint: .bottom)
     }
+    /// Text and icons on the accent colour.
+    @MainActor static var onAccent: Color { ThemeStore.shared.theme == .prometheus ? .black : .white }
 }
 
 enum AppTheme: String, CaseIterable, Identifiable {
@@ -67,7 +66,7 @@ enum AppTheme: String, CaseIterable, Identifiable {
 
     var accent: Color {
         switch self {
-        case .prometheus: return Self.hex(0x3B8BFF)
+        case .prometheus: return Self.hex(0xC6F135)
         case .aurora: return Self.hex(0x6366F1)
         case .ocean: return Self.hex(0x0A84FF)
         case .ember: return Self.hex(0xFF6B3D)
@@ -79,7 +78,7 @@ enum AppTheme: String, CaseIterable, Identifiable {
 
     var accent2: Color {
         switch self {
-        case .prometheus: return Self.hex(0x6AB8FF)
+        case .prometheus: return Self.hex(0xA8E22A)
         case .aurora: return Self.hex(0x22D3EE)
         case .ocean: return Self.hex(0x5AC8FA)
         case .ember: return Self.hex(0xFF2D78)
@@ -92,7 +91,7 @@ enum AppTheme: String, CaseIterable, Identifiable {
     /// Third colour used only in the ambient background.
     var glow: Color {
         switch self {
-        case .prometheus: return Self.hex(0x123A9C)
+        case .prometheus: return Self.hex(0x3F6212)
         case .aurora: return Self.hex(0xA855F7)
         case .ocean: return Self.hex(0x30D5C8)
         case .ember: return Self.hex(0xFFB340)

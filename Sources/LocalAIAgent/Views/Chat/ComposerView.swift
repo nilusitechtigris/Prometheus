@@ -26,7 +26,7 @@ struct ComposerView: View {
             HStack(alignment: .bottom, spacing: 10) {
                 TextField(placeholder, text: $ui.draft, axis: .vertical)
                     .textFieldStyle(.plain)
-                    .font(.uiBody)
+                    .font(.system(size: 14))
                     .lineLimit(1...10)
                     .focused($focused)
                     .onSubmit(send)
@@ -35,10 +35,10 @@ struct ComposerView: View {
 
                 if chat.isGenerating {
                     Button(action: chat.stop) {
-                        PixelIcon("stop.fill")
+                        Image(systemName: "stop.fill")
                             .font(.system(size: 11, weight: .bold))
                             .frame(width: 30, height: 30)
-                            .background(PixelRect.round.fill(.primary.opacity(0.85)))
+                            .background(Circle().fill(.primary.opacity(0.85)))
                             .foregroundStyle(Color(nsColor: .windowBackgroundColor))
                     }
                     .buttonStyle(.plain)
@@ -46,12 +46,13 @@ struct ComposerView: View {
                     .transition(.scale.combined(with: .opacity))
                 } else {
                     Button(action: send) {
-                        PixelIcon("arrow.up")
+                        Image(systemName: "arrow.up")
                             .font(.system(size: 13, weight: .bold))
                             .symbolEffect(.bounce, value: sentCount)
                             .frame(width: 30, height: 30)
-                            .background(PixelRect.round.fill(canSend ? AnyShapeStyle(Palette.gradient) : AnyShapeStyle(.quaternary)))
-                            .foregroundStyle(.white)
+                            .background(Circle().fill(canSend ? AnyShapeStyle(Palette.gradient) : AnyShapeStyle(.quaternary)))
+                            .foregroundStyle(Palette.onAccent)
+                            .shadow(color: canSend ? Palette.accent.opacity(0.45) : .clear, radius: 6, y: 2)
                     }
                     .buttonStyle(.plain)
                     .disabled(!canSend)
@@ -65,10 +66,11 @@ struct ComposerView: View {
             .padding(.vertical, 8)
             .glassPanel(cornerRadius: 24)
             .overlay(
-                PixelRect(radius: 24)
+                RoundedRectangle(cornerRadius: 24, style: .continuous)
                     .strokeBorder(focused ? Palette.accent.opacity(0.55) : Color.primary.opacity(0.08),
                                   lineWidth: focused ? 1.5 : 0.5)
             )
+            .shadow(color: .black.opacity(0.08), radius: 14, y: 4)
 
             // Framework · Model + quant · Context · Think · Temp. Falls back to a compact row on narrow windows.
             ViewThatFits(in: .horizontal) {
@@ -79,7 +81,7 @@ struct ComposerView: View {
             .padding(.horizontal, 4)
 
             if harnessOn {
-                PixelLabel("Harness on: search terms go to Wikipedia, Stack Overflow, arXiv and MDN. Code runs in a sandbox on this Mac.", systemImage: "globe")
+                Label("Harness on: search terms go to Wikipedia, Stack Overflow, arXiv and MDN. Code runs in a sandbox on this Mac.", systemImage: "globe")
                     .font(.uiCaption2)
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
@@ -124,14 +126,14 @@ struct ComposerView: View {
             showOptions.toggle()
         } label: {
             HStack(spacing: 5) {
-                PixelIcon("slider.horizontal.3")
+                Image(systemName: "slider.horizontal.3")
                 Text(compact ? Format.samplingTemperature(settings.temperature)
                              : "Temp \(Format.samplingTemperature(settings.temperature))").monospacedDigit()
             }
             .font(.uiCallout)
             .padding(.horizontal, 11)
             .padding(.vertical, 5)
-            .contentShape(PixelRect.pill)
+            .contentShape(Capsule())
         }
         .buttonStyle(.plain)
         .glassCapsule(interactive: true)
@@ -173,7 +175,7 @@ private struct ThinkPill: View {
             withAnimation(.snappy) { settings.thinkingEnabled.toggle() }
         } label: {
             HStack(spacing: 5) {
-                PixelIcon("brain.head.profile")
+                Image(systemName: "brain.head.profile")
                     .symbolEffect(.bounce, value: on)
                 if !compact { Text("Think") }
             }
@@ -181,12 +183,12 @@ private struct ThinkPill: View {
             .foregroundStyle(on ? Palette.accent : .secondary)
             .padding(.horizontal, 11)
             .padding(.vertical, 5)
-            .contentShape(PixelRect.pill)
+            .contentShape(Capsule())
         }
         .buttonStyle(.plain)
         // Plain glass + accent outline: tinted glass made the whole chat column drop out of window captures.
         .glassCapsule(interactive: true)
-        .overlay(PixelRect.pill.strokeBorder(on ? Palette.accent.opacity(0.6) : .clear, lineWidth: 1))
+        .overlay(Capsule().strokeBorder(on ? Palette.accent.opacity(0.6) : .clear, lineWidth: 1))
         .disabled(backends.kind != .ollama)
         .help(backends.kind == .ollama
               ? (on ? "Thinking on — the model reasons before answering" : "Thinking off — faster, direct answers")
@@ -206,7 +208,7 @@ private struct HarnessPill: View {
             withAnimation(.snappy) { settings.harnessEnabled.toggle() }
         } label: {
             HStack(spacing: 5) {
-                PixelIcon("shield.lefthalf.filled")
+                Image(systemName: "shield.lefthalf.filled")
                     .symbolEffect(.bounce, value: on)
                 if !compact { Text("Harness") }
             }
@@ -214,11 +216,11 @@ private struct HarnessPill: View {
             .foregroundStyle(on ? Palette.accent : .secondary)
             .padding(.horizontal, 11)
             .padding(.vertical, 5)
-            .contentShape(PixelRect.pill)
+            .contentShape(Capsule())
         }
         .buttonStyle(.plain)
         .glassCapsule(interactive: true)
-        .overlay(PixelRect.pill.strokeBorder(on ? Palette.accent.opacity(0.6) : .clear, lineWidth: 1))
+        .overlay(Capsule().strokeBorder(on ? Palette.accent.opacity(0.6) : .clear, lineWidth: 1))
         .disabled(!backends.kind.supportsTools)
         .help(backends.kind.supportsTools
               ? (on ? "Harness on: it picks tools for each message, so search terms leave this Mac. Click to turn it off."
@@ -235,11 +237,11 @@ private struct HarnessStageStrip: View {
 
     var body: some View {
         HStack(spacing: 8) {
-            PixelIcon("shield.lefthalf.filled").foregroundStyle(Palette.accent)
+            Image(systemName: "shield.lefthalf.filled").foregroundStyle(Palette.accent)
             if round > 1 { Text("Round \(round)").fontWeight(.semibold).foregroundStyle(Palette.accent) }
             ForEach(HarnessStage.allCases) { stage in
                 HStack(spacing: 3) {
-                    if stage.rawValue < current.rawValue { PixelIcon("checkmark").font(.system(size: 8, weight: .bold)) }
+                    if stage.rawValue < current.rawValue { Image(systemName: "checkmark").font(.system(size: 8, weight: .bold)) }
                     Text(stage.title)
                 }
                 .fontWeight(stage == current ? .semibold : .regular)
@@ -275,7 +277,7 @@ private struct LiveTicker: View {
                     }
                 }
                 HStack(spacing: 4) {
-                    PixelIcon("stopwatch")
+                    Image(systemName: "stopwatch")
                     Text(Format.seconds(Date().timeIntervalSince(live.startedAt)))
                 }
                 if live.thinkingTokens > 0 {
@@ -318,7 +320,7 @@ struct GenerationOptionsView: View {
                     Text("System instructions").font(.uiHeadline)
                     Spacer()
                     Button("Reset") { settings.systemPrompt = AppSettings.defaultSystemPrompt }
-                        .buttonStyle(PixelButtonStyle())
+                        .controlSize(.small)
                         .disabled(settings.systemPrompt == AppSettings.defaultSystemPrompt)
                 }
                 TextEditor(text: $settings.systemPrompt)
@@ -326,8 +328,8 @@ struct GenerationOptionsView: View {
                     .frame(height: 170)
                     .scrollContentBackground(.hidden)
                     .padding(6)
-                    .background(Color(nsColor: .textBackgroundColor), in: PixelRect(radius: 8))
-                    .overlay(PixelRect(radius: 8).strokeBorder(.separator))
+                    .background(Color(nsColor: .textBackgroundColor), in: RoundedRectangle(cornerRadius: 8))
+                    .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(.separator))
             }
         }
         .padding(16)

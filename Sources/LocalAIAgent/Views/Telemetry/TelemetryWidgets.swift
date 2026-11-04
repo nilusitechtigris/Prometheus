@@ -14,26 +14,22 @@ struct PanelWidget<Trailing: View, Content: View>: View {
     @ViewBuilder var content: Content
 
     var body: some View {
-        let shape = PixelRect(radius: 18)
-        VStack(alignment: .leading, spacing: 10) {
-            HStack(spacing: 8) {
-                PixelIcon(symbol)
-                    .font(.system(size: 11, weight: .bold))
-                    .foregroundStyle(.white)
-                    .frame(width: 22, height: 22)
-                    .background(Palette.gradient, in: PixelRect(radius: 6))
+        let shape = RoundedRectangle(cornerRadius: 16, style: .continuous)
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(spacing: 9) {
+                Image(systemName: symbol)
+                    .font(.system(size: 14, weight: .medium))
+                    .foregroundStyle(Palette.accent)
                 Text(title).font(.uiHeadline)
                 Spacer()
                 trailing
             }
             content
         }
-        .padding(12)
+        .padding(16)
         .frame(maxWidth: fill ? .infinity : nil, maxHeight: fill ? .infinity : nil, alignment: .topLeading)
-        .background {
-            shape.fill(Color.primary.opacity(0.045))
-        }
-        .overlay(shape.strokeBorder(Color.primary.opacity(0.09), lineWidth: Pixel.line))
+        .background(Forge.card, in: shape)
+        .overlay(shape.strokeBorder(Forge.line, lineWidth: 1))
     }
 }
 
@@ -124,7 +120,7 @@ private struct ContextStrip: View {
         Card(padding: 10) {
             VStack(alignment: .leading, spacing: 6) {
                 HStack(spacing: 6) {
-                    PixelIcon("text.word.spacing").font(.uiCaption).foregroundStyle(.secondary)
+                    Image(systemName: "text.word.spacing").font(.uiCaption).foregroundStyle(.secondary)
                     Text("Context").font(.uiCallout.weight(.semibold))
                     Spacer()
                     Text("\(Format.tokens(used)) / \(Format.tokens(ctx))")
@@ -229,7 +225,7 @@ private struct ComponentCard<Stats: View, Footer: View>: View {
         Card(padding: 10) {
             VStack(alignment: .leading, spacing: 8) {
                 HStack(spacing: 6) {
-                    PixelIcon(symbol).font(.uiCaption).foregroundStyle(Palette.accent)
+                    Image(systemName: symbol).font(.uiCaption).foregroundStyle(Palette.accent)
                     Text(title).font(.uiCallout.weight(.semibold))
                     if let subtitle { Text(subtitle).font(.uiCaption).foregroundStyle(.secondary).monospacedDigit() }
                     Spacer()
@@ -305,8 +301,8 @@ private struct CoreBars: View {
             ForEach(Array(values.enumerated()), id: \.offset) { _, v in
                 let level = Thresholds.cpuUsage.level(v)
                 ZStack(alignment: .bottom) {
-                    PixelRect(radius: 1.5).fill(.quaternary.opacity(0.6))
-                    PixelRect(radius: 1.5).fill(level.color.opacity(0.85))
+                    RoundedRectangle(cornerRadius: 1.5).fill(.quaternary.opacity(0.6))
+                    RoundedRectangle(cornerRadius: 1.5).fill(level.color.opacity(0.85))
                         .frame(height: max(1.5, CGFloat(v / 100) * 14))
                 }
                 .frame(height: 14)

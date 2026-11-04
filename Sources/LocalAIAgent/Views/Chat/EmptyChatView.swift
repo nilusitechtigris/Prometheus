@@ -10,10 +10,7 @@ struct EmptyChatView: View {
                 Spacer(minLength: 40)
                 switch backends.status {
                 case .checking:
-                    HStack(spacing: 8) {
-                        PixelSpinner()
-                        Text("Connecting to \(backends.kind.displayName)…")
-                    }
+                    ProgressView("Connecting to \(backends.kind.displayName)…")
                 case .offline:
                     FrameworkSetupCard()
                 case .online:
@@ -49,18 +46,11 @@ private struct WelcomeHero: View {
     var body: some View {
         VStack(spacing: 22) {
             VStack(spacing: 12) {
-                BrandMark(size: 92)
-                    .padding(36)
-                    .background(PixelatedShape(shape: LaurelWreath()).foregroundStyle(Palette.accent2.opacity(0.7)).accessibilityHidden(true))
-                BrandWordmark(size: 38)
+                BrandMark(size: 64)
+                BrandWordmark(size: 24)
                 Text(Brand.tagline)
-                    .font(.pixel(13))
-                    .foregroundStyle(.secondary)
-                Meander()
-                    .stroke(Forge.faint, lineWidth: 1)
-                    .frame(width: 96, height: 9)
-                    .padding(.top, 2)
-                    .accessibilityHidden(true)
+                    .font(.uiCallout)
+                    .foregroundStyle(Palette.accent)
                 if let model = backends.selectedModel {
                     Text("Running **\(model.displayName)** on your \(monitor.chipName)\(settings.harnessEnabled && backends.kind.supportsTools ? "." : " — nothing leaves this Mac.")")
                         .foregroundStyle(.secondary)
@@ -74,7 +64,7 @@ private struct WelcomeHero: View {
                         chat.send(prompt)
                     } label: {
                         HStack(alignment: .top, spacing: 10) {
-                            PixelIcon(symbol)
+                            Image(systemName: symbol)
                                 .foregroundStyle(Palette.accent)
                                 .frame(width: 20)
                             VStack(alignment: .leading, spacing: 3) {
@@ -85,8 +75,8 @@ private struct WelcomeHero: View {
                         }
                         .padding(12)
                         .frame(maxWidth: .infinity, alignment: .leading)
-                        .background(.background.opacity(0.7), in: PixelRect(radius: 12))
-                        .overlay(PixelRect(radius: 12).strokeBorder(.separator, lineWidth: Pixel.line))
+                        .background(.background.opacity(0.7), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                        .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).strokeBorder(.separator, lineWidth: 0.5))
                         .contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)
@@ -102,7 +92,7 @@ private struct FrameworkSetupCard: View {
 
     var body: some View {
         VStack(spacing: 18) {
-            PixelIcon("powerplug")
+            Image(systemName: "powerplug")
                 .font(.system(size: 40))
                 .foregroundStyle(Palette.accent)
             VStack(spacing: 6) {
@@ -118,13 +108,13 @@ private struct FrameworkSetupCard: View {
                     backends.startOllama()
                 } label: {
                     if backends.isStartingOllama {
-                        PixelSpinner().padding(.horizontal, 30)
+                        ProgressView().controlSize(.small).padding(.horizontal, 30)
                     } else {
-                        PixelLabel("Start Ollama", systemImage: "play.fill").padding(.horizontal, 8)
+                        Label("Start Ollama", systemImage: "play.fill").padding(.horizontal, 8)
                     }
                 }
                 .controlSize(.large)
-                .buttonStyle(PixelButtonStyle(prominent: true))
+                .buttonStyle(AccentButtonStyle(compact: true))
                 .disabled(backends.isStartingOllama)
             }
 
@@ -133,15 +123,15 @@ private struct FrameworkSetupCard: View {
                     Text("Set up \(backends.kind.displayName)").font(.uiHeadline)
                     ForEach(Array(backends.kind.setupSteps.enumerated()), id: \.offset) { i, step in
                         HStack(alignment: .firstTextBaseline, spacing: 10) {
-                            Text("\(i + 1)").font(.uiCaption.bold()).frame(width: 18, height: 18).background(PixelRect.round.fill(.quaternary))
-                            Text(step).font(.uiCallout)
+                            Text("\(i + 1)").font(.uiCaption.bold()).frame(width: 18, height: 18).background(Circle().fill(.quaternary))
+                            Text(step).font(.system(.callout, design: step.contains(" ") && !step.contains("→") && step.first?.isLowercase == true ? .monospaced : .default))
                                 .textSelection(.enabled)
                             Spacer()
                             if step.first?.isLowercase == true {
                                 Button {
                                     NSPasteboard.general.clearContents()
                                     NSPasteboard.general.setString(step, forType: .string)
-                                } label: { PixelIcon("doc.on.doc") }
+                                } label: { Image(systemName: "doc.on.doc") }
                                 .buttonStyle(.borderless)
                                 .help("Copy command")
                             }
@@ -164,7 +154,7 @@ private struct FirstModelCard: View {
 
     var body: some View {
         VStack(spacing: 18) {
-            PixelIcon("square.and.arrow.down.on.square")
+            Image(systemName: "square.and.arrow.down.on.square")
                 .font(.system(size: 40))
                 .foregroundStyle(Palette.accent)
             VStack(spacing: 6) {
