@@ -296,30 +296,6 @@ struct GlassGroup<Content: View>: View {
     }
 }
 
-/// A faint glow and a few fine curves behind each page. Deliberately static, so the background never adds
-/// GPU load to the numbers the app is measuring.
-struct AmbientBackground: View {
-    var body: some View {
-        Canvas { context, size in
-            let accent = Palette.accent
-            context.fill(Path(CGRect(origin: .zero, size: size)), with: .color(Forge.panel))
-            context.fill(Path(ellipseIn: CGRect(x: size.width * 0.5, y: -260, width: size.width * 0.7, height: 620)),
-                         with: .radialGradient(Gradient(colors: [accent.opacity(0.09), .clear]),
-                                               center: CGPoint(x: size.width * 0.85, y: 50), startRadius: 0, endRadius: size.width * 0.36))
-            for line in 0..<6 {
-                let offset = CGFloat(line) * 9
-                var curve = Path()
-                curve.move(to: CGPoint(x: size.width * 0.34, y: -10 + offset))
-                curve.addCurve(to: CGPoint(x: size.width + 10, y: 180 + offset * 1.5),
-                               control1: CGPoint(x: size.width * 0.6, y: 190 - offset),
-                               control2: CGPoint(x: size.width * 0.8, y: -60 + offset * 2))
-                context.stroke(curve, with: .color(accent.opacity(0.07)), lineWidth: 0.7)
-            }
-        }
-        .ignoresSafeArea()
-    }
-}
-
 /// The main action: the accent colour with a soft glow.
 struct AccentButtonStyle: ButtonStyle {
     var compact = false

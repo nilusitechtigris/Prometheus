@@ -27,7 +27,6 @@ struct ModelLibraryView: View {
             .frame(maxWidth: 1180)
             .frame(maxWidth: .infinity)
         }
-        .background(AmbientBackground())
         .confirmationDialog("Remove \(removing ?? "")?", isPresented: Binding(get: { removing != nil }, set: { if !$0 { removing = nil } }),
                             titleVisibility: .visible) {
             Button("Remove from Disk", role: .destructive) {

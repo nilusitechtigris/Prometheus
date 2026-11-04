@@ -12,7 +12,6 @@ struct ChatView: View {
             }
             ComposerView()
         }
-        .background(AmbientBackground())
     }
 }
 

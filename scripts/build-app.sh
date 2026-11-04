@@ -43,11 +43,11 @@ rm -rf "$APP"
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
 cp "$BIN_DIR/$EXECUTABLE" "$APP/Contents/MacOS/$EXECUTABLE"
 
-if [[ ! -f build/AppIcon.icns || scripts/make-icon.swift -nt build/AppIcon.icns ]]; then
+if [[ ! -f build/AppIcon.icns || scripts/make-icon.swift -nt build/AppIcon.icns || assets/icon-source.png -nt build/AppIcon.icns ]]; then
     echo "→ Rendering icon"
     TMP="$(mktemp -d)"
     unset SDKROOT
-    swift scripts/make-icon.swift "$TMP/icon.png" >/dev/null
+    swift scripts/make-icon.swift assets/icon-source.png "$TMP/icon.png" >/dev/null
     ICONSET="$TMP/AppIcon.iconset"
     mkdir -p "$ICONSET"
     for s in 16 32 128 256 512; do
@@ -60,6 +60,8 @@ fi
 cp build/AppIcon.icns "$APP/Contents/Resources/AppIcon.icns"
 mkdir -p "$APP/Contents/Resources/Fonts"
 cp assets/fonts/*.ttf assets/fonts/OFL.txt "$APP/Contents/Resources/Fonts/"
+mkdir -p "$APP/Contents/Resources/Art"
+cp assets/art/*.png "$APP/Contents/Resources/Art/"
 
 cat > "$APP/Contents/Info.plist" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>

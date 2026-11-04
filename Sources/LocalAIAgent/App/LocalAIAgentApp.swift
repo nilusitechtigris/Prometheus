@@ -18,11 +18,24 @@ final class UIState {
     var composerFocusRequest = 0
     var draft = ""
     var chatSearch = ""
+    private(set) var toast: Toast?
+    private var toastTask: Task<Void, Never>?
     /// Select mode in the chats column: ticking several chats to delete them together.
     var selectingChats = false
     var pickedChats: Set<UUID> = []
     /// Set to move the keyboard to the chat search, and cleared once it has.
     var wantsChatSearchFocus = false
+
+    /// Shows a short message at the foot of the window, and reads it out to VoiceOver.
+    func showToast(_ message: String, symbol: String) {
+        toast = Toast(message: message, symbol: symbol)
+        AccessibilityNotification.Announcement(message).post()
+        toastTask?.cancel()
+        toastTask = Task {
+            try? await Task.sleep(for: .seconds(3))
+            if !Task.isCancelled { toast = nil }
+        }
+    }
 
     func openTests(_ tab: TestTab) {
         testTab = tab
@@ -150,6 +163,17 @@ struct LocalAIAgentApp: App {
                     ui.composerFocusRequest += 1
                 }
                 .keyboardShortcut("n")
+            }
+            CommandGroup(before: .sidebar) {
+                Button("Home") { ui.destination = .home }
+                    .keyboardShortcut("1")
+                Button("Chat") { ui.destination = .chat }
+                    .keyboardShortcut("2")
+                Button("Tests") { ui.destination = .tests }
+                    .keyboardShortcut("3")
+                Button("Models") { ui.destination = .library }
+                    .keyboardShortcut("4")
+                Divider()
             }
             CommandGroup(after: .sidebar) {
                 Picker("Theme", selection: Binding(get: { ThemeStore.shared.theme },

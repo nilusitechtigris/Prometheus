@@ -50,7 +50,6 @@ struct SettingsView: View {
             .frame(maxWidth: 1180, alignment: .leading)
             .frame(maxWidth: .infinity)
         }
-        .background(AmbientBackground())
     }
 }
 

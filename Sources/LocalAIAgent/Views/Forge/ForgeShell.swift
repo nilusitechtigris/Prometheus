@@ -9,12 +9,13 @@ struct ForgeShell: View {
             MainPage()
                 // Clear of the window's title bar, where clicks would drag the window.
                 .safeAreaPadding(.top, 22)
-                .background(Forge.panel)
+                .background(Forge.panel.opacity(0.84))
                 .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
                 .overlay(RoundedRectangle(cornerRadius: 20, style: .continuous).strokeBorder(Forge.line, lineWidth: 1))
                 .padding([.vertical, .trailing], 10)
         }
-        .background(SidebarBackdrop())
+        .overlay(alignment: .bottom) { ToastHost() }
+        .background(WindowBackdrop())
         .background(Forge.black)
         .ignoresSafeArea()
         .preferredColorScheme(.dark)
@@ -63,24 +64,18 @@ private struct ForgeWindowStyle: NSViewRepresentable {
     func updateNSView(_ view: StyledView, context: Context) {}
 }
 
-/// A soft glow and a few fine curves behind the sidebar. Drawn once, so it adds no load.
-private struct SidebarBackdrop: View {
+/// The AI-generated picture behind the whole window.
+private struct WindowBackdrop: View {
     var body: some View {
-        Canvas { context, size in
-            let accent = Palette.accent
-            context.fill(Path(ellipseIn: CGRect(x: -120, y: size.height * 0.1, width: 260, height: 420)),
-                         with: .radialGradient(Gradient(colors: [accent.opacity(0.13), .clear]),
-                                               center: CGPoint(x: 10, y: size.height * 0.1 + 210), startRadius: 0, endRadius: 210))
-            for line in 0..<7 {
-                let offset = CGFloat(line) * 7
-                var curve = Path()
-                curve.move(to: CGPoint(x: -10, y: size.height - 120 + offset))
-                curve.addCurve(to: CGPoint(x: 226, y: size.height - 210 + offset * 1.6),
-                               control1: CGPoint(x: 70, y: size.height - 30 + offset), control2: CGPoint(x: 140, y: size.height - 250 - offset))
-                context.stroke(curve, with: .color(accent.opacity(0.1)), lineWidth: 0.6)
-            }
+        if let picture = Art.window {
+            Image(nsImage: picture)
+                .interpolation(.high)
+                .resizable()
+                .aspectRatio(contentMode: .fill)
+                .frame(minWidth: 0, maxWidth: .infinity, minHeight: 0, maxHeight: .infinity)
+                .clipped()
+                .accessibilityHidden(true)
         }
-        .accessibilityHidden(true)
     }
 }
 
@@ -95,7 +90,7 @@ private struct ForgeSidebar: View {
     var body: some View {
         VStack(spacing: 0) {
             VStack(spacing: 8) {
-                BrandMark(size: 44)
+                BrandMark(size: 56)
                 BrandWordmark(size: 13)
                 Text(Brand.tagline).font(.uiCaption).foregroundStyle(Palette.accent)
             }
@@ -172,5 +167,37 @@ private struct ForgeSidebar: View {
         .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).strokeBorder(Forge.line, lineWidth: 1))
         .help(harnessOn ? "Harness on: search terms go to Wikipedia, Stack Overflow, arXiv and MDN"
                         : "100% local — prompts and responses never leave this Mac")
+    }
+}
+
+// MARK: - Toasts
+
+/// A short message at the foot of the window, which goes away by itself.
+struct Toast: Equatable {
+    let id = UUID()
+    let message: String
+    let symbol: String
+}
+
+private struct ToastHost: View {
+    @Environment(UIState.self) private var ui
+
+    var body: some View {
+        Group {
+            if let toast = ui.toast {
+                Label(toast.message, systemImage: toast.symbol)
+                    .font(.uiCallout)
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 9)
+                    .background(Forge.card, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+                    .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous).strokeBorder(Forge.line, lineWidth: 1))
+                    .shadow(color: .black.opacity(0.3), radius: 10, y: 3)
+                    .padding(.bottom, 24)
+                    .transition(.move(edge: .bottom).combined(with: .opacity))
+                    .id(toast.id)
+            }
+        }
+        .animation(.snappy, value: ui.toast)
+        .allowsHitTesting(false)
     }
 }

@@ -29,9 +29,9 @@ Prometheus is a native macOS app (SwiftUI, Apple Silicon) for chatting with loca
 - **Chats**: a column docked beside the conversation on the Chat page. Search covers titles and messages (⌘F). Hover over a chat for its trash button, or right-click to rename or delete it. The Select button ticks several chats, with Select All and Deselect All, to delete them together. The sidebar's Chat button or ⌥⌘2 opens and collapses the column.
 - **Look and feel**:
   - The Forge layout: near-black with a lime accent and Geist type, with a wide sidebar and each page in a rounded panel beside it
-  - Seven colour themes (View › Theme, or Settings › Appearance) and a static background of soft glow and fine curves
+  - Seven colour themes (View › Theme, or Settings › Appearance) and AI-generated background pictures in `assets/art`
   - Green, yellow and red always keep their health meaning, whatever the theme
-  - The Prometheus brand: a lime flame around a diamond, and a Prometheus theme to match. The mark and wordmark stay the same in every theme. The icon is drawn by `scripts/make-icon.swift`.
+  - The Prometheus brand: a tall lime flame around a diamond, and a Prometheus theme to match. The mark and wordmark stay the same in every theme. The icon is an AI-generated flame (`assets/icon-source.png`), framed by `scripts/make-icon.swift`.
 
 ## Run it
 

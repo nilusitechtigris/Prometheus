@@ -8,6 +8,34 @@ struct HomePage: View {
 
     var body: some View {
         ScrollView {
+            ZStack(alignment: .topTrailing) {
+                heroPicture
+                content
+            }
+            .frame(maxWidth: 1240)
+            .frame(maxWidth: .infinity)
+        }
+    }
+
+    /// The crystal, fading out to the left and at the foot so it melts into the page.
+    @ViewBuilder
+    private var heroPicture: some View {
+        if let picture = Art.homeHero {
+            Image(nsImage: picture)
+                .interpolation(.high)
+                .resizable()
+                .scaledToFit()
+                .frame(width: 800)
+                .mask(LinearGradient(stops: [.init(color: .clear, location: 0), .init(color: .black, location: 0.36)],
+                                     startPoint: .leading, endPoint: .trailing))
+                .mask(LinearGradient(stops: [.init(color: .black, location: 0.7), .init(color: .clear, location: 1)],
+                                     startPoint: .top, endPoint: .bottom))
+                .allowsHitTesting(false)
+                .accessibilityHidden(true)
+        }
+    }
+
+    private var content: some View {
             VStack(alignment: .leading, spacing: 16) {
                 HomeHero()
                 HStack(alignment: .top, spacing: 16) {
@@ -24,10 +52,6 @@ struct HomePage: View {
                 }
             }
             .padding(24)
-            .frame(maxWidth: 1180)
-            .frame(maxWidth: .infinity)
-        }
-        .background(AmbientBackground())
     }
 }
 
@@ -39,9 +63,6 @@ private struct HomeHero: View {
 
     var body: some View {
         ZStack(alignment: .topTrailing) {
-            CrystalArt()
-                .frame(width: 430, height: 300)
-                .offset(x: 20, y: -10)
             ModePicker()
             VStack(alignment: .leading, spacing: 8) {
                 (Text("Small models.\n").foregroundStyle(Forge.ink) + Text("Serious work.").foregroundStyle(Palette.accent))
@@ -72,9 +93,9 @@ private struct HomeHero: View {
                 .padding(.top, 14)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(.top, 34)
+            .padding(.top, 48)
         }
-        .frame(height: 256)
+        .frame(height: 334, alignment: .top)
     }
 }
 
@@ -131,75 +152,6 @@ private struct ModePicker: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-    }
-}
-
-/// The glowing crystal on its platform. Drawn once, so it adds no load to the numbers the app measures.
-struct CrystalArt: View {
-    var body: some View {
-        Canvas { context, size in
-            let accent = Palette.accent
-            let x = size.width * 0.5
-            let middle = size.height * 0.42
-            func point(_ dx: CGFloat, _ dy: CGFloat) -> CGPoint { CGPoint(x: x + dx, y: middle + dy) }
-            func polygon(_ points: [CGPoint]) -> Path {
-                var path = Path()
-                path.addLines(points)
-                path.closeSubpath()
-                return path
-            }
-
-            // Glow behind everything.
-            context.fill(Path(ellipseIn: CGRect(x: x - 210, y: middle - 170, width: 420, height: 340)),
-                         with: .radialGradient(Gradient(colors: [accent.opacity(0.26), .clear]), center: point(0, 0), startRadius: 0, endRadius: 200))
-
-            // Orbits, with a bright dot on each.
-            var orbits = context
-            orbits.opacity = 0.55
-            for (width, height, tilt) in [(380.0, 120.0, -0.28), (300.0, 92.0, 0.2)] {
-                var orbit = context
-                orbit.translateBy(x: x, y: middle + 30)
-                orbit.rotate(by: .radians(tilt))
-                orbit.stroke(Path(ellipseIn: CGRect(x: -width / 2, y: -height / 2, width: width, height: height)),
-                             with: .color(accent.opacity(0.3)), lineWidth: 0.8)
-            }
-            for spot in [point(-140, -36), point(150, -82)] {
-                var dot = context
-                dot.addFilter(.shadow(color: accent, radius: 7))
-                dot.fill(Path(ellipseIn: CGRect(x: spot.x - 4, y: spot.y - 4, width: 8, height: 8)), with: .color(accent))
-            }
-
-            // The platform.
-            let floor = middle + 118
-            for (index, width) in [340.0, 262.0, 190.0].enumerated() {
-                let height = width * 0.17
-                context.stroke(Path(ellipseIn: CGRect(x: x - width / 2, y: floor - height / 2 + 8, width: width, height: height)),
-                               with: .color(accent.opacity(0.14 + Double(index) * 0.1)), lineWidth: 1)
-            }
-            context.fill(Path(ellipseIn: CGRect(x: x - 70, y: floor - 10, width: 140, height: 26)), with: .color(Color(white: 0.02)))
-            context.stroke(Path(ellipseIn: CGRect(x: x - 70, y: floor - 10, width: 140, height: 26)), with: .color(accent.opacity(0.6)), lineWidth: 1)
-            context.fill(Path(ellipseIn: CGRect(x: x - 34, y: floor - 3, width: 68, height: 12)),
-                         with: .radialGradient(Gradient(colors: [accent, .clear]), center: CGPoint(x: x, y: floor + 3), startRadius: 0, endRadius: 34))
-
-            // The crystal, with light coming up from its point.
-            let top = point(0, -112), left = point(-68, -8), right = point(68, -8), front = point(6, 8), bottom = point(0, 112)
-            let beam = polygon([point(-3, 100), point(3, 100), CGPoint(x: x + 8, y: floor + 3), CGPoint(x: x - 8, y: floor + 3)])
-            context.fill(beam, with: .linearGradient(Gradient(colors: [accent.opacity(0.9), accent.opacity(0.2)]), startPoint: point(0, 100), endPoint: CGPoint(x: x, y: floor)))
-            var crystal = context
-            crystal.addFilter(.shadow(color: accent.opacity(0.75), radius: 26))
-            crystal.fill(polygon([top, left, bottom, right]), with: .color(accent.opacity(0.25)))
-            context.fill(polygon([top, left, front]), with: .linearGradient(Gradient(colors: [Color(red: 0.88, green: 1, blue: 0.5), Color(red: 0.46, green: 0.66, blue: 0.1)]), startPoint: top, endPoint: left))
-            context.fill(polygon([top, front, right]), with: .linearGradient(Gradient(colors: [Color(red: 0.62, green: 0.83, blue: 0.2), Color(red: 0.2, green: 0.33, blue: 0.04)]), startPoint: top, endPoint: right))
-            context.fill(polygon([left, front, bottom]), with: .linearGradient(Gradient(colors: [Color(red: 0.3, green: 0.45, blue: 0.07), Color(red: 0.8, green: 1, blue: 0.3)]), startPoint: left, endPoint: bottom))
-            context.fill(polygon([front, right, bottom]), with: .linearGradient(Gradient(colors: [Color(red: 0.16, green: 0.26, blue: 0.03), Color(red: 0.72, green: 0.95, blue: 0.22)]), startPoint: right, endPoint: bottom))
-            var edges = Path()
-            edges.addLines([top, left, bottom, right, top])
-            edges.addLines([left, front, right])
-            edges.addLines([top, front, bottom])
-            context.stroke(edges, with: .color(Color(red: 0.9, green: 1, blue: 0.6).opacity(0.5)), lineWidth: 0.7)
-        }
-        .allowsHitTesting(false)
-        .accessibilityHidden(true)
     }
 }
 

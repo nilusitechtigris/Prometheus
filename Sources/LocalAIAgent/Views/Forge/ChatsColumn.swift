@@ -45,14 +45,22 @@ struct ChatsColumn: View {
         .confirmationDialog("Delete “\(deleting?.title ?? "")”?",
                             isPresented: Binding(get: { deleting != nil }, set: { if !$0 { deleting = nil } }),
                             titleVisibility: .visible) {
-            Button("Delete", role: .destructive) { if let c = deleting { chat.delete(c.id) }; deleting = nil }
+            Button("Delete", role: .destructive) {
+                if let c = deleting {
+                    chat.delete(c.id)
+                    ui.showToast("Chat deleted", symbol: "trash")
+                }
+                deleting = nil
+            }
         } message: {
             Text("This conversation will be removed from this Mac.")
         }
         .confirmationDialog("Delete \(chatCount(picked.count))?", isPresented: $confirmDeletePicked, titleVisibility: .visible) {
             Button("Delete", role: .destructive) {
+                let count = picked.count
                 chat.delete(picked)
                 endSelecting()
+                ui.showToast("\(chatCount(count).capitalized) deleted", symbol: "trash")
             }
         } message: {
             Text("These conversations will be removed from this Mac. This can't be undone.")

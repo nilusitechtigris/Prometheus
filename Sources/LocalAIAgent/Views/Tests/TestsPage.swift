@@ -30,7 +30,6 @@ struct TestsPage: View {
             case .harness: HarnessTestDashboard()
             }
         }
-        .background(AmbientBackground())
     }
 }
 

@@ -1,69 +1,83 @@
-// Renders the Prometheus app icon as a 1024×1024 PNG.  Usage: swift scripts/make-icon.swift out.png
-// The lime flame and diamond from BrandMark in Brand.swift, on a near-black tile with a soft glow.
+// Turns the AI-generated flame into the 1024×1024 macOS app icon, and optionally the logo the app draws.
+// Usage: swift scripts/make-icon.swift assets/icon-source.png out.png [assets/art/flame.png]
 import AppKit
 
-let output = CommandLine.arguments.count > 1 ? CommandLine.arguments[1] : "AppIcon.png"
-let size = 1024
-let rep = NSBitmapImageRep(bitmapDataPlanes: nil, pixelsWide: size, pixelsHigh: size, bitsPerSample: 8,
-                           samplesPerPixel: 4, hasAlpha: true, isPlanar: false, colorSpaceName: .deviceRGB,
-                           bytesPerRow: 0, bitsPerPixel: 0)!
-NSGraphicsContext.saveGraphicsState()
-NSGraphicsContext.current = NSGraphicsContext(bitmapImageRep: rep)
-let ctx = NSGraphicsContext.current!.cgContext
+let arguments = CommandLine.arguments
+guard arguments.count >= 3,
+      let source = NSImage(contentsOfFile: arguments[1])?.cgImage(forProposedRect: nil, context: nil, hints: nil)
+else {
+    print("usage: make-icon.swift source.png icon.png [logo.png]")
+    exit(1)
+}
+
+// The flame's place in the picture, as fractions of its side. The picture is black everywhere else.
+let flameCentre = CGPoint(x: 0.499, y: 0.464)
+let flameHeight: CGFloat = 0.616
 let space = CGColorSpace(name: CGColorSpace.sRGB)!
 
-func rgb(_ hex: UInt32, _ alpha: CGFloat = 1) -> CGColor {
-    CGColor(srgbRed: CGFloat((hex >> 16) & 0xFF) / 255, green: CGFloat((hex >> 8) & 0xFF) / 255,
-            blue: CGFloat(hex & 0xFF) / 255, alpha: alpha)
+func canvas(_ wide: Int, _ high: Int) -> CGContext {
+    CGContext(data: nil, width: wide, height: high, bitsPerComponent: 8, bytesPerRow: 0, space: space,
+              bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue)!
 }
 
-func gradient(_ colors: [CGColor]) -> CGGradient { CGGradient(colorsSpace: space, colors: colors as CFArray, locations: nil)! }
-
-// Apple's icon grid: 824pt body centred on a 1024 canvas.
-let tileRect = CGRect(x: 100, y: 100, width: 824, height: 824)
-let tile = CGPath(roundedRect: tileRect, cornerWidth: 185, cornerHeight: 185, transform: nil)
-
-ctx.saveGState()
-ctx.setShadow(offset: CGSize(width: 0, height: -12), blur: 28, color: rgb(0x000000, 0.35))
-ctx.addPath(tile)
-ctx.setFillColor(rgb(0x000000))
-ctx.fillPath()
-ctx.restoreGState()
-
-ctx.saveGState()
-ctx.addPath(tile)
-ctx.clip()
-ctx.drawLinearGradient(gradient([rgb(0x141611), rgb(0x070807)]), start: CGPoint(x: 512, y: 924), end: CGPoint(x: 512, y: 100), options: [])
-ctx.drawRadialGradient(gradient([rgb(0xA8E22A, 0.34), rgb(0xA8E22A, 0)]), startCenter: CGPoint(x: 512, y: 500), startRadius: 0,
-                       endCenter: CGPoint(x: 512, y: 500), endRadius: 400, options: [])
-ctx.restoreGState()
-
-// The mark on its 100-point grid, the same points as FlameMark in Brand.swift. y runs down there.
-let outline: [(CGFloat, CGFloat)] = [(50, 3), (63, 27), (73, 15), (91, 50), (68, 94), (32, 94), (9, 50), (27, 15), (37, 27)]
-let cut: [(CGFloat, CGFloat)] = [(50, 38), (69, 63), (50, 88), (31, 63)]
-let inner: [(CGFloat, CGFloat)] = [(50, 53), (58, 63), (50, 73), (42, 63)]
-let scale: CGFloat = 5.9
-let originX = 512 - 50 * scale, originY = 512 + 50 * scale
-
-let mark = CGMutablePath()
-for shape in [outline, cut, inner] {
-    mark.addLines(between: shape.map { CGPoint(x: originX + $0.0 * scale, y: originY - $0.1 * scale) })
-    mark.closeSubpath()
+func save(_ context: CGContext, to path: String) {
+    let rep = NSBitmapImageRep(cgImage: context.makeImage()!)
+    try! rep.representation(using: .png, properties: [:])!.write(to: URL(fileURLWithPath: path))
 }
 
-ctx.saveGState()
-ctx.setShadow(offset: .zero, blur: 70, color: rgb(0xC6F135, 0.55))
-ctx.addPath(mark)
-ctx.setFillColor(rgb(0xC6F135))
-ctx.fillPath(using: .evenOdd)
-ctx.restoreGState()
+func writeIcon(to path: String) {
+    let size = 1024
+    let context = canvas(size, size)
+    context.interpolationQuality = .high
 
-ctx.saveGState()
-ctx.addPath(mark)
-ctx.clip(using: .evenOdd)
-ctx.drawLinearGradient(gradient([rgb(0xE4FF62), rgb(0xA8E22A)]), start: CGPoint(x: 512, y: 810), end: CGPoint(x: 512, y: 230), options: [])
-ctx.restoreGState()
+    // Apple's icon grid: an 824 tile centred on the 1024 canvas.
+    let tile = CGPath(roundedRect: CGRect(x: 100, y: 100, width: 824, height: 824),
+                      cornerWidth: 185, cornerHeight: 185, transform: nil)
+    context.saveGState()
+    context.setShadow(offset: CGSize(width: 0, height: -12), blur: 28,
+                      color: CGColor(srgbRed: 0, green: 0, blue: 0, alpha: 0.35))
+    context.addPath(tile)
+    context.setFillColor(CGColor(srgbRed: 0, green: 0, blue: 0, alpha: 1))
+    context.fillPath()
+    context.restoreGState()
 
-NSGraphicsContext.restoreGraphicsState()
-try! rep.representation(using: .png, properties: [:])!.write(to: URL(fileURLWithPath: output))
-print("Wrote \(output)")
+    // The flame stands about 70% of the tile's height, centred on it.
+    let side = 580 / flameHeight
+    let frame = CGRect(x: 512 - flameCentre.x * side, y: 512 - (1 - flameCentre.y) * side, width: side, height: side)
+    context.saveGState()
+    context.addPath(tile)
+    context.clip()
+    context.draw(source, in: frame)
+    context.restoreGState()
+
+    // A hairline keeps the black tile visible on a dark Dock.
+    context.addPath(tile)
+    context.setStrokeColor(CGColor(srgbRed: 1, green: 1, blue: 1, alpha: 0.14))
+    context.setLineWidth(3)
+    context.strokePath()
+    save(context, to: path)
+}
+
+/// The flame alone on transparency, in a square so it sits in the same frame the app gives its logo.
+func writeLogo(to path: String) {
+    let wide = source.width
+    let crop = Int(CGFloat(wide) * flameHeight / 0.98)
+    let origin = CGPoint(x: CGFloat(wide) * flameCentre.x - CGFloat(crop) / 2,
+                         y: CGFloat(source.height) * flameCentre.y - CGFloat(crop) / 2)
+    let square = source.cropping(to: CGRect(origin: origin, size: CGSize(width: crop, height: crop)))!
+
+    let context = canvas(crop, crop)
+    context.draw(square, in: CGRect(x: 0, y: 0, width: crop, height: crop))
+    let pixels = context.data!.bindMemory(to: UInt8.self, capacity: crop * context.bytesPerRow)
+    for offset in stride(from: 0, to: crop * context.bytesPerRow, by: 4) {
+        // Green is the flame's brightest channel, so it says how much of each edge pixel is flame.
+        let green = pixels[offset + 1]
+        pixels[offset] = green
+        pixels[offset + 2] = green
+        pixels[offset + 3] = green
+    }
+    save(context, to: path)
+}
+
+writeIcon(to: arguments[2])
+if arguments.count > 3 { writeLogo(to: arguments[3]) }
