@@ -59,7 +59,7 @@ struct HardwareTestDashboard: View {
                 .frame(width: 46, height: 46)
                 .background(Palette.gradient, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
             VStack(alignment: .leading, spacing: 2) {
-                Text("Hardware Test").font(.system(size: 26, weight: .bold, design: .rounded))
+                Text("Hardware Test").font(Brand.display(28))
                 Text("CPU, GPU, memory and disk: the parts that set how fast models load, read and write on this Mac.")
                     .font(.callout)
                     .foregroundStyle(.secondary)

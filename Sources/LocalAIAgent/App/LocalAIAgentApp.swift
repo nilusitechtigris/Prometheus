@@ -6,7 +6,7 @@ import SwiftUI
 @Observable
 final class UIState {
     /// What the main area shows: the selected chat or one of the test dashboards.
-    enum Destination: Hashable { case chat, modelTest, hardwareTest }
+    enum Destination: Hashable { case chat, modelTest, hardwareTest, harnessTest }
 
     var destination: Destination = .chat
     /// Telemetry widget windows currently on screen.
@@ -123,6 +123,8 @@ struct LocalAIAgentApp: App {
                     .keyboardShortcut("3", modifiers: [.command, .option])
                 Button("Hardware Test Dashboard") { ui.destination = .hardwareTest }
                     .keyboardShortcut("4", modifiers: [.command, .option])
+                Button("Harness Test Dashboard") { ui.destination = .harnessTest }
+                    .keyboardShortcut("5", modifiers: [.command, .option])
             }
         }
 

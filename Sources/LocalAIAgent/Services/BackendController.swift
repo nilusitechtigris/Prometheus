@@ -116,9 +116,10 @@ final class BackendController {
 
     /// Asks the framework for the context window and thinking support of any installed model,
     /// which may not be the chat's selected one.
-    func capabilities(of model: LocalModel) async -> (context: Int, supportsThinking: Bool) {
+    func capabilities(of model: LocalModel) async -> (context: Int, supportsThinking: Bool, supportsTools: Bool) {
         let info = try? await backend.details(for: model.id)
-        return (context(details: info, catalog: model.catalog), info?.supportsThinking ?? model.catalog?.thinking ?? false)
+        return (context(details: info, catalog: model.catalog), info?.supportsThinking ?? model.catalog?.thinking ?? false,
+                info?.capabilities.contains("tools") ?? false)
     }
 
     var supportsThinking: Bool { details?.supportsThinking ?? selectedModel?.catalog?.thinking ?? false }

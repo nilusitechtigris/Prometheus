@@ -152,7 +152,7 @@ enum HardwareBenchmarks {
 
     /// Writes then reads a 1 GB file with the page cache bypassed (F_NOCACHE), then deletes it.
     static func disk() -> (read: Double?, write: Double?) {
-        let url = FileManager.default.temporaryDirectory.appendingPathComponent("medonom-disk-test-\(UUID().uuidString)")
+        let url = FileManager.default.temporaryDirectory.appendingPathComponent("prometheus-disk-test-\(UUID().uuidString)")
         defer { unlink(url.path) }
         let chunk = 8 << 20, total = 1 << 30
         let buffer = UnsafeMutableRawPointer.allocate(byteCount: chunk, alignment: 16384)

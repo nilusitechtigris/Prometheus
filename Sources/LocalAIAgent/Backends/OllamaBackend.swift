@@ -71,12 +71,13 @@ struct OllamaBackend: LLMBackend {
                     if let max = request.maxTokens { options["num_predict"] = max }
                     var body: [String: Any] = [
                         "model": request.model,
-                        "messages": request.messages.map { ["role": $0.role, "content": $0.content] },
+                        "messages": request.messages.map(Self.encode),
                         "stream": true,
                         "options": options,
                         "keep_alive": "10m",
                     ]
                     if let think = request.think { body["think"] = think }
+                    if !request.tools.isEmpty { body["tools"] = request.tools.map(Self.encode) }
 
                     let lines = try await HTTP.lines(HTTP.request(url("api/chat"), method: "POST", json: body))
                     for try await line in lines {
@@ -87,6 +88,12 @@ struct OllamaBackend: LLMBackend {
                         if let message = obj["message"] as? [String: Any] {
                             if let t = message["thinking"] as? String, !t.isEmpty { continuation.yield(.thinking(t)) }
                             if let c = message["content"] as? String, !c.isEmpty { continuation.yield(.content(c)) }
+                            for call in message["tool_calls"] as? [[String: Any]] ?? [] {
+                                guard let function = call["function"] as? [String: Any],
+                                      let name = function["name"] as? String else { continue }
+                                let arguments = (function["arguments"] as? [String: Any] ?? [:]).mapValues { "\($0)" }
+                                continuation.yield(.toolCall(ToolCall(name: name, arguments: arguments)))
+                            }
                         }
                         if obj["done"] as? Bool == true {
                             let ns = 1_000_000_000.0
@@ -110,6 +117,25 @@ struct OllamaBackend: LLMBackend {
             }
             continuation.onTermination = { _ in task.cancel() }
         }
+    }
+
+    private static func encode(_ turn: ChatTurn) -> [String: Any] {
+        var message: [String: Any] = ["role": turn.role, "content": turn.content]
+        if !turn.toolCalls.isEmpty {
+            message["tool_calls"] = turn.toolCalls.map { ["function": ["name": $0.name, "arguments": $0.arguments]] }
+        }
+        if let name = turn.toolName { message["tool_name"] = name }
+        return message
+    }
+
+    private static func encode(_ tool: ToolDefinition) -> [String: Any] {
+        let properties = Dictionary(uniqueKeysWithValues: tool.parameters.map {
+            ($0.name, ["type": "string", "description": $0.description])
+        })
+        return ["type": "function",
+                "function": ["name": tool.name, "description": tool.description,
+                             "parameters": ["type": "object", "properties": properties,
+                                            "required": tool.parameters.map(\.name)]]]
     }
 
     // MARK: Ollama-only management

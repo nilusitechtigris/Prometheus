@@ -1,9 +1,9 @@
-<p align="center"><img src="assets/icon.png" width="128" alt="Medonom icon"></p>
+<p align="center"><img src="assets/icon.png" width="128" alt="Prometheus icon"></p>
 
-<h1 align="center">Medonom</h1>
-<p align="center"><b>Local AI, measured.</b></p>
+<h1 align="center">Prometheus</h1>
+<p align="center"><b>The fire is yours.</b></p>
 
-Medonom is a native macOS app (SwiftUI, Apple Silicon) for chatting with local LLMs. It includes live observability and a curated list of verified models. Everything runs on your Mac.
+Prometheus is a native macOS app (SwiftUI, Apple Silicon) for chatting with local LLMs. It includes live observability and a curated list of verified models. Everything runs on your Mac.
 
 ## Features
 
@@ -22,21 +22,22 @@ Medonom is a native macOS app (SwiftUI, Apple Silicon) for chatting with local L
   - Temperatures come from the SMC. No admin rights needed.
   - Every metric uses green / yellow / red ranges
 - **Tests** (sidebar › Tests), each with its own dashboard:
-  - **Model Test** (⌥⌘3): 20 auto-graded questions on any installed model, chosen in the dashboard without changing the model you chat with (math, reasoning, knowledge, instruction following, code, and a long-context "find the secret code" check), plus speed: tokens/sec, first-token time and prompt reading speed. The dashboard shows the score ring, a per-category chart, every question with the model's answer, a quality-vs-speed chart and a leaderboard of every model and quant you've tested.
+  - **Model Test** (⌥⌘3): 24 auto-graded questions on any installed model, chosen in the dashboard without changing the model you chat with. Six topics (math, reasoning, knowledge, instructions, code, long context), each with Basic, Intermediate, Advanced and Expert questions. Each level is worth double the one below it (1, 2, 4, 8 points), so most of the score sits in the expert questions, and the score is the share of the 90 points. 100 is the level of Opus 5.5 at max effort, which scored 90 of 90 in a blind run of these questions (no tools, answers unseen). Also measures tokens/sec, first-token time and prompt reading speed. The dashboard shows the score and tier, a skill map of topics by level, every question (expand one to see what it checks, what was asked, and the model's reply), a quality-vs-speed chart and a leaderboard of every model and quant you've tested.
   - **Hardware Test** (⌥⌘4, about 30 s): CPU single and multi-core, CPU and GPU memory bandwidth, GPU FP16 matrix math (Metal Performance Shaders), disk read/write with the cache bypassed, and 15 s of sustained GPU load to check for throttling. The dashboard shows temperatures and load through the run, and estimates each catalog model's generation speed on this Mac from the measured bandwidth (tokens/sec ≈ bandwidth ÷ model size), next to the speeds the model test measured.
+  - **Harness Test** (⌥⌘5): the same 24 questions on the same model with the harness off and on, reusing a matching run without it if there is one, then 7 poisoned web pages both ways. The harness gives the model web search (Wikipedia, Stack Overflow, arXiv and MDN through their official APIs), a page reader limited to 100 trusted sites, and an exact calculator, plus basic prompt injection protection: invisible text, hidden comments, images, encoded blobs and text aimed at the assistant are removed before the model reads a page, and links to untrusted sites and known secrets are removed from its replies. The allowlist is enforced in code, and query strings and redirects off the list are refused. Tools need Ollama and a model that supports them. The harness only runs in this test, so chat stays fully local; during a harness test, the test's fixed search terms go to those search services.
   - Chat waits while a test runs, so the numbers stay clean. Results are saved in `tests.json` next to the conversations.
 - **Look and feel**:
-  - Six colour themes (View › Theme, or Settings › Appearance) and a static ambient mesh background
+  - Seven colour themes (View › Theme, or Settings › Appearance) and a static ambient mesh background
   - Liquid Glass for the composer and controls on macOS 26+
   - Green, yellow and red always keep their health meaning, whatever the theme
-  - The Medonom mark: a metronome whose pendulum weight is an AI spark, against a tempo scale that runs green → yellow → red. The in-app mark and wordmark follow the theme. The icon is drawn by `scripts/make-icon.swift`.
+  - The Prometheus brand: a flame with the AI spark at its heart, a serif wordmark, and a Prometheus theme with a background lit from below. The mark and wordmark stay the same in every theme. The icon is drawn by `scripts/make-icon.swift`.
 
 ## Run it
 
 Requirements: an Apple Silicon Mac, macOS 14 or later, and Command Line Tools or Xcode.
 
 ```bash
-make run        # builds "build/Medonom.app" and opens it
+make run        # builds "build/Prometheus.app" and opens it
 make install    # copies it to /Applications
 ```
 
@@ -60,6 +61,7 @@ Sources/LocalAIAgent/
   App/                      App entry, settings, debug hooks
   Backends/                 Ollama + OpenAI-compatible clients (streaming)
   Services/                 Backend/chat controllers, persistence, model + hardware tests
+  Services/Harness/         Trusted sites, web tools, calculator, injection guard and test
   Telemetry/                CPU/GPU/memory/thermal sampling
   Models/                   Chat types, curated catalog, health thresholds
   Views/                    Chat, sidebar, toolbar, telemetry widgets, test dashboards, library, settings

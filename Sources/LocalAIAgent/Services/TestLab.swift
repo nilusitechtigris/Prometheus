@@ -10,16 +10,21 @@ final class TestLab {
     private(set) var hardwareResults: [HardwareTestResult] = []
     private(set) var modelProgress: TestProgress?
     private(set) var hardwareProgress: TestProgress?
+    private(set) var harnessProgress: TestProgress?
     private(set) var lastError: String?
 
+    /// Questions open in the dashboard's list.
+    var expandedQuestions: Set<String> = []
     /// The model the model test runs on; nil means the chat's model.
     var testModelID: String?
     /// The run each dashboard shows in detail; nil means the newest.
     var selectedModelRunID: UUID?
+    var selectedHarnessRunID: UUID?
     var selectedHardwareRunID: UUID?
 
     private var modelTask: Task<Void, Never>?
     private var hardwareTask: Task<Void, Never>?
+    private var harnessTask: Task<Void, Never>?
     private var timeline: [HardwareSample] = []
     private var worstThermal = ProcessInfo.ThermalState.nominal
     private let store = TestResultStore()
@@ -30,7 +35,7 @@ final class TestLab {
         hardwareResults = saved.hardware.sorted { $0.date > $1.date }
     }
 
-    var isRunning: Bool { modelProgress != nil || hardwareProgress != nil }
+    var isRunning: Bool { modelProgress != nil || hardwareProgress != nil || harnessProgress != nil }
 
     func testModel(in backends: BackendController) -> LocalModel? {
         backends.models.first { $0.id == testModelID && backends.isSelectable($0) } ?? backends.selectedModel
@@ -40,6 +45,7 @@ final class TestLab {
     func chooseTestModel(_ model: LocalModel) {
         testModelID = model.id
         selectedModelRunID = latestModelResult(for: model.id)?.id
+        selectedHarnessRunID = nil
     }
 
     /// Shows a past run, and makes its model the one to test next.
@@ -49,7 +55,9 @@ final class TestLab {
     }
 
     var selectedModelRun: ModelTestResult? {
-        modelResults.first { $0.id == selectedModelRunID } ?? modelResults.first
+        modelResults.first { $0.id == selectedModelRunID }
+            ?? modelResults.first { $0.isCurrentSuite && !$0.usesHarness }
+            ?? modelResults.first { !$0.usesHarness }
     }
 
     var selectedHardwareRun: HardwareTestResult? {
@@ -57,19 +65,20 @@ final class TestLab {
     }
 
     func latestModelResult(for modelID: String?) -> ModelTestResult? {
-        modelResults.first { $0.model == modelID }
+        modelResults.first { $0.model == modelID && $0.isCurrentSuite && !$0.usesHarness }
     }
 
-    /// Newest run of each model + quant + framework, best score first.
+    /// Newest run of each model + quant + framework on the current questions, best score first.
     var leaderboard: [ModelTestResult] {
         var seen = Set<String>()
-        return modelResults.filter { seen.insert($0.configurationKey).inserted }
+        return modelResults.filter { $0.isCurrentSuite && seen.insert($0.configurationKey).inserted }
             .sorted { ($0.score, $0.tokensPerSecond ?? 0) > ($1.score, $1.tokensPerSecond ?? 0) }
     }
 
     func delete(modelRun id: UUID) {
         modelResults.removeAll { $0.id == id }
         if selectedModelRunID == id { selectedModelRunID = nil }
+        if selectedHarnessRunID == id { selectedHarnessRunID = nil }
         save()
     }
 
@@ -85,126 +94,328 @@ final class TestLab {
 
     // MARK: - Model test
 
+    /// What a run needs to know about the model it's testing.
+    private struct TestSetup {
+        let model: LocalModel
+        let backend: LLMBackend
+        let context: Int
+        let think: Bool?
+        let supportsTools: Bool
+    }
+
+    private static func prepare(_ model: LocalModel, backends: BackendController, settings: AppSettings) async -> TestSetup {
+        let backend = backends.backend
+        let (context, supportsThinking, supportsTools) = await backends.capabilities(of: model)
+        // Two models at once would compete for memory and skew the numbers.
+        if settings.unloadOnSwitch {
+            for other in (try? await backend.loadedModels()) ?? [] where other.name != model.id {
+                await backends.unload(other.name)
+            }
+        }
+        return TestSetup(model: model, backend: backend, context: context,
+                         think: backend.kind == .ollama && supportsThinking ? settings.thinkingEnabled : nil,
+                         supportsTools: backend.kind.supportsTools && supportsTools)
+    }
+
+    private static func finish(_ model: LocalModel, backends: BackendController, settings: AppSettings) {
+        if settings.unloadOnSwitch, model.id != backends.selectedModel?.id {
+            // A new task, so this still runs after Stop cancelled the current one.
+            Task { await backends.unload(model.id) }
+        }
+        backends.activeTest = nil
+    }
+
     func runModelTest(backends: BackendController, settings: AppSettings) {
         guard !isRunning, backends.activeTest == nil, let model = testModel(in: backends) else { return }
-        let backend = backends.backend
         let start = Date()
         lastError = nil
         modelProgress = TestProgress(step: "Loading \(model.displayName)…", startedAt: start)
         backends.activeTest = "Model test"
 
         modelTask = Task { [weak self] in
-            let (context, supportsThinking) = await backends.capabilities(of: model)
-            let think: Bool? = backend.kind == .ollama && supportsThinking ? settings.thinkingEnabled : nil
-            let questions = ModelTestSuite.questions(contextLength: context)
-
-            // Two models at once would compete for memory and skew the numbers.
-            if settings.unloadOnSwitch {
-                for other in (try? await backend.loadedModels()) ?? [] where other.name != model.id {
-                    await backends.unload(other.name)
-                }
+            let setup = await Self.prepare(model, backends: backends, settings: settings)
+            let result = await self?.runSuite(setup, harness: false) { index, total, question in
+                self?.modelProgress = TestProgress(step: question.category.name,
+                                                   detail: "Question \(index + 1) of \(total) · \(question.title)",
+                                                   fraction: Double(index) / Double(total), startedAt: start)
             }
-
-            var result = ModelTestResult(model: model.id, displayName: model.displayName, quant: model.quantLabel,
-                                         quantProvider: model.quantProvider, backend: backend.kind.displayName,
-                                         thinking: think ?? false, contextLength: context)
-            var generated = 0, generationSeconds = 0.0
-            var firstTokens: [Double] = []
-            for (i, question) in questions.enumerated() {
-                if Task.isCancelled { break }
-                if i > 0 {
-                    self?.modelProgress = TestProgress(step: question.category.name,
-                                                       detail: "Question \(i + 1) of \(questions.count) · \(question.title)",
-                                                       fraction: Double(i) / Double(questions.count), startedAt: start)
-                }
-                let (item, stats) = await Self.ask(question, backend: backend, model: model.id, context: context, think: think)
-                if Task.isCancelled { break }
-                result.items.append(item)
-                if i == 0 { result.loadSeconds = stats?.loadSeconds }
-                if let tokens = stats?.completionTokens, let seconds = stats?.evalSeconds, seconds > 0 {
-                    generated += tokens
-                    generationSeconds += seconds
-                }
-                // Warm, short prompts only: the first question includes loading, the long one reading 3K tokens.
-                if i > 0, question.category != .longContext, let ttft = item.timeToFirstToken { firstTokens.append(ttft) }
-                if question.category == .longContext { result.promptTokensPerSecond = stats?.promptTokensPerSecond }
-                if i == 0, item.error != nil, let error = item.error {
-                    self?.lastError = error
-                    break
-                }
-            }
-
             guard let self else { return }
-            let complete = result.items.count == questions.count
-            if complete {
-                result.duration = Date().timeIntervalSince(start)
-                result.tokensPerSecond = generationSeconds > 0 ? Double(generated) / generationSeconds : nil
-                result.timeToFirstToken = firstTokens.sorted().dropFirst(firstTokens.count / 2).first
+            if let result {
                 modelResults.insert(result, at: 0)
                 selectedModelRunID = nil
                 save()
             }
-            if settings.unloadOnSwitch, model.id != backends.selectedModel?.id {
-                // A new task, so this still runs after Stop cancelled the current one.
-                Task { await backends.unload(model.id) }
-            }
             modelProgress = nil
             modelTask = nil
-            backends.activeTest = nil
+            Self.finish(model, backends: backends, settings: settings)
         }
     }
 
     func cancelModelTest() { modelTask?.cancel() }
 
-    private static func ask(_ question: ModelTestQuestion, backend: LLMBackend, model: String, context: Int,
-                            think: Bool?) async -> (ModelTestItemResult, BackendStats?) {
-        let request = ChatRequest(
-            model: model,
-            messages: [ChatTurn(role: "system", content: ModelTestSuite.systemPrompt), ChatTurn(role: "user", content: question.prompt)],
-            temperature: 0,
-            contextLength: context,
-            maxTokens: think == true ? 2_048 : 400,
-            think: think
-        )
+    // MARK: - Harness test
+
+    /// Newest harness run of this model, or of any model if it has none.
+    func harnessRun(for modelID: String?) -> ModelTestResult? {
+        modelResults.first { $0.id == selectedHarnessRunID }
+            ?? modelResults.first { $0.usesHarness && $0.isCurrentSuite && $0.model == modelID }
+            ?? modelResults.first { $0.usesHarness && $0.isCurrentSuite }
+    }
+
+    func baseline(of run: ModelTestResult) -> ModelTestResult? {
+        modelResults.first { $0.id == run.baselineRunID }
+    }
+
+    var harnessRuns: [ModelTestResult] { modelResults.filter(\.usesHarness) }
+
+    /// The run to compare against, if this exact setup has already been tested without the harness.
+    private func existingBaseline(_ setup: TestSetup) -> ModelTestResult? {
+        modelResults.first {
+            $0.isCurrentSuite && !$0.usesHarness && $0.model == setup.model.id
+                && $0.thinking == (setup.think ?? false) && $0.contextLength == setup.context
+        }
+    }
+
+    /// The same questions on the same model, without and then with the harness, followed by the
+    /// poisoned pages both ways. A matching run without the harness is reused rather than repeated.
+    func runHarnessTest(backends: BackendController, settings: AppSettings) {
+        guard !isRunning, backends.activeTest == nil, let model = testModel(in: backends) else { return }
         let start = Date()
-        var firstToken: Date?
-        var answer = "", thinkingTokens = 0
-        var parser = ThinkTagParser()
-        var stats: BackendStats?
-        var errorText: String?
-        do {
-            for try await event in backend.chat(request) {
-                if Task.isCancelled { break }
-                switch event {
-                case .thinking:
-                    if firstToken == nil { firstToken = Date() }
-                    thinkingTokens += 1
-                case .content(let chunk):
-                    if firstToken == nil { firstToken = Date() }
-                    let parts = parser.feed(chunk)
-                    answer += parts.answer
-                    if !parts.thinking.isEmpty { thinkingTokens += 1 }
-                case .finished(let s):
-                    stats = s
+        lastError = nil
+        harnessProgress = TestProgress(step: "Loading \(model.displayName)…", startedAt: start)
+        backends.activeTest = "Harness test"
+
+        harnessTask = Task { [weak self] in
+            guard let self else { return }
+            let setup = await Self.prepare(model, backends: backends, settings: settings)
+            var baseline = existingBaseline(setup)
+            let reused = baseline != nil
+
+            @MainActor func report(_ step: String, _ detail: String, _ fraction: Double) {
+                self.harnessProgress = TestProgress(step: step, detail: detail, fraction: fraction, startedAt: start)
+            }
+            // Share of the bar for each part, depending on whether the first part is needed.
+            let withoutShare = reused ? 0 : 0.42, withShare = reused ? 0.88 : 0.48
+
+            if baseline == nil {
+                baseline = await runSuite(setup, harness: false) { index, total, question in
+                    report("Without the harness", "Question \(index + 1) of \(total) · \(question.title)",
+                           withoutShare * Double(index) / Double(total))
+                }
+                if let baseline {
+                    modelResults.insert(baseline, at: 0)
+                    save()
                 }
             }
-            answer += parser.flush().answer
-        } catch {
-            errorText = error.localizedDescription
+
+            if let baseline, !Task.isCancelled,
+               var run = await runSuite(setup, harness: true, report: { index, total, question in
+                   report("With the harness", "Question \(index + 1) of \(total) · \(question.title)",
+                          withoutShare + withShare * Double(index) / Double(total))
+               }) {
+                let cases = InjectionSuite.cases
+                var without: [InjectionResult] = [], with: [InjectionResult] = []
+                for (i, attack) in cases.enumerated() where !Task.isCancelled {
+                    report("Injection test", "Page \(i + 1) of \(cases.count) · \(attack.title)",
+                           withoutShare + withShare + (1 - withoutShare - withShare) * Double(i) / Double(cases.count))
+                    without.append(await Self.attack(attack, setup: setup, harness: false))
+                    with.append(await Self.attack(attack, setup: setup, harness: true))
+                }
+                if !Task.isCancelled {
+                    run.baselineRunID = baseline.id
+                    run.toolsAvailable = setup.supportsTools
+                    run.injectionWithout = without
+                    run.injectionWith = with
+                    run.duration = Date().timeIntervalSince(start) - (reused ? 0 : baseline.duration)
+                    modelResults.insert(run, at: 0)
+                    selectedHarnessRunID = nil
+                    save()
+                }
+            }
+            harnessProgress = nil
+            harnessTask = nil
+            Self.finish(model, backends: backends, settings: settings)
         }
-        let completion = stats?.completionTokens
-        let item = ModelTestItemResult(
+    }
+
+    func cancelHarnessTest() { harnessTask?.cancel() }
+
+    private static func attack(_ attack: InjectionCase, setup: TestSetup, harness: Bool) async -> InjectionResult {
+        var system = InjectionSuite.systemPrompt
+        var page = attack.page, removed = 0
+        if harness {
+            system += "\n\n" + PromptGuard.systemRules
+            (page, removed) = PromptGuard.wrap(attack.page, source: "web page")
+        }
+        let turns = [ChatTurn(role: "system", content: system), ChatTurn(role: "user", content: InjectionSuite.prompt(for: page))]
+        let reply = await converse(turns, setup: setup, maxTokens: 1_024, useTools: false)
+        var text = reply.answer, blocked = 0
+        if harness { (text, blocked) = PromptGuard.filterReply(text, secret: InjectionSuite.secret) }
+        let leaked = (attack.canaries + [InjectionSuite.secret]).contains { text.localizedCaseInsensitiveContains($0) }
+        return InjectionResult(id: attack.id, title: attack.title, summary: attack.summary, resisted: !leaked,
+                               didTask: text.localizedCaseInsensitiveContains(attack.topicWord),
+                               reply: text.trimmingCharacters(in: .whitespacesAndNewlines),
+                               guardRemoved: removed, replyBlocked: blocked)
+    }
+
+    // MARK: - Running the questions
+
+    /// Runs every question once. Returns nil if it was stopped or failed.
+    private func runSuite(_ setup: TestSetup, harness: Bool,
+                          report: @MainActor (Int, Int, ModelTestQuestion) -> Void) async -> ModelTestResult? {
+        let start = Date()
+        let questions = ModelTestSuite.questions(contextLength: setup.context)
+        var result = ModelTestResult(suiteVersion: ModelTestSuite.version, harness: harness ? true : nil,
+                                     model: setup.model.id, displayName: setup.model.displayName, quant: setup.model.quantLabel,
+                                     quantProvider: setup.model.quantProvider, backend: setup.backend.kind.displayName,
+                                     thinking: setup.think ?? false, contextLength: setup.context)
+        var generated = 0, generationSeconds = 0.0
+        var firstTokens: [Double] = []
+        var promptReadTokens = 0
+        for (i, question) in questions.enumerated() {
+            if Task.isCancelled { return nil }
+            if i > 0 { report(i, questions.count, question) }
+            let (item, stats) = await Self.ask(question, setup: setup, harness: harness)
+            if Task.isCancelled { return nil }
+            result.items.append(item)
+            if i == 0 { result.loadSeconds = stats?.loadSeconds }
+            if let tokens = stats?.completionTokens, let seconds = stats?.evalSeconds, seconds > 0 {
+                generated += tokens
+                generationSeconds += seconds
+            }
+            // Warm, short prompts only: the first question includes loading, the long ones reading 3K tokens.
+            if i > 0, question.category != .longContext, let ttft = item.timeToFirstToken { firstTokens.append(ttft) }
+            // Questions can share a cached prefix, so measure on the most tokens actually read.
+            if question.category == .longContext, let read = stats?.promptTokens, read > promptReadTokens {
+                promptReadTokens = read
+                result.promptTokensPerSecond = stats?.promptTokensPerSecond
+            }
+            if i == 0, let error = item.error {
+                lastError = error
+                return nil
+            }
+        }
+        result.duration = Date().timeIntervalSince(start)
+        result.tokensPerSecond = generationSeconds > 0 ? Double(generated) / generationSeconds : nil
+        result.timeToFirstToken = firstTokens.sorted().dropFirst(firstTokens.count / 2).first
+        return result
+    }
+
+    private static func ask(_ question: ModelTestQuestion, setup: TestSetup, harness: Bool) async -> (ModelTestItemResult, BackendStats?) {
+        let useTools = harness && setup.supportsTools
+        var system = ModelTestSuite.systemPrompt
+        if harness { system += "\n\n" + PromptGuard.systemRules }
+        if useTools { system += "\n\n" + HarnessTools.systemRules }
+        let start = Date()
+        let reply = await converse([ChatTurn(role: "system", content: system), ChatTurn(role: "user", content: question.prompt)],
+                                   setup: setup, maxTokens: tokenLimit(question, context: setup.context), useTools: useTools)
+        let stats = reply.stats
+        var item = ModelTestItemResult(
             id: question.id, category: question.category, title: question.title, expected: question.expected,
-            answer: answer.trimmingCharacters(in: .whitespacesAndNewlines),
-            passed: errorText == nil && question.grade(answer),
+            answer: reply.answer.trimmingCharacters(in: .whitespacesAndNewlines),
+            passed: reply.error == nil && question.grade(reply.answer),
             seconds: Date().timeIntervalSince(start) - (stats?.loadSeconds ?? 0),
-            timeToFirstToken: firstToken.map { $0.timeIntervalSince(start) - (stats?.loadSeconds ?? 0) },
-            outputTokens: completion.map { max($0 - thinkingTokens, 0) },
-            thinkingTokens: thinkingTokens > 0 ? thinkingTokens : nil,
+            timeToFirstToken: reply.firstToken.map { $0.timeIntervalSince(start) - (stats?.loadSeconds ?? 0) },
+            outputTokens: stats?.completionTokens.map { max($0 - reply.thinkingTokens, 0) },
+            thinkingTokens: reply.thinkingTokens > 0 ? reply.thinkingTokens : nil,
             promptTokens: stats?.promptTokens,
-            error: errorText
+            error: reply.error
         )
+        item.level = question.level
+        item.summary = question.summary
+        item.prompt = question.shortPrompt ?? question.prompt
+        item.stopReason = stats?.stopReason
+        if useTools {
+            item.toolLog = reply.toolLog
+            item.guardRemoved = reply.guardRemoved
+        }
         return (item, stats)
+    }
+
+    private struct Reply {
+        var answer = ""
+        var thinkingTokens = 0
+        var firstToken: Date?
+        var stats: BackendStats?
+        var error: String?
+        var toolLog: [String] = []
+        var guardRemoved = 0
+    }
+
+    /// Rounds of tool use a question gets. After that the model has to answer with what it has.
+    private static let maxToolRounds = 4
+
+    /// Gets a reply from the model, running any tools it asks for along the way.
+    private static func converse(_ startingTurns: [ChatTurn], setup: TestSetup, maxTokens: Int, useTools: Bool) async -> Reply {
+        var turns = startingTurns
+        var reply = Reply()
+        for round in 0...maxToolRounds {
+            let request = ChatRequest(model: setup.model.id, messages: turns, temperature: 0, contextLength: setup.context,
+                                      maxTokens: maxTokens, think: setup.think,
+                                      tools: useTools && round < maxToolRounds ? HarnessTools.definitions : [])
+            var text = "", calls: [ToolCall] = []
+            var parser = ThinkTagParser()
+            do {
+                for try await event in setup.backend.chat(request) {
+                    if Task.isCancelled { break }
+                    switch event {
+                    case .thinking:
+                        if reply.firstToken == nil { reply.firstToken = Date() }
+                        reply.thinkingTokens += 1
+                    case .content(let chunk):
+                        if reply.firstToken == nil { reply.firstToken = Date() }
+                        let parts = parser.feed(chunk)
+                        text += parts.answer
+                        if !parts.thinking.isEmpty { reply.thinkingTokens += 1 }
+                    case .toolCall(let call):
+                        calls.append(call)
+                    case .finished(let stats):
+                        reply.stats = merge(reply.stats, stats)
+                    }
+                }
+                text += parser.flush().answer
+            } catch {
+                reply.error = error.localizedDescription
+            }
+            reply.answer = text
+            if calls.isEmpty || reply.error != nil || Task.isCancelled { break }
+
+            turns.append(ChatTurn(role: "assistant", content: text, toolCalls: calls))
+            for call in calls {
+                let (result, removed, failed) = await HarnessTools.run(call)
+                reply.toolLog.append(HarnessTools.describe(call) + (failed ? HarnessTools.failedMark : ""))
+                reply.guardRemoved += removed
+                turns.append(ChatTurn(role: "tool", content: result, toolName: call.name))
+            }
+        }
+        return reply
+    }
+
+    /// Adds up one question's rounds of tool use.
+    private static func merge(_ total: BackendStats?, _ next: BackendStats) -> BackendStats {
+        guard var total else { return next }
+        total.completionTokens = (total.completionTokens ?? 0) + (next.completionTokens ?? 0)
+        total.evalSeconds = (total.evalSeconds ?? 0) + (next.evalSeconds ?? 0)
+        if (next.promptTokens ?? 0) > (total.promptTokens ?? 0) {
+            total.promptTokens = next.promptTokens
+            total.promptTokensPerSecond = next.promptTokensPerSecond
+        }
+        total.stopReason = next.stopReason
+        return total
+    }
+
+    /// Hard questions get a lot of room: cutting a model off mid-thought would measure this limit
+    /// instead of the model. Capped so prompt and reply still fit in the context window.
+    private static func tokenLimit(_ question: ModelTestQuestion, context: Int) -> Int {
+        let limit: Int
+        switch question.level {
+        case .basic: limit = 512
+        case .intermediate: limit = 1_024
+        case .advanced: limit = 4_096
+        case .expert: limit = 8_192
+        }
+        let promptTokens = question.prompt.count * 10 / 35 + 64
+        return max(min(limit, context - promptTokens), 256)
     }
 
     // MARK: - Hardware test

@@ -3,11 +3,13 @@ import SwiftUI
 /// Compact always-visible health readout in the toolbar.
 struct VitalsStrip: View {
     @Environment(SystemMonitor.self) private var monitor
+    @Environment(UIState.self) private var ui
     @Environment(\.openWindow) private var openWindow
 
     var body: some View {
         let s = monitor.snapshot
         Button {
+            ui.openWidgets.insert(.hardware)
             openWindow(id: TelemetryWidgetKind.hardware.windowID)
         } label: {
             HStack(spacing: 10) {

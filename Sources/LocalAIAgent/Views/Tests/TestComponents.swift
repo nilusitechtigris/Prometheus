@@ -4,6 +4,7 @@ import SwiftUI
 struct ScoreRing: View {
     let score: Double?
     var size: CGFloat = 64
+    var unit = "/100"
 
     var body: some View {
         let level = TestScoring.modelScore.level(score)
@@ -14,11 +15,11 @@ struct ScoreRing: View {
                 .trim(from: 0, to: (score ?? 0) / 100)
                 .stroke(level.color, style: StrokeStyle(lineWidth: width, lineCap: .round))
                 .rotationEffect(.degrees(-90))
-            HStack(alignment: .firstTextBaseline, spacing: 1) {
-                Text(score.map { "\(Int($0.rounded()))" } ?? "—")
-                    .font(.system(size: size * 0.3, weight: .bold, design: .rounded))
+            VStack(spacing: 0) {
+                Text(score.map(TestFormat.score) ?? "—")
+                    .font(.system(size: size * 0.32, weight: .bold, design: .rounded))
                     .monospacedDigit()
-                Text("%").font(.system(size: size * 0.14, weight: .semibold, design: .rounded)).foregroundStyle(.secondary)
+                Text(unit).font(.system(size: size * 0.13, weight: .semibold, design: .rounded)).foregroundStyle(.secondary)
             }
         }
         .frame(width: size, height: size)
@@ -146,6 +147,9 @@ enum TestFormat {
         guard let v else { return "—" }
         return v >= 100 ? String(format: "%.0f", v) : String(format: "%.1f", v)
     }
+
+    /// A model test score out of 100. Rounded down, so only a perfect run shows 100.
+    static func score(_ v: Double) -> String { "\(Int(v))" }
 
     static func number(_ v: Double?, decimals: Int = 1) -> String {
         guard let v else { return "—" }

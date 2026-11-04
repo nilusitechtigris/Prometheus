@@ -11,7 +11,7 @@ struct SidebarView: View {
     @State private var deleting: Conversation?
 
     /// Selectable sidebar rows: the two test dashboards, then the chats.
-    private enum Item: Hashable { case chat(UUID), modelTest, hardwareTest }
+    private enum Item: Hashable { case chat(UUID), modelTest, hardwareTest, harnessTest }
 
     private var selection: Binding<Item?> {
         Binding(get: {
@@ -19,6 +19,7 @@ struct SidebarView: View {
             case .chat: return chat.selectedID.map(Item.chat)
             case .modelTest: return .modelTest
             case .hardwareTest: return .hardwareTest
+            case .harnessTest: return .harnessTest
             }
         }, set: { item in
             switch item {
@@ -27,6 +28,7 @@ struct SidebarView: View {
                 ui.destination = .chat
             case .modelTest?: ui.destination = .modelTest
             case .hardwareTest?: ui.destination = .hardwareTest
+            case .harnessTest?: ui.destination = .harnessTest
             case nil: if ui.destination == .chat { chat.selectedID = nil }
             }
         })
@@ -39,11 +41,14 @@ struct SidebarView: View {
             }
             Section("Tests") {
                 TestRow(title: "Model Test", symbol: "checkmark.seal.fill", isRunning: lab.modelProgress != nil,
-                        status: lab.latestModelResult(for: lab.testModel(in: backends)?.id).map { Format.percent($0.score) })
+                        status: lab.latestModelResult(for: lab.testModel(in: backends)?.id).map { "\(TestFormat.score($0.score))/100" })
                     .tag(Item.modelTest)
                 TestRow(title: "Hardware Test", symbol: "cpu.fill", isRunning: lab.hardwareProgress != nil,
                         status: lab.hardwareResults.first?.gpuBandwidth.map { "\(TestFormat.gbPerSecond($0)) GB/s" })
                     .tag(Item.hardwareTest)
+                TestRow(title: "Harness Test", symbol: "shield.lefthalf.filled", isRunning: lab.harnessProgress != nil,
+                        status: lab.harnessRun(for: lab.testModel(in: backends)?.id).map { "\(TestFormat.score($0.score))/100" })
+                    .tag(Item.harnessTest)
             }
             if chat.conversations.isEmpty {
                 Section("Chats") {
@@ -72,8 +77,8 @@ struct SidebarView: View {
         .searchable(text: $search, placement: .sidebar, prompt: "Search chats")
         .safeAreaInset(edge: .top, spacing: 0) {
             HStack(spacing: 8) {
-                BrandMark(size: 22)
-                BrandWordmark(size: 17)
+                BrandMark(size: 24)
+                BrandWordmark(size: 14)
                 Spacer()
             }
             .padding(.horizontal, 14)

@@ -201,6 +201,8 @@ final class ChatController {
                     content += parts.answer
                     // A chunk inside <think>…</think> (or the tags themselves) is a thinking token.
                     noteToken(isThinking: parts.answer.isEmpty && (!parts.thinking.isEmpty || parser.isThinking))
+                case .toolCall:
+                    break   // Chat doesn't offer tools.
                 case .finished(let s):
                     stats = s
                 }

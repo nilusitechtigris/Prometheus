@@ -82,10 +82,39 @@ enum ModelTestCategory: String, Codable, CaseIterable, Identifiable {
     }
 }
 
+/// How hard a question is. Each level is worth twice the one below it.
+enum ModelTestLevel: Int, Codable, CaseIterable, Identifiable {
+    case basic = 1, intermediate, advanced, expert
+
+    var id: Int { rawValue }
+
+    var name: String {
+        switch self {
+        case .basic: return "Basic"
+        case .intermediate: return "Intermediate"
+        case .advanced: return "Advanced"
+        case .expert: return "Expert"
+        }
+    }
+
+    /// Points for a correct answer: 1, 2, 4, 8.
+    var weight: Int { 1 << (rawValue - 1) }
+}
+
 /// One run of the model test: a fixed set of auto-graded questions, plus the speed numbers
 /// measured while answering them.
 struct ModelTestResult: Codable, Identifiable, Equatable {
     var id = UUID()
+    /// Version of the question set; nil for runs from before the weighted test.
+    var suiteVersion: Int?
+    /// True when the run had the harness: tools plus prompt injection protection.
+    var harness: Bool?
+    /// The run without the harness that this one compares against.
+    var baselineRunID: UUID?
+    /// False when the model can't use tools, so only the injection guard applied.
+    var toolsAvailable: Bool?
+    var injectionWithout: [InjectionResult]?
+    var injectionWith: [InjectionResult]?
     var date = Date()
     var model: String
     var displayName: String
@@ -106,16 +135,33 @@ struct ModelTestResult: Codable, Identifiable, Equatable {
     var loadSeconds: Double?
 
     var passed: Int { items.filter(\.passed).count }
-    var score: Double { items.isEmpty ? 0 : Double(passed) / Double(items.count) * 100 }
+    var points: Int { items.filter(\.passed).map(\.weight).reduce(0, +) }
+    var maxPoints: Int { items.map(\.weight).reduce(0, +) }
+    /// Share of the available points. Scores from different suite versions don't compare.
+    var score: Double { Self.score(of: items) ?? 0 }
+    var isCurrentSuite: Bool { suiteVersion == ModelTestSuite.version }
 
     func score(for category: ModelTestCategory) -> Double? {
-        let inCategory = items.filter { $0.category == category }
-        guard !inCategory.isEmpty else { return nil }
-        return Double(inCategory.filter(\.passed).count) / Double(inCategory.count) * 100
+        Self.score(of: items.filter { $0.category == category })
     }
 
-    /// Identifies the exact model + quant + framework + thinking setup, for the leaderboard.
-    var configurationKey: String { "\(backend)|\(model)|\(thinking)" }
+    func score(for level: ModelTestLevel) -> Double? {
+        Self.score(of: items.filter { $0.level == level })
+    }
+
+    private static func score(of items: [ModelTestItemResult]) -> Double? {
+        let total = items.map(\.weight).reduce(0, +)
+        guard total > 0 else { return nil }
+        return Double(items.filter(\.passed).map(\.weight).reduce(0, +)) / Double(total) * 100
+    }
+
+    var usesHarness: Bool { harness == true }
+
+    /// Identifies the exact model + quant + framework + thinking + harness setup, for the leaderboard.
+    var configurationKey: String { "\(backend)|\(model)|\(thinking)|\(usesHarness)" }
+
+    /// How the run was set up, for labels.
+    var setupLabel: String { (thinking ? " · thinking" : "") + (usesHarness ? " · harness" : "") }
 }
 
 struct ModelTestItemResult: Codable, Equatable, Identifiable {
@@ -131,6 +177,39 @@ struct ModelTestItemResult: Codable, Equatable, Identifiable {
     var thinkingTokens: Int?
     var promptTokens: Int?
     var error: String?
+    // Absent in runs from before the weighted test.
+    var level: ModelTestLevel?
+    /// What the question checks.
+    var summary: String?
+    /// The question as asked, shortened when it's thousands of tokens of notes.
+    var prompt: String?
+    var stopReason: String?
+    /// What the model did with its tools, one line per call.
+    var toolLog: [String]?
+    /// How much the injection guard removed from what the tools returned.
+    var guardRemoved: Int?
+
+    var weight: Int { level?.weight ?? 1 }
+    /// The model hit the test's token limit before it finished.
+    var ranOutOfTokens: Bool { ["length", "max_tokens"].contains(stopReason) }
+}
+
+/// One poisoned page from the injection test.
+struct InjectionResult: Codable, Identifiable, Equatable {
+    var id: String
+    var title: String
+    var summary: String
+    /// The reply shows no sign of the attack.
+    var resisted: Bool
+    /// The reply still does the real task.
+    var didTask: Bool
+    var reply: String
+    /// What the guard took out of the page.
+    var guardRemoved: Int
+    /// What the reply filter took out of the reply.
+    var replyBlocked: Int
+
+    var passed: Bool { resisted && didTask }
 }
 
 /// Live progress of a running test.
@@ -142,8 +221,20 @@ struct TestProgress: Equatable {
 }
 
 enum TestScoring {
-    /// Overall model score bands: ≥ 80 % good, 50–80 % fair, below that weak.
-    static let modelScore = Threshold(warning: 80, critical: 50, higherIsWorse: false, displayMax: 100)
+    /// Score bands on the frontier scale, where only top models come near 100.
+    static let modelScore = Threshold(warning: 50, critical: 25, higherIsWorse: false, displayMax: 100)
+
+    /// Where a score sits on the frontier scale.
+    static func tier(_ score: Double) -> String {
+        switch score {
+        case 100...: return "Frontier"
+        case 75...: return "Expert"
+        case 50...: return "Advanced"
+        case 25...: return "Capable"
+        default: return "Basic"
+        }
+    }
+
     /// Sustained GPU throughput: below 90 % of the best burst means the chip is throttling.
     static let sustained = Threshold(warning: 90, critical: 75, higherIsWorse: false, displayMax: 100)
 }

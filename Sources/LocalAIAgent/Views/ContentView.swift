@@ -6,6 +6,7 @@ struct ContentView: View {
     @Environment(BackendController.self) private var backends
     @Environment(UIState.self) private var ui
     @Environment(\.openWindow) private var openWindow
+    @Environment(\.dismissWindow) private var dismissWindow
 
     var body: some View {
         @Bindable var ui = ui
@@ -19,6 +20,7 @@ struct ContentView: View {
                 case .chat: ChatView()
                 case .modelTest: ModelTestDashboard()
                 case .hardwareTest: HardwareTestDashboard()
+                case .harnessTest: HarnessTestDashboard()
                 }
             }
         }
@@ -41,6 +43,16 @@ struct ContentView: View {
             if ProcessInfo.processInfo.environment["LOCALAI_OPEN_WIDGETS"] != nil {
                 for kind in TelemetryWidgetKind.allCases { openWindow(id: kind.windowID) }
             }
+            // Closes both widgets after 3 s, then reopens Generation after 6 s.
+            if ProcessInfo.processInfo.environment["LOCALAI_WIDGET_CYCLE"] != nil {
+                try? await Task.sleep(for: .seconds(3))
+                for window in NSApp.windows where window.identifier?.rawValue.contains("widget") == true {
+                    window.performClose(nil)
+                    window.close()
+                }
+                try? await Task.sleep(for: .seconds(3))
+                TelemetryWidgetToggle(open: openWindow, dismiss: dismissWindow, ui: ui)(.generation)
+            }
         }
         #endif
     }
@@ -50,6 +62,7 @@ struct ContentView: View {
         case .chat: return chat.selected?.title ?? Brand.name
         case .modelTest: return "Model Test"
         case .hardwareTest: return "Hardware Test"
+        case .harnessTest: return "Harness Test"
         }
     }
 }

@@ -20,14 +20,14 @@ struct FloatingWidgetWindow: View {
     @Environment(\.dismissWindow) private var dismissWindow
 
     var body: some View {
-        FloatingWidget(baseWidth: kind.baseWidth, onClose: { dismissWindow(id: kind.windowID) }) {
+        FloatingWidget(baseWidth: kind.baseWidth, onClose: { dismissWindow(id: kind.windowID) },
+                       onWindowClosed: { ui.openWidgets.remove(kind) }) {
             switch kind {
             case .generation: GenerationWidget()
             case .hardware: HardwareWidget()
             }
         }
         .onAppear { ui.openWidgets.insert(kind) }
-        .onDisappear { ui.openWidgets.remove(kind) }
     }
 }
 
@@ -37,6 +37,7 @@ struct FloatingWidgetWindow: View {
 private struct FloatingWidget<Content: View>: View {
     let baseWidth: CGFloat
     let onClose: () -> Void
+    let onWindowClosed: () -> Void
     @ViewBuilder var content: Content
     @State private var baseHeight: CGFloat = 0
     @State private var hovering = false
@@ -71,7 +72,7 @@ private struct FloatingWidget<Content: View>: View {
             .help("Close widget")
         }
         .onHover { h in withAnimation(.easeOut(duration: 0.15)) { hovering = h } }
-        .background(FloatingWindowConfigurator(baseSize: CGSize(width: baseWidth, height: baseHeight)))
+        .background(FloatingWindowConfigurator(baseSize: CGSize(width: baseWidth, height: baseHeight), onClosed: onWindowClosed))
         .ignoresSafeArea()
     }
 }
@@ -84,13 +85,34 @@ private struct WidgetHeightKey: PreferenceKey {
 /// Turns the hosting window into a floating, chrome-less widget that keeps the widget's aspect ratio.
 private struct FloatingWindowConfigurator: NSViewRepresentable {
     let baseSize: CGSize
+    /// Runs however the window closes. SwiftUI's onDisappear doesn't fire for a closed Window scene.
+    let onClosed: () -> Void
+
+    final class Coordinator {
+        weak var window: NSWindow?
+        var observer: NSObjectProtocol?
+
+        deinit {
+            if let observer { NotificationCenter.default.removeObserver(observer) }
+        }
+    }
+
+    func makeCoordinator() -> Coordinator { Coordinator() }
 
     func makeNSView(context: Context) -> NSView { NSView() }
 
     func updateNSView(_ view: NSView, context: Context) {
         let size = baseSize
+        let coordinator = context.coordinator
+        let onClosed = onClosed
         DispatchQueue.main.async {
             guard let window = view.window else { return }
+            if coordinator.window !== window {
+                if let old = coordinator.observer { NotificationCenter.default.removeObserver(old) }
+                coordinator.window = window
+                coordinator.observer = NotificationCenter.default.addObserver(
+                    forName: NSWindow.willCloseNotification, object: window, queue: .main) { _ in onClosed() }
+            }
             window.level = .floating
             window.collectionBehavior.formUnion([.canJoinAllSpaces, .fullScreenAuxiliary])
             window.hidesOnDeactivate = false
@@ -133,6 +155,8 @@ struct TelemetryWidgetToggle {
         if ui.openWidgets.contains(kind) {
             dismiss(id: kind.windowID)
         } else {
+            // Set here too: a reopened window can reuse its view, so onAppear may not run again.
+            ui.openWidgets.insert(kind)
             open(id: kind.windowID)
         }
     }

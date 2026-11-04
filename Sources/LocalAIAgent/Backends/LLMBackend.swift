@@ -56,6 +56,8 @@ enum BackendKind: String, CaseIterable, Identifiable, Codable {
 
     /// Whether the app can set the context window per request. Other frameworks fix it when the model is loaded.
     var supportsPerRequestContext: Bool { self == .ollama }
+    /// Whether the harness can give models tools through this framework.
+    var supportsTools: Bool { self == .ollama }
     var supportsModelDownloads: Bool { self == .ollama }
 }
 
@@ -102,6 +104,27 @@ struct LoadedModel: Identifiable, Equatable {
 struct ChatTurn: Encodable {
     let role: String
     let content: String
+    /// Tool calls the assistant made in this turn, sent back so the model sees what it asked for.
+    var toolCalls: [ToolCall] = []
+    /// On a "tool" turn: which tool produced the content.
+    var toolName: String?
+}
+
+/// A request from the model to run a tool. Arguments are kept as text.
+struct ToolCall: Encodable, Equatable {
+    let name: String
+    let arguments: [String: String]
+}
+
+struct ToolDefinition {
+    struct Parameter {
+        let name: String
+        let description: String
+    }
+
+    let name: String
+    let description: String
+    let parameters: [Parameter]
 }
 
 struct ChatRequest {
@@ -111,6 +134,7 @@ struct ChatRequest {
     var contextLength: Int
     var maxTokens: Int?
     var think: Bool?
+    var tools: [ToolDefinition] = []
 }
 
 struct BackendStats {
@@ -128,6 +152,7 @@ struct BackendStats {
 enum StreamEvent {
     case thinking(String)
     case content(String)
+    case toolCall(ToolCall)
     case finished(BackendStats)
 }
 
