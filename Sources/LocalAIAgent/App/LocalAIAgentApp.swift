@@ -188,6 +188,8 @@ struct LocalAIAgentApp: App {
                 .environment(settings)
                 .environment(backends)
                 .environment(chat)
+                .font(.uiCallout)
+                .buttonStyle(PixelButtonStyle())
         }
     }
 }

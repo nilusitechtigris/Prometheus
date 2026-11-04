@@ -49,12 +49,12 @@ struct HarnessFlowDiagram: View {
         VStack(spacing: 0) {
             wideRow
             ZStack {
-                LoopBackLine(leftInset: 310, rightInset: 147).stroke(Palette.accent.opacity(0.7), lineWidth: 1.5)
+                LoopBackLine(leftInset: 310, rightInset: 147).stroke(Palette.accent.opacity(0.7), lineWidth: 2)
                 Text("Failed a check? Go round again")
                     .font(.uiCaption.weight(.semibold))
                     .foregroundStyle(Palette.accent)
                     .padding(.horizontal, 8)
-                    .background(Color(nsColor: .windowBackgroundColor).opacity(0.9), in: Capsule())
+                    .background(Color(nsColor: .windowBackgroundColor).opacity(0.9), in: PixelRect.pill)
                     .offset(y: 11)
             }
             .frame(height: 26)
@@ -66,9 +66,9 @@ struct HarnessFlowDiagram: View {
             FlowEnd(title: "Your task", symbol: "text.bubble.fill")
             FlowArrow()
             StageNode(stage: .understand).frame(width: 126)
-            FanLines(rows: rows, opening: true).stroke(Palette.accent.opacity(0.55), lineWidth: 1.5).frame(width: 40)
+            FanLines(rows: rows, opening: true).stroke(Palette.accent.opacity(0.55), lineWidth: 2).frame(width: 40)
             routes
-            FanLines(rows: rows, opening: false).stroke(Palette.accent.opacity(0.55), lineWidth: 1.5).frame(width: 40)
+            FanLines(rows: rows, opening: false).stroke(Palette.accent.opacity(0.55), lineWidth: 2).frame(width: 40)
             StageNode(stage: .answer).frame(width: 126)
             FlowArrow()
             StageNode(stage: .check).frame(width: 126)
@@ -105,7 +105,7 @@ struct HarnessFlowDiagram: View {
             StageTitle(stage: .act).frame(height: rowHeight)
             ForEach(Self.routes) { route in
                 HStack(spacing: 0) {
-                    Label(route.kind, systemImage: route.symbol)
+                    PixelLabel(route.kind, systemImage: route.symbol)
                         .font(.uiCaption.weight(.semibold))
                         .lineLimit(1)
                         .frame(width: 126, alignment: .leading)
@@ -118,7 +118,7 @@ struct HarnessFlowDiagram: View {
                             .padding(.horizontal, 6)
                             // No ideal width, so the row never decides which layout fits.
                             .frame(minWidth: 0, idealWidth: 0, maxWidth: .infinity, minHeight: 30)
-                            .background(Palette.accent.opacity(0.10), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+                            .background(Palette.accent.opacity(0.10), in: PixelRect(radius: 8))
                     }
                 }
                 .frame(height: rowHeight)
@@ -130,7 +130,7 @@ struct HarnessFlowDiagram: View {
     /// The way back from Check to Act.
     private var loopNote: some View {
         HStack(alignment: .top, spacing: 8) {
-            Image(systemName: "arrow.counterclockwise")
+            PixelIcon("arrow.counterclockwise")
                 .font(.system(size: 13, weight: .bold))
                 .foregroundStyle(Palette.accent)
                 .frame(width: 20)
@@ -144,7 +144,7 @@ struct HarnessFlowDiagram: View {
         }
         .padding(10)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Palette.accent.opacity(0.10), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+        .background(Palette.accent.opacity(0.10), in: PixelRect(radius: 10))
     }
 
     private var guardrails: some View {
@@ -165,7 +165,7 @@ struct HarnessFlowDiagram: View {
         HStack(alignment: .top, spacing: 10) {
             ForEach(items, id: \.title) { item in
                 VStack(alignment: .leading, spacing: 4) {
-                    Label(item.title, systemImage: item.symbol)
+                    PixelLabel(item.title, systemImage: item.symbol)
                         .font(.uiCallout.weight(.semibold))
                         .foregroundStyle(Palette.accent)
                     Text(item.detail).font(.uiCaption).foregroundStyle(.secondary)
@@ -174,7 +174,7 @@ struct HarnessFlowDiagram: View {
                 .padding(10)
                 // No ideal width, so the width of the text doesn't decide how many fit in a row.
                 .frame(minWidth: 0, idealWidth: 0, maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-                .background(Color.primary.opacity(0.04), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+                .background(Color.primary.opacity(0.04), in: PixelRect(radius: 10))
             }
         }
         .fixedSize(horizontal: false, vertical: true)
@@ -191,7 +191,7 @@ private struct StageTitle: View {
                 .font(.uiCaption.weight(.bold).monospacedDigit())
                 .foregroundStyle(.white)
                 .frame(width: 20, height: 20)
-                .background(Palette.gradient, in: Circle())
+                .background(Palette.gradient, in: PixelRect.round)
             VStack(alignment: .leading, spacing: 1) {
                 Text(stage.title).font(.uiHeadline).lineLimit(1).minimumScaleFactor(0.8)
                 if stage == .act {
@@ -207,7 +207,7 @@ private struct StageNode: View {
     let stage: HarnessStage
 
     var body: some View {
-        let shape = RoundedRectangle(cornerRadius: 12, style: .continuous)
+        let shape = PixelRect(radius: 12)
         VStack(alignment: .leading, spacing: 6) {
             StageTitle(stage: stage)
             Text(stage.summary)
@@ -229,7 +229,7 @@ private struct FlowEnd: View {
 
     var body: some View {
         VStack(spacing: 5) {
-            Image(systemName: symbol).font(.system(size: 18)).foregroundStyle(Palette.accent)
+            PixelIcon(symbol).font(.system(size: 18)).foregroundStyle(Palette.accent)
             Text(title).font(.uiCaption.weight(.semibold)).lineLimit(1).fixedSize()
         }
         .frame(width: 62)
@@ -241,7 +241,7 @@ private struct FlowArrow: View {
     var down = false
 
     var body: some View {
-        Image(systemName: down ? "arrow.down" : "arrow.right")
+        PixelIcon(down ? "arrow.down" : "arrow.right")
             .font(.system(size: small ? 9 : 12, weight: .bold))
             .foregroundStyle(Palette.accent.opacity(0.8))
             .frame(width: small ? 18 : 22)
@@ -259,9 +259,11 @@ private struct FanLines: Shape {
         // The first row holds the step's title, so the lines start at the second.
         for row in 1..<rows {
             let y = rect.height * (CGFloat(row) + 0.5) / CGFloat(rows)
+            // Square elbows, like a circuit in pixel art.
             path.move(to: hub)
-            path.addCurve(to: CGPoint(x: opening ? rect.maxX : rect.minX, y: y),
-                          control1: CGPoint(x: rect.midX, y: hub.y), control2: CGPoint(x: rect.midX, y: y))
+            path.addLine(to: CGPoint(x: rect.midX, y: hub.y))
+            path.addLine(to: CGPoint(x: rect.midX, y: y))
+            path.addLine(to: CGPoint(x: opening ? rect.maxX : rect.minX, y: y))
         }
         return path
     }
@@ -273,17 +275,15 @@ private struct LoopBackLine: Shape {
     let rightInset: CGFloat
 
     func path(in rect: CGRect) -> Path {
-        let start = rect.maxX - rightInset, end = rect.minX + leftInset, bottom = rect.maxY - 2, corner: CGFloat = 8
+        let start = rect.maxX - rightInset, end = rect.minX + leftInset, bottom = rect.maxY - 2
         var path = Path()
         path.move(to: CGPoint(x: start, y: rect.minY))
-        path.addLine(to: CGPoint(x: start, y: bottom - corner))
-        path.addQuadCurve(to: CGPoint(x: start - corner, y: bottom), control: CGPoint(x: start, y: bottom))
-        path.addLine(to: CGPoint(x: end + corner, y: bottom))
-        path.addQuadCurve(to: CGPoint(x: end, y: bottom - corner), control: CGPoint(x: end, y: bottom))
+        path.addLine(to: CGPoint(x: start, y: bottom))
+        path.addLine(to: CGPoint(x: end, y: bottom))
         path.addLine(to: CGPoint(x: end, y: rect.minY))
-        path.move(to: CGPoint(x: end - 5, y: rect.minY + 7))
-        path.addLine(to: CGPoint(x: end, y: rect.minY))
-        path.addLine(to: CGPoint(x: end + 5, y: rect.minY + 7))
+        // A stepped arrowhead.
+        path.addRect(CGRect(x: end - 2, y: rect.minY + 2, width: 4, height: 2))
+        path.addRect(CGRect(x: end - 4, y: rect.minY + 4, width: 8, height: 2))
         return path
     }
 }

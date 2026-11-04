@@ -4,6 +4,8 @@ struct ContentView: View {
     var body: some View {
         ForgeShell()
             .tint(Palette.accent)
+        .font(.uiCallout)
+        .buttonStyle(PixelButtonStyle())
     }
 }
 

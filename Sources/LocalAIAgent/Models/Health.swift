@@ -37,7 +37,10 @@ enum Palette {
     @MainActor static var accent2: Color { ThemeStore.shared.theme.accent2 }
     @MainActor static var glow: Color { ThemeStore.shared.theme.glow }
     @MainActor static var gradient: LinearGradient {
-        LinearGradient(colors: [accent, accent2], startPoint: .topLeading, endPoint: .bottomTrailing)
+        // Two flat bands with a hard edge, the way pixel art shades a surface.
+        LinearGradient(stops: [.init(color: accent2, location: 0), .init(color: accent2, location: 0.32),
+                               .init(color: accent, location: 0.32), .init(color: accent, location: 1)],
+                       startPoint: .top, endPoint: .bottom)
     }
 }
 

@@ -58,11 +58,11 @@ struct ModelLibraryView: View {
         return Button {
             withAnimation(.snappy) { category = c }
         } label: {
-            Label(title, systemImage: symbol)
+            PixelLabel(title, systemImage: symbol)
                 .font(.uiCallout)
                 .padding(.horizontal, 10)
                 .padding(.vertical, 5)
-                .background(active ? AnyShapeStyle(Palette.accent.opacity(0.18)) : AnyShapeStyle(.quaternary.opacity(0.5)), in: Capsule())
+                .background(active ? AnyShapeStyle(Palette.accent.opacity(0.18)) : AnyShapeStyle(.quaternary.opacity(0.5)), in: PixelRect.pill)
                 .foregroundStyle(active ? Palette.accent : .primary)
         }
         .buttonStyle(.plain)
@@ -82,8 +82,8 @@ struct ModelLibraryView: View {
             ForEach(backends.unverifiedModels) { model in
                 Card(padding: 10) {
                     HStack {
-                        Image(systemName: "exclamationmark.shield").foregroundStyle(Palette.warning)
-                        Text(model.id).font(.uiCallout.monospaced())
+                        PixelIcon("exclamationmark.shield").foregroundStyle(Palette.warning)
+                        Text(model.id).font(.uiCallout)
                         Text(Format.bytes(model.sizeBytes)).font(.uiCaption).foregroundStyle(.secondary)
                         Spacer()
                         Button("Remove…", role: .destructive) { removing = model.id }.controlSize(.small)
@@ -97,7 +97,7 @@ struct ModelLibraryView: View {
 private struct SafetyCallout: View {
     var body: some View {
         HStack(alignment: .top, spacing: 12) {
-            Image(systemName: "checkmark.shield.fill")
+            PixelIcon("checkmark.shield.fill")
                 .font(.uiTitle2)
                 .foregroundStyle(Palette.good)
             VStack(alignment: .leading, spacing: 4) {
@@ -110,8 +110,8 @@ private struct SafetyCallout: View {
         }
         .padding(14)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Palette.good.opacity(0.08), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
-        .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).strokeBorder(Palette.good.opacity(0.25), lineWidth: 0.5))
+        .background(Palette.good.opacity(0.08), in: PixelRect(radius: 12))
+        .overlay(PixelRect(radius: 12).strokeBorder(Palette.good.opacity(0.25), lineWidth: Pixel.line))
     }
 }
 
@@ -148,7 +148,7 @@ struct ModelCard: View {
                         HStack(spacing: 6) {
                             Text(model.displayName).font(.uiHeadline)
                             if model.featured {
-                                Image(systemName: "star.fill").font(.uiCaption).foregroundStyle(.yellow)
+                                PixelIcon("star.fill").font(.uiCaption).foregroundStyle(.yellow)
                                     .help("Staff pick")
                             }
                         }
@@ -157,7 +157,7 @@ struct ModelCard: View {
                             .foregroundStyle(.secondary)
                     }
                     Spacer()
-                    Image(systemName: "checkmark.shield.fill")
+                    PixelIcon("checkmark.shield.fill")
                         .foregroundStyle(Palette.good)
                         .help("Verified: official weights from \(model.publisher)")
                 }
@@ -216,14 +216,14 @@ struct ModelCard: View {
             withAnimation(.snappy) { chosenTag = v.tag }
         } label: {
             HStack(spacing: 3) {
-                if isInstalled { Image(systemName: "checkmark").font(.system(size: 8, weight: .bold)) }
+                if isInstalled { PixelIcon("checkmark").font(.system(size: 8, weight: .bold)) }
                 Text(v.quant)
             }
-            .font(.system(size: 10.5, weight: .semibold, design: .monospaced))
+            .font(.uiCaption2)
             .padding(.horizontal, 7)
             .padding(.vertical, 3)
             .background(selected ? AnyShapeStyle(Palette.accent) : AnyShapeStyle(Color.primary.opacity(0.07)),
-                        in: RoundedRectangle(cornerRadius: 6, style: .continuous))
+                        in: PixelRect(radius: 6))
             .foregroundStyle(selected ? Color.white : (isInstalled ? Palette.accent : Color.secondary))
         }
         .buttonStyle(.plain)
@@ -235,18 +235,18 @@ struct ModelCard: View {
         if let pull = backends.pulls[variant.tag] {
             if let error = pull.error {
                 HStack(spacing: 6) {
-                    Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(Palette.critical).help(error)
+                    PixelIcon("exclamationmark.triangle.fill").foregroundStyle(Palette.critical).help(error)
                     Button("Retry") { backends.cancelPull(variant.tag); backends.pull(variant.tag) }.controlSize(.small)
                 }
             } else {
                 HStack(spacing: 8) {
                     VStack(alignment: .trailing, spacing: 2) {
-                        ProgressView(value: pull.fraction).frame(width: 90)
+                        PixelBar(fraction: pull.fraction).frame(width: 90)
                         Text(pull.total > 0 ? "\(pull.status) \(Int(pull.fraction * 100))%" : pull.status)
                             .font(.uiCaption2.monospacedDigit())
                             .foregroundStyle(.secondary)
                     }
-                    Button { backends.cancelPull(variant.tag) } label: { Image(systemName: "xmark.circle.fill") }
+                    Button { backends.cancelPull(variant.tag) } label: { PixelIcon("xmark.circle.fill") }
                         .buttonStyle(.borderless)
                         .help("Cancel download")
                 }
@@ -260,7 +260,7 @@ struct ModelCard: View {
                 if backends.kind == .ollama {
                     Menu {
                         Button("Remove from Disk…", role: .destructive) { confirmRemove = true }
-                    } label: { Image(systemName: "ellipsis") }
+                    } label: { PixelIcon("ellipsis") }
                     .menuStyle(.borderlessButton)
                     .menuIndicator(.hidden)
                     .fixedSize()
@@ -270,17 +270,17 @@ struct ModelCard: View {
             Button {
                 backends.pull(variant.tag)
             } label: {
-                Label("Download", systemImage: "arrow.down")
+                PixelLabel("Download", systemImage: "arrow.down")
             }
             .controlSize(.small)
-            .buttonStyle(.borderedProminent)
+            .buttonStyle(PixelButtonStyle(prominent: true))
             .disabled(!backends.status.isOnline)
         } else {
             Button {
                 NSPasteboard.general.clearContents()
                 NSPasteboard.general.setString(model.huggingFaceHint, forType: .string)
             } label: {
-                Label("Copy HF name", systemImage: "doc.on.doc")
+                PixelLabel("Copy HF name", systemImage: "doc.on.doc")
             }
             .controlSize(.small)
             .help("Search for \(model.huggingFaceHint) in \(backends.kind.displayName)")

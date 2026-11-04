@@ -25,12 +25,12 @@ private struct MessageList: View {
             ScrollView {
                 LazyVStack(alignment: .leading, spacing: 22) {
                     if chat.trimmedMessageCount > 0 {
-                        Label("\(chat.trimmedMessageCount) older message\(chat.trimmedMessageCount == 1 ? "" : "s") didn't fit the context window and weren't sent. Increase the context window to include them.",
+                        PixelLabel("\(chat.trimmedMessageCount) older message\(chat.trimmedMessageCount == 1 ? "" : "s") didn't fit the context window and weren't sent. Increase the context window to include them.",
                               systemImage: "text.badge.minus")
                             .font(.uiCaption)
                             .foregroundStyle(.secondary)
                             .padding(8)
-                            .background(Palette.warning.opacity(0.12), in: RoundedRectangle(cornerRadius: 8))
+                            .background(Palette.warning.opacity(0.12), in: PixelRect(radius: 8))
                     }
                     ForEach(conversation.messages) { message in
                         MessageRow(message: message,

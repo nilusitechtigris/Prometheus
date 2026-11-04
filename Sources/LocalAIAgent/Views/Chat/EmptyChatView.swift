@@ -10,7 +10,10 @@ struct EmptyChatView: View {
                 Spacer(minLength: 40)
                 switch backends.status {
                 case .checking:
-                    ProgressView("Connecting to \(backends.kind.displayName)…")
+                    HStack(spacing: 8) {
+                        PixelSpinner()
+                        Text("Connecting to \(backends.kind.displayName)…")
+                    }
                 case .offline:
                     FrameworkSetupCard()
                 case .online:
@@ -48,10 +51,10 @@ private struct WelcomeHero: View {
             VStack(spacing: 12) {
                 BrandMark(size: 92)
                     .padding(36)
-                    .background(LaurelWreath().fill(Palette.accent2.opacity(0.7)).accessibilityHidden(true))
+                    .background(PixelatedShape(shape: LaurelWreath()).foregroundStyle(Palette.accent2.opacity(0.7)).accessibilityHidden(true))
                 BrandWordmark(size: 38)
                 Text(Brand.tagline)
-                    .font(.geistMono(13))
+                    .font(.pixel(13))
                     .foregroundStyle(.secondary)
                 Meander()
                     .stroke(Forge.faint, lineWidth: 1)
@@ -71,7 +74,7 @@ private struct WelcomeHero: View {
                         chat.send(prompt)
                     } label: {
                         HStack(alignment: .top, spacing: 10) {
-                            Image(systemName: symbol)
+                            PixelIcon(symbol)
                                 .foregroundStyle(Palette.accent)
                                 .frame(width: 20)
                             VStack(alignment: .leading, spacing: 3) {
@@ -82,8 +85,8 @@ private struct WelcomeHero: View {
                         }
                         .padding(12)
                         .frame(maxWidth: .infinity, alignment: .leading)
-                        .background(.background.opacity(0.7), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
-                        .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).strokeBorder(.separator, lineWidth: 0.5))
+                        .background(.background.opacity(0.7), in: PixelRect(radius: 12))
+                        .overlay(PixelRect(radius: 12).strokeBorder(.separator, lineWidth: Pixel.line))
                         .contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)
@@ -99,7 +102,7 @@ private struct FrameworkSetupCard: View {
 
     var body: some View {
         VStack(spacing: 18) {
-            Image(systemName: "powerplug")
+            PixelIcon("powerplug")
                 .font(.system(size: 40))
                 .foregroundStyle(Palette.accent)
             VStack(spacing: 6) {
@@ -115,13 +118,13 @@ private struct FrameworkSetupCard: View {
                     backends.startOllama()
                 } label: {
                     if backends.isStartingOllama {
-                        ProgressView().controlSize(.small).padding(.horizontal, 30)
+                        PixelSpinner().padding(.horizontal, 30)
                     } else {
-                        Label("Start Ollama", systemImage: "play.fill").padding(.horizontal, 8)
+                        PixelLabel("Start Ollama", systemImage: "play.fill").padding(.horizontal, 8)
                     }
                 }
                 .controlSize(.large)
-                .buttonStyle(.borderedProminent)
+                .buttonStyle(PixelButtonStyle(prominent: true))
                 .disabled(backends.isStartingOllama)
             }
 
@@ -130,15 +133,15 @@ private struct FrameworkSetupCard: View {
                     Text("Set up \(backends.kind.displayName)").font(.uiHeadline)
                     ForEach(Array(backends.kind.setupSteps.enumerated()), id: \.offset) { i, step in
                         HStack(alignment: .firstTextBaseline, spacing: 10) {
-                            Text("\(i + 1)").font(.uiCaption.bold()).frame(width: 18, height: 18).background(Circle().fill(.quaternary))
-                            Text(step).font(.system(.callout, design: step.contains(" ") && !step.contains("→") && step.first?.isLowercase == true ? .monospaced : .default))
+                            Text("\(i + 1)").font(.uiCaption.bold()).frame(width: 18, height: 18).background(PixelRect.round.fill(.quaternary))
+                            Text(step).font(.uiCallout)
                                 .textSelection(.enabled)
                             Spacer()
                             if step.first?.isLowercase == true {
                                 Button {
                                     NSPasteboard.general.clearContents()
                                     NSPasteboard.general.setString(step, forType: .string)
-                                } label: { Image(systemName: "doc.on.doc") }
+                                } label: { PixelIcon("doc.on.doc") }
                                 .buttonStyle(.borderless)
                                 .help("Copy command")
                             }
@@ -161,7 +164,7 @@ private struct FirstModelCard: View {
 
     var body: some View {
         VStack(spacing: 18) {
-            Image(systemName: "square.and.arrow.down.on.square")
+            PixelIcon("square.and.arrow.down.on.square")
                 .font(.system(size: 40))
                 .foregroundStyle(Palette.accent)
             VStack(spacing: 6) {

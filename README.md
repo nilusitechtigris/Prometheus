@@ -29,7 +29,7 @@ Prometheus is a native macOS app (SwiftUI, Apple Silicon) for chatting with loca
 - **Harness in chat**: turn it on or off at any time with the Harness button under the message box. It's off by default, and chat stays fully local while it's off. With it on, each reply goes through the same loop as the Harness Test, and the steps and rounds show above the reply, including every search and page. Search terms then leave this Mac, going to Wikipedia, Stack Overflow, arXiv and MDN, and pages come from the trusted sites. In chat only the harness uses the tools, never the model, so a web page can't steer one with your chat in view. Needs Ollama.
 - **Chats**: a column docked beside the conversation on the Chat page. Search covers titles and messages (⌘F), and right-clicking a chat renames or deletes it. The rail's Chat button or ⌥⌘2 opens and collapses the column.
 - **Look and feel**:
-  - The Forge layout: near-black with one accent color and Geist type, built around chat with a slim icon rail, a top bar and a status bar. The rail also opens and collapses the telemetry panel.
+  - The Forge layout: pixel art throughout, near-black with one accent color: Geist Pixel type, stepped corners, block bars, a dithered background and icons redrawn in hard pixels. Code stays in Geist Mono so its columns line up. It's built around chat with a slim icon rail, a top bar and a status bar. The rail also opens and collapses the telemetry panel.
   - Greek line drawings, all SwiftUI shapes: a Greek key frieze under the top bar, a Doric column on the rail, a laurel wreath around the flame on the welcome screen, and α β γ on the Tests tabs
   - Seven colour themes (View › Theme, or Settings › Appearance) and a static ambient mesh background
   - Green, yellow and red always keep their health meaning, whatever the theme
@@ -59,7 +59,7 @@ The catalog (`Sources/LocalAIAgent/Models/ModelCatalog.swift`) only lists offici
 ## Project layout
 
 ```
-assets/fonts/               Geist fonts (SIL Open Font License)
+assets/fonts/               Geist Pixel and Geist Mono (SIL Open Font License)
 Sources/SensorsC/           C bridge: Apple SMC + HID temperature sensors
 Sources/LocalAIAgent/
   App/                      App entry, settings, debug hooks

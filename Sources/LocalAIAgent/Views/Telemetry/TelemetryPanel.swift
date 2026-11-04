@@ -46,7 +46,7 @@ struct TelemetryPanelToggle: View {
         Button {
             withAnimation(.snappy) { settings.telemetryOpen.toggle() }
         } label: {
-            Label("Telemetry", systemImage: "sidebar.trailing").labelStyle(.iconOnly)
+            PixelLabel("Telemetry", systemImage: "sidebar.trailing").labelStyle(.iconOnly)
         }
         .help("\(settings.telemetryOpen ? "Collapse" : "Open") the telemetry panel (⌥⌘1)")
     }

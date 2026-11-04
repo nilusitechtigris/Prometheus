@@ -66,19 +66,18 @@ private struct TestTabBar: View {
 
     private func tab(for tab: TestTab) -> some View {
         let selected = ui.testTab == tab
-        let shape = RoundedRectangle(cornerRadius: 12, style: .continuous)
+        let shape = PixelRect(radius: 12)
         return Button {
             ui.testTab = tab
         } label: {
             HStack(spacing: 10) {
-                Image(systemName: tab.symbol)
+                PixelIcon(tab.symbol)
                     .font(.system(size: 12, weight: .bold))
                     .foregroundStyle(selected ? AnyShapeStyle(.white) : AnyShapeStyle(.secondary))
                     .frame(width: 28, height: 28)
                     .background(selected ? AnyShapeStyle(Palette.gradient) : AnyShapeStyle(Color.primary.opacity(0.08)),
-                                in: RoundedRectangle(cornerRadius: 7, style: .continuous))
-                Text(tab.letter)
-                    .font(.greek(15))
+                                in: PixelRect(radius: 7))
+                PixelText(tab.letter, size: 15)
                     .foregroundStyle(selected ? Palette.accent : Color.secondary)
                     .accessibilityHidden(true)
                 Text(tab.title)
@@ -86,7 +85,7 @@ private struct TestTabBar: View {
                     .foregroundStyle(selected ? .primary : .secondary)
                 Spacer(minLength: 6)
                 if isRunning(tab) {
-                    ProgressView().controlSize(.mini)
+                    PixelSpinner(size: 10)
                 } else if let status = status(of: tab) {
                     Text(status).font(.uiCaption.monospacedDigit()).foregroundStyle(.secondary).lineLimit(1)
                 }

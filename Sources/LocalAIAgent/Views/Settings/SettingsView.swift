@@ -5,15 +5,15 @@ struct SettingsView: View {
     var body: some View {
         TabView {
             GeneralSettings()
-                .tabItem { Label("General", systemImage: "gearshape") }
+                .tabItem { PixelLabel("General", systemImage: "gearshape") }
             AppearanceSettings()
-                .tabItem { Label("Appearance", systemImage: "paintpalette") }
+                .tabItem { PixelLabel("Appearance", systemImage: "paintpalette") }
             FrameworkSettings()
-                .tabItem { Label("Frameworks", systemImage: "shippingbox") }
+                .tabItem { PixelLabel("Frameworks", systemImage: "shippingbox") }
             SafetySettings()
-                .tabItem { Label("Safety", systemImage: "checkmark.shield") }
+                .tabItem { PixelLabel("Safety", systemImage: "checkmark.shield") }
             DataSettings()
-                .tabItem { Label("Data", systemImage: "externaldrive") }
+                .tabItem { PixelLabel("Data", systemImage: "externaldrive") }
         }
         .frame(width: 580, height: 460)
         .tint(Palette.accent)
@@ -57,21 +57,21 @@ private struct ThemeSwatch: View {
         Button(action: action) {
             VStack(spacing: 7) {
                 ZStack {
-                    RoundedRectangle(cornerRadius: 12, style: .continuous)
+                    PixelRect(radius: 12)
                         .fill(LinearGradient(colors: [theme.accent, theme.glow, theme.accent2],
                                              startPoint: .topLeading, endPoint: .bottomTrailing))
-                    Image(systemName: "sparkles").font(.uiTitle2.weight(.semibold)).foregroundStyle(.white)
+                    PixelIcon("sparkles").font(.uiTitle2.weight(.semibold)).foregroundStyle(.white)
                 }
                 .frame(height: 58)
                 .overlay(
-                    RoundedRectangle(cornerRadius: 12, style: .continuous)
+                    PixelRect(radius: 12)
                         .strokeBorder(selected ? Color.primary : .clear, lineWidth: 2)
                         .padding(-3)
                 )
                 .scaleEffect(hovering ? 1.03 : 1)
                 .shadow(color: theme.accent.opacity(hovering || selected ? 0.4 : 0), radius: 8, y: 3)
                 HStack(spacing: 4) {
-                    if selected { Image(systemName: "checkmark.circle.fill").foregroundStyle(theme.accent) }
+                    if selected { PixelIcon("checkmark.circle.fill").foregroundStyle(theme.accent) }
                     Text(theme.name).font(.uiCallout.weight(selected ? .semibold : .regular))
                 }
             }
@@ -144,7 +144,7 @@ private struct FrameworkRow: View {
     var body: some View {
         HStack(spacing: 10) {
             StatusDot(level: backends.availability[kind] == true ? .good : .critical)
-            Image(systemName: kind.symbol).frame(width: 18)
+            PixelIcon(kind.symbol).frame(width: 18)
             VStack(alignment: .leading, spacing: 2) {
                 Text(kind.displayName).font(.uiBody.weight(.medium))
                 Text(kind.tagline).font(.uiCaption).foregroundStyle(.secondary)
@@ -185,7 +185,7 @@ private struct SafetySettings: View {
                             .foregroundStyle(.secondary)
                     }
                 } icon: {
-                    Image(systemName: "checkmark.shield.fill").foregroundStyle(Palette.good).font(.uiTitle2)
+                    PixelIcon("checkmark.shield.fill").foregroundStyle(Palette.good).font(.uiTitle2)
                 }
             }
             Section {
@@ -207,7 +207,7 @@ private struct SafetySettings: View {
                     .foregroundStyle(.secondary)
             }
             Section("Privacy") {
-                Label("Your chats stay on this Mac. With the harness off, the only internet access is downloading models you choose, through your framework. With it on, search terms go to Wikipedia, Stack Overflow, arXiv and MDN, and pages come from the trusted sites.", systemImage: "lock.shield")
+                PixelLabel("Your chats stay on this Mac. With the harness off, the only internet access is downloading models you choose, through your framework. With it on, search terms go to Wikipedia, Stack Overflow, arXiv and MDN, and pages come from the trusted sites.", systemImage: "lock.shield")
                     .font(.uiCallout)
             }
         }

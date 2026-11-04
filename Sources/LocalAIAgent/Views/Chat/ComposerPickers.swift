@@ -7,14 +7,14 @@ struct PickerPill<Label: View>: View {
     var body: some View {
         HStack(spacing: 6) {
             label
-            Image(systemName: "chevron.up.chevron.down")
+            PixelIcon("chevron.up.chevron.down")
                 .font(.uiCaption2.weight(.semibold))
                 .foregroundStyle(.secondary)
         }
         .font(.uiCallout)
         .padding(.horizontal, 11)
         .padding(.vertical, 5)
-        .contentShape(Capsule())
+        .contentShape(PixelRect.pill)
     }
 }
 
@@ -31,7 +31,7 @@ struct FrameworkPickerButton: View {
         } label: {
             PickerPill {
                 StatusDot(level: statusLevel, size: 7)
-                Image(systemName: backends.kind.symbol).foregroundStyle(.secondary)
+                PixelIcon(backends.kind.symbol).foregroundStyle(.secondary)
                 if !compact { Text(backends.kind.displayName).lineLimit(1) }
             }
         }
@@ -72,7 +72,7 @@ private struct FrameworkPopover: View {
                     backends.switchBackend(to: kind)
                     dismiss()
                 } content: {
-                    Image(systemName: kind.symbol)
+                    PixelIcon(kind.symbol)
                         .frame(width: 22)
                         .foregroundStyle(Palette.accent)
                     VStack(alignment: .leading, spacing: 1) {
@@ -91,7 +91,7 @@ private struct FrameworkPopover: View {
             }
             Divider().padding(.vertical, 4)
             SettingsLink {
-                Label("Framework Settings…", systemImage: "gearshape")
+                PixelLabel("Framework Settings…", systemImage: "gearshape")
             }
             .buttonStyle(.borderless)
             .controlSize(.small)
@@ -114,7 +114,7 @@ struct ContextPickerButton: View {
             show.toggle()
         } label: {
             PickerPill {
-                Image(systemName: "text.word.spacing").foregroundStyle(.secondary)
+                PixelIcon("text.word.spacing").foregroundStyle(.secondary)
                 Text(Format.tokens(backends.effectiveContext)).monospacedDigit()
                 if !compact { Text("context").foregroundStyle(.secondary) }
             }
@@ -186,14 +186,14 @@ struct PopoverRow<Content: View>: View {
     var body: some View {
         Button(action: action) {
             HStack(spacing: 10) {
-                Image(systemName: selected ? "checkmark.circle.fill" : "circle")
+                PixelIcon(selected ? "checkmark.circle.fill" : "circle")
                     .foregroundStyle(selected ? Palette.accent : Color.secondary.opacity(0.5))
                 content
             }
             .padding(.horizontal, 8)
             .padding(.vertical, 7)
             .background(
-                RoundedRectangle(cornerRadius: 9, style: .continuous)
+                PixelRect(radius: 9)
                     .fill(selected ? Palette.accent.opacity(0.12) : (hovering ? Color.primary.opacity(0.06) : .clear))
             )
             .contentShape(Rectangle())

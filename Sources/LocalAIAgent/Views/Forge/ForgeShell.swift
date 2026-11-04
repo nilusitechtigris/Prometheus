@@ -42,7 +42,7 @@ enum Forge {
     /// Small monospaced capitals for labels.
     static func label(_ text: String, color: Color = dim) -> some View {
         Text(text.uppercased())
-            .font(.geistMono(10.5, weight: .medium))
+            .font(.pixel(10.5))
             .tracking(0.9)
             .foregroundStyle(color)
             .lineLimit(1)
@@ -84,8 +84,8 @@ private struct ForgeRail: View {
             Forge.rule().padding(.horizontal, 18).padding(.vertical, 6)
             telemetry
             // A column stands in the empty stretch of the rail, clear of every label.
-            DoricColumn()
-                .stroke(Forge.faint.opacity(0.6), lineWidth: 1)
+            PixelatedShape(shape: DoricColumn(), stroke: 2)
+                .foregroundStyle(Forge.faint.opacity(0.6))
                 .frame(width: 26)
                 .frame(maxHeight: 260)
                 .padding(.vertical, 14)
@@ -127,8 +127,8 @@ private struct ForgeRail: View {
 
     private func rowLabel(_ symbol: String, _ title: String, selected: Bool) -> some View {
         VStack(spacing: 4) {
-            Image(systemName: symbol).font(.system(size: 17))
-            Text(title.uppercased()).font(.geistMono(8.5, weight: .medium)).tracking(0.5)
+            PixelIcon(symbol).font(.system(size: 17))
+            Text(title.uppercased()).font(.pixel(8.5)).tracking(0.5)
         }
         .foregroundStyle(selected ? Forge.flame : Forge.dim)
         .frame(width: 72, height: 54)
@@ -148,21 +148,20 @@ private struct ForgeTopBar: View {
         HStack(spacing: 14) {
             HStack(alignment: .firstTextBaseline, spacing: 10) {
                 Text(Brand.name.uppercased())
-                    .font(.geistPixel(24))
+                    .font(.pixel(24))
                     .foregroundStyle(Forge.ink)
-                Text(Brand.greekName)
-                    .font(.greek(14).italic())
+                PixelText(Brand.greekName, size: 14)
                     .foregroundStyle(Forge.dim)
                     .accessibilityHidden(true)
             }
             Spacer()
             if let model = backends.selectedModel {
-                Text(model.displayName).font(.geistMono(12, weight: .medium)).foregroundStyle(Forge.ink).lineLimit(1)
-                Text(model.quantLabel).font(.geistMono(12)).foregroundStyle(Forge.dim)
+                Text(model.displayName).font(.pixel(12)).foregroundStyle(Forge.ink).lineLimit(1)
+                Text(model.quantLabel).font(.pixel(12)).foregroundStyle(Forge.dim)
                 Forge.rule(vertical: true).frame(height: 14)
             }
             HStack(spacing: 6) {
-                Circle().fill(backends.status.isOnline ? Palette.good : Palette.critical).frame(width: 6, height: 6)
+                PixelRect.round.fill(backends.status.isOnline ? Palette.good : Palette.critical).frame(width: 6, height: 6)
                 Forge.label("\(backends.kind.displayName) \(backends.status.isOnline ? "online" : "offline")")
             }
         }
