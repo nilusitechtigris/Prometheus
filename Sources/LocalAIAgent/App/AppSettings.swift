@@ -57,6 +57,8 @@ final class AppSettings {
     var unloadOnSwitch: Bool { didSet { defaults.set(unloadOnSwitch, forKey: "unloadOnSwitch") } }
     /// Whether the stats card under each reply is expanded (applies to every reply).
     var replyStatsExpanded: Bool { didSet { defaults.set(replyStatsExpanded, forKey: "replyStatsExpanded") } }
+    /// Runs chat replies through the harness. Off by default because its web searches leave this Mac.
+    var harnessEnabled: Bool { didSet { defaults.set(harnessEnabled, forKey: "harnessEnabled") } }
     /// The draft Forge layout, with its near-black look and Geist type.
     var draftLayout: Bool {
         didSet {
@@ -78,6 +80,7 @@ final class AppSettings {
         maxResponseTokens = defaults.integer(forKey: "maxResponseTokens")
         unloadOnSwitch = defaults.object(forKey: "unloadOnSwitch") as? Bool ?? true
         replyStatsExpanded = defaults.object(forKey: "replyStatsExpanded") as? Bool ?? true
+        harnessEnabled = defaults.bool(forKey: "harnessEnabled")
         draftLayout = defaults.bool(forKey: "draftLayout")
         applyDraftLook()
     }

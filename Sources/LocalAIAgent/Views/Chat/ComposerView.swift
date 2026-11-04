@@ -15,6 +15,7 @@ struct ComposerView: View {
         VStack(spacing: 10) {
             if let live = chat.live {
                 HStack {
+                    if let stage = live.stage { HarnessStageStrip(current: stage) }
                     Spacer()
                     LiveTicker(live: live)
                 }
@@ -78,6 +79,17 @@ struct ComposerView: View {
                 controlRow(compact: true, narrow: true)
             }
             .padding(.horizontal, 4)
+
+            if harnessOn {
+                Label("Harness on: search terms go to Wikipedia, Stack Overflow, arXiv and MDN. Code runs in a sandbox on this Mac.", systemImage: "globe")
+                    .font(.uiCaption2)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.85)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.horizontal, 8)
+                    .transition(.opacity)
+            }
         }
         .padding(.horizontal, 28)
         .padding(.top, 8)
@@ -97,6 +109,7 @@ struct ComposerView: View {
                 ModelPickerButton(narrow: narrow)
                 ContextPickerButton(compact: compact)
                 if backends.supportsThinking { ThinkPill(compact: compact) }
+                HarnessPill(compact: compact)
                 temperaturePill(compact: compact)
             }
             if narrow {
@@ -129,6 +142,8 @@ struct ComposerView: View {
             GenerationOptionsView().environment(settings)
         }
     }
+
+    private var harnessOn: Bool { settings.harnessEnabled && backends.kind.supportsTools }
 
     private var canSend: Bool {
         chat.canSend && !ui.draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
@@ -181,6 +196,60 @@ private struct ThinkPill: View {
     }
 }
 
+/// Turns the harness on or off for the next reply, at any point in a chat.
+private struct HarnessPill: View {
+    @Environment(AppSettings.self) private var settings
+    @Environment(BackendController.self) private var backends
+    var compact = false
+
+    var body: some View {
+        let on = settings.harnessEnabled && backends.kind.supportsTools
+        Button {
+            withAnimation(.snappy) { settings.harnessEnabled.toggle() }
+        } label: {
+            HStack(spacing: 5) {
+                Image(systemName: "shield.lefthalf.filled")
+                    .symbolEffect(.bounce, value: on)
+                if !compact { Text("Harness") }
+            }
+            .font(.uiCallout.weight(on ? .semibold : .regular))
+            .foregroundStyle(on ? Palette.accent : .secondary)
+            .padding(.horizontal, 11)
+            .padding(.vertical, 5)
+            .contentShape(Capsule())
+        }
+        .buttonStyle(.plain)
+        .glassCapsule(interactive: true)
+        .overlay(Capsule().strokeBorder(on ? Palette.accent.opacity(0.6) : .clear, lineWidth: 1))
+        .disabled(!backends.kind.supportsTools)
+        .help(backends.kind.supportsTools
+              ? (on ? "Harness on: it picks tools for each message, so search terms leave this Mac. Click to turn it off."
+                    : "Harness off: everything stays on this Mac. Click to give the model web search and a code sandbox.")
+              : "The harness needs Ollama for now")
+        .accessibilityLabel("Harness, \(on ? "on" : "off")")
+    }
+}
+
+/// The harness's four steps while it works on a reply.
+private struct HarnessStageStrip: View {
+    let current: HarnessStage
+
+    var body: some View {
+        HStack(spacing: 8) {
+            Image(systemName: "shield.lefthalf.filled").foregroundStyle(Palette.accent)
+            ForEach(HarnessStage.allCases) { stage in
+                HStack(spacing: 3) {
+                    if stage.rawValue < current.rawValue { Image(systemName: "checkmark").font(.system(size: 8, weight: .bold)) }
+                    Text(stage.title)
+                }
+                .fontWeight(stage == current ? .semibold : .regular)
+                .foregroundStyle(stage == current ? AnyShapeStyle(Palette.accent) : stage.rawValue < current.rawValue ? AnyShapeStyle(.secondary) : AnyShapeStyle(.tertiary))
+            }
+        }
+        .font(.uiCaption)
+    }
+}
+
 /// Live generation numbers next to the composer while a response streams.
 private struct LiveTicker: View {
     let live: LiveGeneration
@@ -189,7 +258,7 @@ private struct LiveTicker: View {
         TimelineView(.periodic(from: .now, by: 0.25)) { _ in
             HStack(spacing: 10) {
                 switch live.phase {
-                case .waiting: Text("Waiting for first token…")
+                case .waiting: Text(live.stage == .understand || live.stage == .act ? "Working…" : "Waiting for first token…")
                 case .thinking: Text("Thinking")
                 case .answering: Text("Answering")
                 }

@@ -11,25 +11,23 @@ struct SidebarView: View {
     @State private var renameText = ""
     @State private var deleting: Conversation?
 
-    /// Selectable sidebar rows: the two test dashboards, then the chats.
-    private enum Item: Hashable { case chat(UUID), modelTest, hardwareTest, harnessTest }
+    /// Selectable sidebar rows: the two pages, then the chats.
+    private enum Item: Hashable { case chat(UUID), tests, library }
 
     private var selection: Binding<Item?> {
         Binding(get: {
             switch ui.destination {
             case .chat: return chat.selectedID.map(Item.chat)
-            case .modelTest: return .modelTest
-            case .hardwareTest: return .hardwareTest
-            case .harnessTest: return .harnessTest
+            case .tests: return .tests
+            case .library: return .library
             }
         }, set: { item in
             switch item {
             case .chat(let id)?:
                 chat.selectedID = id
                 ui.destination = .chat
-            case .modelTest?: ui.destination = .modelTest
-            case .hardwareTest?: ui.destination = .hardwareTest
-            case .harnessTest?: ui.destination = .harnessTest
+            case .tests?: ui.destination = .tests
+            case .library?: ui.destination = .library
             case nil: if ui.destination == .chat { chat.selectedID = nil }
             }
         })
@@ -53,16 +51,11 @@ struct SidebarView: View {
             Section("Telemetry") {
                 ForEach(TelemetryWidgetKind.allCases) { WidgetRow(kind: $0) }
             }
-            Section("Tests") {
-                TestRow(title: "Model Test", symbol: "checkmark.seal.fill", isRunning: lab.modelProgress != nil,
-                        status: lab.latestModelResult(for: lab.testModel(in: backends)?.id).map { "\(TestFormat.score($0.score))/100" })
-                    .tag(Item.modelTest)
-                TestRow(title: "Hardware Test", symbol: "cpu.fill", isRunning: lab.hardwareProgress != nil,
-                        status: lab.hardwareResults.first?.gpuBandwidth.map { "\(TestFormat.gbPerSecond($0)) GB/s" })
-                    .tag(Item.hardwareTest)
-                TestRow(title: "Harness Test", symbol: "shield.lefthalf.filled", isRunning: lab.harnessProgress != nil,
-                        status: lab.harnessRun(for: lab.testModel(in: backends)?.id).map { "\(TestFormat.score($0.score))/100" })
-                    .tag(Item.harnessTest)
+            Section("Workspace") {
+                PageRow(title: "Tests", symbol: "checklist", isRunning: lab.isRunning)
+                    .tag(Item.tests)
+                PageRow(title: "Library", symbol: "square.stack.3d.up.fill", isRunning: false)
+                    .tag(Item.library)
             }
             if chat.conversations.isEmpty {
                 Section("Chats") {
@@ -201,22 +194,17 @@ private struct SidebarIcon: View {
     }
 }
 
-private struct TestRow: View {
+private struct PageRow: View {
     let title: String
     let symbol: String
     let isRunning: Bool
-    let status: String?
 
     var body: some View {
         HStack(spacing: 8) {
             SidebarIcon(symbol: symbol)
             Text(title)
             Spacer()
-            if isRunning {
-                ProgressView().controlSize(.mini)
-            } else if let status {
-                Text(status).font(.uiCaption.monospacedDigit()).foregroundStyle(.secondary)
-            }
+            if isRunning { ProgressView().controlSize(.mini) }
         }
     }
 }
@@ -249,6 +237,9 @@ private struct ConversationRow: View {
 private struct BackendStatusFooter: View {
     @Environment(BackendController.self) private var backends
     @Environment(SystemMonitor.self) private var monitor
+    @Environment(AppSettings.self) private var settings
+
+    private var harnessOn: Bool { settings.harnessEnabled && backends.kind.supportsTools }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
@@ -260,9 +251,10 @@ private struct BackendStatusFooter: View {
                     Text(subtitle).font(.uiCaption2).foregroundStyle(.secondary).lineLimit(1)
                 }
                 Spacer()
-                Image(systemName: "lock.shield")
+                Image(systemName: harnessOn ? "globe" : "lock.shield")
                     .foregroundStyle(.secondary)
-                    .help("100% local — prompts and responses never leave this Mac")
+                    .help(harnessOn ? "Harness on: search terms go to Wikipedia, Stack Overflow, arXiv and MDN"
+                                    : "100% local — prompts and responses never leave this Mac")
             }
             .padding(.horizontal, 14)
             .padding(.vertical, 8)
@@ -288,6 +280,6 @@ private struct BackendStatusFooter: View {
 
     private var subtitle: String {
         let mem = Int((Double(ProcessInfo.processInfo.physicalMemory) / 1_073_741_824).rounded())
-        return "\(monitor.chipName) · \(mem) GB · runs offline"
+        return "\(monitor.chipName) · \(mem) GB · \(harnessOn ? "harness on" : "runs offline")"
     }
 }

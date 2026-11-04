@@ -5,17 +5,23 @@ import SwiftUI
 @MainActor
 @Observable
 final class UIState {
-    /// What the main area shows: the selected chat or one of the test dashboards.
-    enum Destination: Hashable { case chat, modelTest, hardwareTest, harnessTest }
+    /// What the main area shows.
+    enum Destination: Hashable { case chat, tests, library }
 
     var destination: Destination = .chat
+    /// Which results the Tests page shows.
+    var testTab: TestTab = .model
     /// Telemetry widget windows currently on screen.
     var openWidgets: Set<TelemetryWidgetKind> = []
-    var showLibrary = false
     var showModelPicker = false
     var showTestModelPicker = false
     var composerFocusRequest = 0
     var draft = ""
+
+    func openTests(_ tab: TestTab) {
+        testTab = tab
+        destination = .tests
+    }
 }
 
 final class AppDelegate: NSObject, NSApplicationDelegate {
@@ -109,7 +115,7 @@ struct LocalAIAgentApp: App {
                     let centered = NSMutableParagraphStyle()
                     centered.alignment = .center
                     let credits = NSAttributedString(
-                        string: "\(Brand.tagline)\nOpen models running on this Mac. Nothing leaves it.",
+                        string: "\(Brand.tagline)\nOpen models running on this Mac. With the harness off, nothing leaves it.",
                         attributes: [.font: NSFont.systemFont(ofSize: 11), .foregroundColor: NSColor.secondaryLabelColor,
                                      .paragraphStyle: centered])
                     NSApp.orderFrontStandardAboutPanel(options: [.applicationName: Brand.name, .credits: credits])
@@ -142,16 +148,16 @@ struct LocalAIAgentApp: App {
                 Divider()
                 Button("Choose Model…") { ui.showModelPicker = true }
                     .keyboardShortcut("m", modifiers: [.command, .shift])
-                Button("Model Library…") { ui.showLibrary = true }
+                Button("Model Library") { ui.destination = .library }
                     .keyboardShortcut("l", modifiers: [.command, .shift])
                 Divider()
                 WidgetMenuItems(ui: ui)
                 Divider()
-                Button("Model Test Dashboard") { ui.destination = .modelTest }
+                Button("Model Test Results") { ui.openTests(.model) }
                     .keyboardShortcut("3", modifiers: [.command, .option])
-                Button("Hardware Test Dashboard") { ui.destination = .hardwareTest }
+                Button("Hardware Test Results") { ui.openTests(.hardware) }
                     .keyboardShortcut("4", modifiers: [.command, .option])
-                Button("Harness Test Dashboard") { ui.destination = .harnessTest }
+                Button("Harness Test Results") { ui.openTests(.harness) }
                     .keyboardShortcut("5", modifiers: [.command, .option])
             }
         }

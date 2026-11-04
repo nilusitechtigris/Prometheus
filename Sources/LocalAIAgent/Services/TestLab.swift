@@ -101,6 +101,7 @@ final class TestLab {
         let context: Int
         let think: Bool?
         let supportsTools: Bool
+        var temperature = 0.0
     }
 
     #if DEBUG
@@ -359,8 +360,11 @@ final class TestLab {
         var firstToken: Date?
         var stats: BackendStats?
         var error: String?
-        var toolLog: [String] = []
+        var toolLog: [String] = [] { didSet { onLog?(toolLog) } }
         var guardRemoved = 0
+        /// Set by whoever wants to follow along as the harness works.
+        var onLog: (([String]) -> Void)?
+        var onStage: ((HarnessStage) -> Void)?
     }
 
     /// Rounds of tool use a question gets. After that the model has to answer with what it has.
@@ -372,7 +376,7 @@ final class TestLab {
         var turns = startingTurns
         var reply = Reply()
         for round in 0...maxToolRounds {
-            let request = ChatRequest(model: setup.model.id, messages: turns, temperature: 0, contextLength: setup.context,
+            let request = ChatRequest(model: setup.model.id, messages: turns, temperature: setup.temperature, contextLength: setup.context,
                                       maxTokens: maxTokens, think: think ?? setup.think,
                                       tools: useTools && round < maxToolRounds ? HarnessTools.definitions : [])
             var text = "", calls: [ToolCall] = []

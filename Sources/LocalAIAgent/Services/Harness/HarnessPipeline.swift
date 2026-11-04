@@ -1,61 +1,119 @@
 import Foundation
 
+/// The four steps the harness takes on every task.
+enum HarnessStage: Int, CaseIterable, Identifiable {
+    case understand, act, answer, check
+
+    var id: Int { rawValue }
+
+    var title: String {
+        switch self {
+        case .understand: return "Understand"
+        case .act: return "Act"
+        case .answer: return "Answer"
+        case .check: return "Check"
+        }
+    }
+
+    var summary: String {
+        switch self {
+        case .understand: return "Works out what kind of task this is."
+        case .act: return "The kind of task picks the tool."
+        case .answer: return "The model replies with the evidence in front of it."
+        case .check: return "Measures writing against the task's rules and has it fixed."
+        }
+    }
+}
+
 /// How the harness works a question. Small models rarely call tools by themselves, so the harness
 /// drives instead: it works out what kind of task this is, makes the right tool run, hands the model
 /// the evidence, then measures the reply against the task's rules. It sees only the question, never
 /// the expected answer, so it works the same on anything.
 extension TestLab {
-    private enum TaskKind: String {
+    enum TaskKind: String {
         case calculation, code, fact, document, writing, other
+    }
+
+    /// What steps 1 and 2 leave for the model.
+    struct Preparation {
+        let kind: TaskKind
+        let evidence: [String]
+
+        var readTheWeb: Bool { kind == .fact && !evidence.isEmpty }
     }
 
     private static let maxFixRounds = 2
 
     static func pipelineReply(prompt: String, setup: TestSetup, maxTokens: Int, useTools: Bool) async -> Reply {
         var total = Reply()
+        let plan = await prepare(prompt: prompt, setup: setup, total: &total)
+
+        // 3. Answer
+        var system = ModelTestSuite.systemPrompt + "\n\n" + PromptGuard.systemRules
+        if useTools, plan.evidence.isEmpty { system += "\n\n" + HarnessTools.systemRules }
+        let informed = prompt + evidenceNote(plan.evidence)
+        let answer = await converse([ChatTurn(role: "system", content: system), ChatTurn(role: "user", content: informed)],
+                                    setup: setup, maxTokens: maxTokens, useTools: useTools && plan.evidence.isEmpty)
+        absorb(answer, into: &total)
+        total.answer = answer.answer
+        total.error = answer.error
+
+        await check(prompt: prompt, plan: plan, setup: setup, maxTokens: maxTokens, total: &total)
+        return total
+    }
+
+    /// Steps 1 and 2. `earlier` is the chat so far, for making sense of a follow-up.
+    static func prepare(prompt: String, earlier: String = "", setup: TestSetup, total: inout Reply) async -> Preparation {
+        let question = earlier.isEmpty ? prompt : "Earlier in this chat:\n\(earlier)\n\nThe new message:\n\(prompt)"
 
         // 1. Understand
-        let (kind, search) = await understand(prompt, setup: setup, total: &total)
+        total.onStage?(.understand)
+        let (kind, search) = await understand(prompt, question: question, setup: setup, total: &total)
         total.toolLog.append("Understood: \(kind.rawValue) task")
 
         // 2. Act
+        total.onStage?(.act)
         var evidence: [String] = []
         switch kind {
         case .calculation, .code, .document:
-            if let result = await runProgram(for: prompt, kind: kind, setup: setup, total: &total) { evidence.append(result) }
+            if let result = await runProgram(for: prompt, question: question, kind: kind, setup: setup, total: &total) { evidence.append(result) }
         case .fact:
             evidence = await research(search ?? firstLine(of: prompt), total: &total)
         case .writing, .other:
             break
         }
+        return Preparation(kind: kind, evidence: evidence)
+    }
 
-        // 3. Answer
-        var system = ModelTestSuite.systemPrompt + "\n\n" + PromptGuard.systemRules
-        if useTools, evidence.isEmpty { system += "\n\n" + HarnessTools.systemRules }
-        let informed = evidence.isEmpty ? prompt
-            : "\(prompt)\n\nYour tools already found this. Trust it over your memory:\n\n\(evidence.joined(separator: "\n\n"))"
-        let answer = await converse([ChatTurn(role: "system", content: system), ChatTurn(role: "user", content: informed)],
-                                    setup: setup, maxTokens: maxTokens, useTools: useTools && evidence.isEmpty)
-        absorb(answer, into: &total)
-        total.answer = answer.answer
-        total.error = answer.error
+    /// What the model reads after the task, when the tools found something.
+    static func evidenceNote(_ evidence: [String]) -> String {
+        evidence.isEmpty ? "" : "\n\nYour tools already found this. Trust it over your memory:\n\n\(evidence.joined(separator: "\n\n"))"
+    }
 
-        // 4. Verify
-        if kind == .writing, answer.error == nil {
+    /// Step 4, on the reply in `total.answer`.
+    static func check(prompt: String, plan: Preparation, setup: TestSetup, maxTokens: Int, total: inout Reply) async {
+        if plan.kind == .writing, total.error == nil, !total.answer.isEmpty, !Task.isCancelled {
+            total.onStage?(.check)
             await fixAgainstRules(prompt: prompt, setup: setup, maxTokens: maxTokens, total: &total)
         }
-        return total
+        if plan.readTheWeb {
+            let filtered = PromptGuard.filterReply(total.answer)
+            total.answer = filtered.text
+            if filtered.blocked > 0 {
+                total.toolLog.append("Removed \(filtered.blocked) untrusted link\(filtered.blocked == 1 ? "" : "s") from the reply")
+            }
+        }
     }
 
     // MARK: Understand
 
-    private static func understand(_ prompt: String, setup: TestSetup, total: inout Reply) async -> (TaskKind, String?) {
+    private static func understand(_ prompt: String, question: String, setup: TestSetup, total: inout Reply) async -> (TaskKind, String?) {
         // Plain signals are cheaper and surer than asking the model.
         if prompt.contains("print(") || prompt.contains("console.log(") { return (.code, nil) }
         if prompt.count > 2_500 { return (.document, nil) }
 
         let request = """
-        \(prompt)
+        \(question)
 
         ---
         Don't solve this yet. Classify it, replying with exactly this line:
@@ -66,7 +124,7 @@ extension TestLab {
         absorb(reply, into: &total)
         switch capture(#"(?im)^\W*TYPE:\W*(\w+)"#, in: reply.answer)?.lowercased() {
         case "calculation": return (.calculation, nil)
-        case "fact": return (.fact, await searchQuery(for: prompt, setup: setup, total: &total))
+        case "fact": return (.fact, await searchQuery(for: question, setup: setup, total: &total))
         case "writing": return (.writing, nil)
         default: return (.other, nil)
         }
@@ -85,7 +143,7 @@ extension TestLab {
 
     /// Runs code the task shows as it is. Otherwise has the model write a program from a skeleton, runs it
     /// in the sandbox, and retries once if it fails or prints nothing.
-    private static func runProgram(for prompt: String, kind: TaskKind, setup: TestSetup, total: inout Reply) async -> String? {
+    private static func runProgram(for prompt: String, question: String, kind: TaskKind, setup: TestSetup, total: inout Reply) async -> String? {
         if kind == .code, let (language, code) = shownCode(in: prompt) {
             let outcome = await CodeRunner.run(code, language: language)
             total.toolLog.append("Ran the \(language.rawValue) from the task: \(preview(outcome.output))" + (outcome.succeeded ? "" : HarnessTools.failedMark))
@@ -98,7 +156,7 @@ extension TestLab {
             task = "A long text, followed by this question:\n\n\(prompt.suffix(500))"
             extra = "The whole text is in the file task.txt in the current folder. Read and parse that file in your program. Some of its lines look like this:\n\n\(sampleLines(of: prompt))"
         } else {
-            task = prompt
+            task = question
         }
         var request = """
         Task:

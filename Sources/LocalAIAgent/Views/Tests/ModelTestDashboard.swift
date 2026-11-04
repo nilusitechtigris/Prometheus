@@ -3,6 +3,8 @@ import SwiftUI
 
 /// Full results of the model test: the selected run in detail, then every model compared.
 struct ModelTestDashboard: View {
+    enum Detail: Hashable { case questions, leaderboard }
+
     @Environment(TestLab.self) private var lab
     @Environment(BackendController.self) private var backends
     @Environment(ChatController.self) private var chat
@@ -10,33 +12,37 @@ struct ModelTestDashboard: View {
 
     /// Off only for debug renders of the whole page.
     var scrollable = true
+    @State var detail = Detail.questions
 
     var body: some View {
         TestPage(title: "Model Test", symbol: "checkmark.seal.fill",
                  subtitle: "How capable and how fast local models are: \(ModelTestSuite.questionCount) auto-graded questions across six topics and four levels. 100 is the level of \(ModelTestSuite.referenceModel).",
-                 caption: setupCaption, progress: lab.modelProgress, onStop: { lab.cancelModelTest() }, scrollable: scrollable) {
+                 caption: setupCaption, notice: notice, progress: lab.modelProgress, onStop: { lab.cancelModelTest() }, scrollable: scrollable) {
             TestModelPicker()
             RunTestButton(title: "Run test", disabled: !canRun) {
                 lab.runModelTest(backends: backends, settings: settings)
             }
         } content: {
             if let run = lab.selectedModelRun {
-                if let model = testModel, lab.modelProgress == nil, lab.latestModelResult(for: model.id) == nil {
-                    Text("\(model.displayName) \(model.quantLabel) hasn't taken this test yet. Below is the latest run of \(run.displayName) \(run.quant).")
-                        .font(.uiCallout).foregroundStyle(.secondary)
-                }
-                summary(run)
-                AdaptiveStack {
+                TestBlocks(title: run.displayName, symbol: "cube.fill", date: run.date, tiles: tiles(run)) {
+                    hero(run)
+                } left: {
                     if run.isCurrentSuite {
                         skillMap(run)
                     } else {
                         categories(run)
                     }
+                } right: {
                     qualityVsSpeed(selected: run)
+                } runs: {
+                    history(selected: run)
                 }
-                questions(run)
-                leaderboard(selected: run)
-                history(selected: run)
+                TestDetails(tabs: [(.questions, "Questions"), (.leaderboard, "Leaderboard")], selection: $detail) {
+                    switch detail {
+                    case .questions: questions(run)
+                    case .leaderboard: leaderboard(selected: run)
+                    }
+                }
             } else if lab.modelProgress == nil {
                 TestEmptyState(text: "Run the test to score the chosen model. Every question has one checkable answer, so grading is automatic and the same for every model. Each topic runs from basic to expert, and each level is worth twice the one below it. Run it on several models or quants to compare them here.")
             }
@@ -46,6 +52,13 @@ struct ModelTestDashboard: View {
     private var testModel: LocalModel? { lab.testModel(in: backends) }
 
     private var canRun: Bool { !lab.isRunning && !chat.isGenerating && backends.status.isOnline && testModel != nil }
+
+    /// The chosen model has no run of its own, so the page is showing another model's.
+    private var notice: String? {
+        guard let model = testModel, let run = lab.selectedModelRun, lab.modelProgress == nil,
+              lab.latestModelResult(for: model.id) == nil else { return nil }
+        return "Not tested yet. Showing \(run.displayName) \(run.quant)."
+    }
 
     private var setupCaption: String? {
         guard let model = testModel else { return nil }
@@ -57,55 +70,34 @@ struct ModelTestDashboard: View {
 
     // MARK: Overview
 
-    private func summary(_ run: ModelTestResult) -> some View {
-        TestOverview(title: run.displayName, symbol: "cube.fill", date: run.date, tiles: (
-            MetricTile(title: "Speed", value: Format.rate(run.tokensPerSecond), unit: "tok/s",
-                       caption: "Generation, all questions", symbol: "speedometer",
-                       level: Thresholds.tokensPerSecond.level(run.tokensPerSecond)),
-            MetricTile(title: "First token", value: Format.seconds(run.timeToFirstToken),
-                       caption: "Median, model already loaded", symbol: "timer",
-                       level: Thresholds.timeToFirstToken.level(run.timeToFirstToken)),
-            MetricTile(title: "Prompt reading", value: Format.rate(run.promptTokensPerSecond), unit: "tok/s",
-                       caption: "On the long-context question", symbol: "text.magnifyingglass"),
-            MetricTile(title: "Test time", value: Format.seconds(run.duration),
-                       caption: run.loadSeconds.map { $0 > 0.5 ? "Incl. \(Format.seconds($0)) model load" : "Model was already loaded" },
-                       symbol: "clock")
-        )) {
-            HStack(spacing: 16) {
-                ScoreRing(score: run.score, size: 92, unit: run.isCurrentSuite ? "/100" : "% old test")
-                VStack(alignment: .leading, spacing: 6) {
-                    HStack(spacing: 8) {
-                        if run.isCurrentSuite {
-                            Text(TestScoring.tier(run.score)).font(.uiTitle3.weight(.semibold))
-                            Text("\(run.points) of \(run.maxPoints) points").font(.uiCallout).foregroundStyle(.secondary)
-                        } else {
-                            Text("\(run.passed) of \(run.items.count) correct").font(.uiTitle3.weight(.semibold))
-                        }
-                    }
-                    Text("\(run.quant) by \(run.quantProvider) · \(run.backend)").font(.uiCallout).foregroundStyle(.secondary)
-                    HStack(spacing: 6) {
-                        Chip(text: run.thinking ? "Thinking on" : "Thinking off", symbol: "brain", tint: run.thinking ? Palette.accent : .secondary)
-                        Chip(text: "\(Format.tokens(run.contextLength)) context", symbol: "text.word.spacing", tint: .secondary)
-                        if run.usesHarness { Chip(text: "Harness", symbol: "shield.lefthalf.filled", tint: Palette.accent) }
-                    }
-                }
-                Spacer(minLength: 0)
-            }
-            if run.isCurrentSuite {
-                TierScale(score: run.score)
-            } else {
-                Text("From the older, easier test, so this score can't be compared with the current scale.")
-                    .font(.uiCaption).foregroundStyle(.secondary)
-            }
+    private func tiles(_ run: ModelTestResult) -> (MetricTile, MetricTile, MetricTile, MetricTile) {
+        (MetricTile(title: "Speed", value: Format.rate(run.tokensPerSecond), unit: "tok/s",
+                    caption: "Generation, all questions", symbol: "speedometer",
+                    level: Thresholds.tokensPerSecond.level(run.tokensPerSecond)),
+         MetricTile(title: "First token", value: Format.seconds(run.timeToFirstToken),
+                    caption: "Median, model already loaded", symbol: "timer",
+                    level: Thresholds.timeToFirstToken.level(run.timeToFirstToken)),
+         MetricTile(title: "Prompt reading", value: Format.rate(run.promptTokensPerSecond), unit: "tok/s",
+                    caption: "On the long-context question", symbol: "text.magnifyingglass"),
+         MetricTile(title: "Test time", value: Format.seconds(run.duration),
+                    caption: run.loadSeconds.map { $0 > 0.5 ? "Incl. \(Format.seconds($0)) model load" : "Model was already loaded" },
+                    symbol: "clock"))
+    }
+
+    private func hero(_ run: ModelTestResult) -> some View {
+        TestHero(score: run.score, unit: run.isCurrentSuite ? "/100" : "% old test",
+                 headline: run.isCurrentSuite ? TestScoring.tier(run.score) : "\(run.passed) of \(run.items.count) correct",
+                 aside: run.isCurrentSuite ? "\(run.points) of \(run.maxPoints) points" : nil,
+                 detail: "\(run.quant) by \(run.quantProvider) · \(run.backend)",
+                 note: run.isCurrentSuite ? ModelTestSuite.scaleNote : "From the older, easier test, so this score can't be compared with the current scale.") {
+            ModelRunChips(run: run)
         }
     }
 
     // MARK: Skill map
 
     private func skillMap(_ run: ModelTestResult) -> some View {
-        PanelWidget(title: "Skill map", symbol: "square.grid.3x2.fill") {
-            Text("each level is worth double").font(.uiCaption).foregroundStyle(.secondary)
-        } content: {
+        TestPanel(title: "Skill map", symbol: "square.grid.3x2.fill", note: "each level is worth double") {
             Grid(alignment: .leading, horizontalSpacing: 6, verticalSpacing: 6) {
                 GridRow {
                     Color.clear.gridCellUnsizedAxes([.horizontal, .vertical])
@@ -135,15 +127,18 @@ struct ModelTestDashboard: View {
                     }
                 }
             }
-            Text("Green is correct, red is wrong. Click a square to open that question below.")
+            Spacer(minLength: 0)
+            Text("Green is correct, red is wrong. Click a square to open that question in Details.")
                 .font(.uiCaption).foregroundStyle(.secondary)
         }
-        .frame(maxWidth: .infinity)
     }
 
     private func skillCell(_ item: ModelTestItemResult?) -> some View {
         Button {
-            if let item { lab.expandedQuestions.insert(item.id) }
+            if let item {
+                detail = .questions
+                lab.expandedQuestions.insert(item.id)
+            }
         } label: {
             RoundedRectangle(cornerRadius: 6, style: .continuous)
                 .fill((item?.passed == true ? Palette.good : Palette.critical).opacity(item == nil ? 0.1 : 0.75))
@@ -164,7 +159,7 @@ struct ModelTestDashboard: View {
     // MARK: Categories
 
     private func categories(_ run: ModelTestResult) -> some View {
-        PanelWidget(title: "By category", symbol: "square.grid.3x2.fill") { EmptyView() } content: {
+        TestPanel(title: "By category", symbol: "square.grid.3x2.fill", note: "score within each topic") {
             Chart(ModelTestCategory.allCases) { category in
                 let score = run.score(for: category) ?? 0
                 BarMark(x: .value("Score", score), y: .value("Category", category.name))
@@ -181,16 +176,13 @@ struct ModelTestDashboard: View {
                     AxisValueLabel { Text("\(value.as(Int.self) ?? 0)%") }
                 }
             }
-            .frame(height: 220)
+            .frame(maxHeight: .infinity)
         }
-        .frame(maxWidth: .infinity)
     }
 
     private func qualityVsSpeed(selected: ModelTestResult) -> some View {
         let runs = lab.leaderboard.filter { $0.tokensPerSecond != nil }
-        return PanelWidget(title: "Quality vs speed", symbol: "chart.dots.scatter") {
-            Text("newest run per model").font(.uiCaption).foregroundStyle(.secondary)
-        } content: {
+        return TestPanel(title: "Quality vs speed", symbol: "chart.dots.scatter", note: "newest run per model") {
             Chart(Array(runs.enumerated()), id: \.element.id) { index, run in
                 PointMark(x: .value("Speed", run.tokensPerSecond ?? 0), y: .value("Score", run.score))
                     .symbolSize(run.configurationKey == selected.configurationKey ? 220 : 110)
@@ -208,11 +200,10 @@ struct ModelTestDashboard: View {
                     AxisValueLabel { Text("\(value.as(Int.self) ?? 0)%") }
                 }
             }
-            .frame(height: 220)
+            .frame(maxHeight: .infinity)
             Text(runs.count < 2 ? "Test more models or quants to compare them here. Up and to the right is better." : "Up and to the right is better: higher score, faster replies.")
                 .font(.uiCaption).foregroundStyle(.secondary)
         }
-        .frame(maxWidth: .infinity)
     }
 
     // MARK: Questions
@@ -220,9 +211,10 @@ struct ModelTestDashboard: View {
     private func questions(_ run: ModelTestResult) -> some View {
         let ids = Set(run.items.map(\.id))
         let allOpen = ids.isSubset(of: lab.expandedQuestions)
-        return PanelWidget(title: "Questions", symbol: "list.bullet.rectangle.portrait.fill") {
+        return VStack(alignment: .leading, spacing: 12) {
             HStack(spacing: 10) {
                 Text("\(run.passed) passed · \(run.items.count - run.passed) failed").font(.uiCaption).foregroundStyle(.secondary)
+                Spacer()
                 Button(allOpen ? "Collapse all" : "Expand all") {
                     withAnimation(.snappy(duration: 0.2)) {
                         if allOpen { lab.expandedQuestions.subtract(ids) } else { lab.expandedQuestions.formUnion(ids) }
@@ -231,27 +223,24 @@ struct ModelTestDashboard: View {
                 .buttonStyle(.borderless)
                 .font(.uiCaption)
             }
-        } content: {
-            VStack(alignment: .leading, spacing: 12) {
-                ForEach(ModelTestCategory.allCases) { category in
-                    let items = run.items.filter { $0.category == category }
-                    if !items.isEmpty {
-                        VStack(alignment: .leading, spacing: 5) {
-                            HStack(spacing: 6) {
-                                Image(systemName: category.symbol).font(.uiCaption).foregroundStyle(.secondary)
-                                Text(category.name).font(.uiCallout.weight(.semibold))
-                                Text(Format.percent(run.score(for: category))).font(.uiCaption.monospacedDigit()).foregroundStyle(.secondary)
-                            }
-                            Card(padding: 0) {
-                                VStack(spacing: 0) {
-                                    ForEach(Array(items.enumerated()), id: \.element.id) { index, item in
-                                        if index > 0 { Divider() }
-                                        QuestionRow(item: item, expanded: Binding(
-                                            get: { lab.expandedQuestions.contains(item.id) },
-                                            set: { open in
-                                                if open { lab.expandedQuestions.insert(item.id) } else { lab.expandedQuestions.remove(item.id) }
-                                            }))
-                                    }
+            ForEach(ModelTestCategory.allCases) { category in
+                let items = run.items.filter { $0.category == category }
+                if !items.isEmpty {
+                    VStack(alignment: .leading, spacing: 5) {
+                        HStack(spacing: 6) {
+                            Image(systemName: category.symbol).font(.uiCaption).foregroundStyle(.secondary)
+                            Text(category.name).font(.uiCallout.weight(.semibold))
+                            Text(Format.percent(run.score(for: category))).font(.uiCaption.monospacedDigit()).foregroundStyle(.secondary)
+                        }
+                        Card(padding: 0) {
+                            VStack(spacing: 0) {
+                                ForEach(Array(items.enumerated()), id: \.element.id) { index, item in
+                                    if index > 0 { Divider() }
+                                    QuestionRow(item: item, expanded: Binding(
+                                        get: { lab.expandedQuestions.contains(item.id) },
+                                        set: { open in
+                                            if open { lab.expandedQuestions.insert(item.id) } else { lab.expandedQuestions.remove(item.id) }
+                                        }))
                                 }
                             }
                         }
@@ -264,50 +253,46 @@ struct ModelTestDashboard: View {
     // MARK: Leaderboard and history
 
     private func leaderboard(selected: ModelTestResult) -> some View {
-        PanelWidget(title: "Leaderboard on this Mac", symbol: "trophy.fill") {
-            Text("newest run per model + quant").font(.uiCaption).foregroundStyle(.secondary)
-        } content: {
-            Card(padding: 0) {
-                Grid(alignment: .leading, horizontalSpacing: 14, verticalSpacing: 0) {
-                    GridRow {
-                        Text("#")
-                        Text("Model")
-                        Text("Score")
-                        Text("Speed").gridColumnAlignment(.trailing)
-                        Text("First token").gridColumnAlignment(.trailing)
-                        Text("Prompt").gridColumnAlignment(.trailing)
-                    }
-                    .font(.uiCaption.weight(.semibold))
-                    .foregroundStyle(.secondary)
-                    .padding(.vertical, 8)
-                    ForEach(Array(lab.leaderboard.enumerated()), id: \.element.id) { index, run in
-                        Divider().gridCellUnsizedAxes(.horizontal)
-                        GridRow {
-                            Text("\(index + 1)")
-                                .fontWeight(run.id == selected.id ? .bold : .regular)
-                                .foregroundStyle(run.id == selected.id ? AnyShapeStyle(Palette.accent) : AnyShapeStyle(.secondary))
-                                .monospacedDigit()
-                            VStack(alignment: .leading, spacing: 1) {
-                                Text(run.displayName).fontWeight(.medium)
-                                Text("\(run.quant) · \(run.backend)\(run.setupLabel)").font(.uiCaption).foregroundStyle(.secondary)
-                            }
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                            HStack(spacing: 8) {
-                                RangeBar(value: run.score, threshold: TestScoring.modelScore, height: 5).frame(width: 70)
-                                Text(TestFormat.score(run.score)).monospacedDigit().fixedSize()
-                            }
-                            Text("\(Format.rate(run.tokensPerSecond)) tok/s").monospacedDigit()
-                            Text(Format.seconds(run.timeToFirstToken)).monospacedDigit()
-                            Text("\(Format.rate(run.promptTokensPerSecond)) tok/s").monospacedDigit().foregroundStyle(.secondary)
-                        }
-                        .font(.uiCallout)
-                        .padding(.vertical, 7)
-                        .contentShape(Rectangle())
-                        .onTapGesture { lab.show(run) }
-                    }
+        Card(padding: 0) {
+            Grid(alignment: .leading, horizontalSpacing: 14, verticalSpacing: 0) {
+                GridRow {
+                    Text("#")
+                    Text("Model")
+                    Text("Score")
+                    Text("Speed").gridColumnAlignment(.trailing)
+                    Text("First token").gridColumnAlignment(.trailing)
+                    Text("Prompt").gridColumnAlignment(.trailing)
                 }
-                .padding(.horizontal, 12)
+                .font(.uiCaption.weight(.semibold))
+                .foregroundStyle(.secondary)
+                .padding(.vertical, 8)
+                ForEach(Array(lab.leaderboard.enumerated()), id: \.element.id) { index, run in
+                    Divider().gridCellUnsizedAxes(.horizontal)
+                    GridRow {
+                        Text("\(index + 1)")
+                            .fontWeight(run.id == selected.id ? .bold : .regular)
+                            .foregroundStyle(run.id == selected.id ? AnyShapeStyle(Palette.accent) : AnyShapeStyle(.secondary))
+                            .monospacedDigit()
+                        VStack(alignment: .leading, spacing: 1) {
+                            Text(run.displayName).fontWeight(.medium)
+                            Text("\(run.quant) · \(run.backend)\(run.setupLabel)").font(.uiCaption).foregroundStyle(.secondary)
+                        }
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        HStack(spacing: 8) {
+                            RangeBar(value: run.score, threshold: TestScoring.modelScore, height: 5).frame(width: 70)
+                            Text(TestFormat.score(run.score)).monospacedDigit().fixedSize()
+                        }
+                        Text("\(Format.rate(run.tokensPerSecond)) tok/s").monospacedDigit()
+                        Text(Format.seconds(run.timeToFirstToken)).monospacedDigit()
+                        Text("\(Format.rate(run.promptTokensPerSecond)) tok/s").monospacedDigit().foregroundStyle(.secondary)
+                    }
+                    .font(.uiCallout)
+                    .padding(.vertical, 7)
+                    .contentShape(Rectangle())
+                    .onTapGesture { lab.show(run) }
+                }
             }
+            .padding(.horizontal, 12)
         }
     }
 
@@ -317,25 +302,6 @@ struct ModelTestDashboard: View {
                        title: "\(run.displayName) · \(run.quant)\(run.setupLabel)", tag: run.isCurrentSuite ? nil : "Old test",
                        result: "\(run.isCurrentSuite ? TestFormat.score(run.score) : Format.percent(run.score)) · \(Format.rate(run.tokensPerSecond)) tok/s",
                        selected: run.id == selected.id, onSelect: { lab.show(run) }, onDelete: { lab.delete(modelRun: run.id) })
-        }
-    }
-}
-
-/// The score scale, marked with this run's score.
-private struct TierScale: View {
-    let score: Double
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            RangeBar(value: score, threshold: TestScoring.modelScore, height: 5)
-            HStack {
-                ForEach(["Basic", "Capable", "Advanced", "Expert", "Frontier"], id: \.self) { tier in
-                    if tier != "Basic" { Spacer(minLength: 0) }
-                    Text(tier).font(.uiCaption2).foregroundStyle(.secondary)
-                }
-            }
-            Text(ModelTestSuite.scaleNote).font(.uiCaption2).foregroundStyle(.tertiary)
-                .fixedSize(horizontal: false, vertical: true)
         }
     }
 }
@@ -520,7 +486,7 @@ private struct TestModelList: View {
                 Divider()
                 Button {
                     onDone()
-                    ui.showLibrary = true
+                    ui.destination = .library
                 } label: {
                     Label("Get more models…", systemImage: "square.and.arrow.down")
                 }

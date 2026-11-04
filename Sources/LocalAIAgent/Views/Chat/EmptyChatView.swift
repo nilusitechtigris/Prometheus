@@ -34,6 +34,7 @@ private struct WelcomeHero: View {
     @Environment(ChatController.self) private var chat
     @Environment(SystemMonitor.self) private var monitor
     @Environment(UIState.self) private var ui
+    @Environment(AppSettings.self) private var settings
 
     private let suggestions: [(String, String, String)] = [
         ("lightbulb", "Explain a concept", "Explain how transformers in large language models work, in simple terms with an analogy."),
@@ -52,7 +53,7 @@ private struct WelcomeHero: View {
                     .font(Font.usesGeist ? .geistMono(13) : Brand.display(17, weight: .regular).italic())
                     .foregroundStyle(.secondary)
                 if let model = backends.selectedModel {
-                    Text("Running **\(model.displayName)** on your \(monitor.chipName) — nothing leaves this Mac.")
+                    Text("Running **\(model.displayName)** on your \(monitor.chipName)\(settings.harnessEnabled && backends.kind.supportsTools ? "." : " — nothing leaves this Mac.")")
                         .foregroundStyle(.secondary)
                         .multilineTextAlignment(.center)
                         .padding(.top, 4)
@@ -175,7 +176,7 @@ private struct FirstModelCard: View {
                 Text("Load a model in \(backends.kind.displayName); verified models appear here automatically.")
                     .foregroundStyle(.secondary)
             }
-            Button("Browse the full library") { ui.showLibrary = true }
+            Button("Browse the full library") { ui.destination = .library }
                 .buttonStyle(.link)
         }
     }

@@ -25,6 +25,13 @@ enum HarnessTools {
     your final reply in the format the question asks for.
     """
 
+    /// Added to the chat's system prompt when the harness is on.
+    static let chatRules = """
+    The harness is on for this reply, so anything above about having no internet or tools doesn't apply here. What your \
+    tools found, if anything, follows the user's message. The user can't see it, so state what matters in your own words \
+    without commenting on the tools, and name the source when you use a web page. If it doesn't answer the question, say so.
+    """
+
     /// Runs one tool call. Returns what the model should read, how much the guard removed from it,
     /// and whether the call failed.
     static func run(_ call: ToolCall) async -> (text: String, removed: Int, failed: Bool) {
@@ -60,6 +67,11 @@ enum HarnessTools {
 
     /// Marks a tool log line whose call failed.
     static let failedMark = " (failed)"
+
+    /// Whether a log line is a real tool run, as opposed to a note about a step of the pipeline.
+    static func isToolCall(_ line: String) -> Bool {
+        ["Searched", "Opened", "Calculated", "Ran"].contains { line.hasPrefix($0) }
+    }
 
     /// One readable line per call, for the test results.
     static func describe(_ call: ToolCall) -> String {

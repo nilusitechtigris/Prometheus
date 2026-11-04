@@ -195,7 +195,7 @@ private struct SafetySettings: View {
                     .foregroundStyle(.secondary)
             }
             Section("Privacy") {
-                Label("Prompts and responses never leave this Mac. The only internet access is downloading models you choose, through your framework.", systemImage: "lock.shield")
+                Label("Your chats stay on this Mac. With the harness off, the only internet access is downloading models you choose, through your framework. With it on, search terms go to Wikipedia, Stack Overflow, arXiv and MDN, and pages come from the trusted sites.", systemImage: "lock.shield")
                     .font(.uiCallout)
             }
         }

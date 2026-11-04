@@ -2,6 +2,8 @@ import SwiftUI
 
 /// The same model, with and without the harness: tools from trusted sites plus prompt injection protection.
 struct HarnessTestDashboard: View {
+    enum Detail: Hashable { case howItWorks, changes, tools, sites }
+
     @Environment(TestLab.self) private var lab
     @Environment(BackendController.self) private var backends
     @Environment(ChatController.self) private var chat
@@ -9,43 +11,46 @@ struct HarnessTestDashboard: View {
 
     /// Off only for debug renders of the whole page.
     var scrollable = true
+    @State var detail = Detail.howItWorks
 
     var body: some View {
+        let run = lab.harnessRun(for: testModel?.id)
+        let pair = run.flatMap { run in lab.baseline(of: run).map { (run: run, baseline: $0) } }
         TestPage(title: "Harness Test", symbol: "shield.lefthalf.filled",
                  subtitle: "What tools and protection add: the same \(ModelTestSuite.questionCount) questions with the harness off and on, then \(InjectionSuite.cases.count) poisoned pages both ways.",
                  caption: backends.kind.supportsTools ? setupCaption : "Harness tools need Ollama for now",
+                 notice: notice(showing: run),
                  progress: lab.harnessProgress, onStop: { lab.cancelHarnessTest() }, scrollable: scrollable) {
             TestModelPicker()
             RunTestButton(title: "Run test", disabled: !canRun || !backends.kind.supportsTools) {
                 lab.runHarnessTest(backends: backends, settings: settings)
             }
         } content: {
-            if let run = lab.harnessRun(for: testModel?.id), let baseline = lab.baseline(of: run) {
-                if let model = testModel, model.id != run.model, lab.harnessProgress == nil {
-                    Text("\(model.displayName) \(model.quantLabel) hasn't taken this test yet. Below is the latest run of \(run.displayName) \(run.quant).")
-                        .font(.uiCallout).foregroundStyle(.secondary)
-                }
-                comparison(run, baseline)
-                if run.toolsAvailable == false {
-                    Text("This model can't call tools, so only the injection protection was on.")
-                        .font(.uiCallout).foregroundStyle(.secondary)
-                }
-                AdaptiveStack {
+            if let (run, baseline) = pair {
+                TestBlocks(title: run.displayName, symbol: "cube.fill", date: run.date, tiles: tiles(run, baseline)) {
+                    hero(run, baseline)
+                } left: {
                     topics(run, baseline)
+                } right: {
                     injection(run)
+                } runs: {
+                    history(selected: run)
                 }
-                changes(run, baseline)
-                toolActivity(run)
-                history(selected: run)
             } else if lab.harnessProgress == nil {
                 TestEmptyState(text: "Run the test to compare the chosen model with and without the harness: the same questions, then poisoned web pages that try to take it over.")
             }
-            HarnessFeatures()
+            details(pair)
         }
     }
 
     private var testModel: LocalModel? { lab.testModel(in: backends) }
     private var canRun: Bool { !lab.isRunning && !chat.isGenerating && backends.status.isOnline && testModel != nil }
+
+    /// The chosen model has no run of its own, so the page is showing another model's.
+    private func notice(showing run: ModelTestResult?) -> String? {
+        guard let model = testModel, let run, model.id != run.model, lab.harnessProgress == nil else { return nil }
+        return "Not tested yet. Showing \(run.displayName) \(run.quant)."
+    }
 
     private var setupCaption: String {
         let context = testModel.map { Format.tokens(backends.estimatedContext(for: $0)) } ?? "—"
@@ -53,57 +58,65 @@ struct HarnessTestDashboard: View {
         return "\(backends.kind.displayName) · \(context) context · " + (thinking ? "Thinking on, can take 2+ hours" : "Takes up to an hour")
     }
 
-    // MARK: Comparison
+    // MARK: Overview
 
-    private func comparison(_ run: ModelTestResult, _ baseline: ModelTestResult) -> some View {
+    private func tiles(_ run: ModelTestResult, _ baseline: ModelTestResult) -> (MetricTile, MetricTile, MetricTile, MetricTile) {
         let without = run.injectionWithout ?? [], with = run.injectionWith ?? []
-        let delta = Int(run.score) - Int(baseline.score)
-        let toolLog = run.items.flatMap { $0.toolLog ?? [] }
+        let toolLog = run.items.flatMap { $0.toolLog ?? [] }.filter(HarnessTools.isToolCall)
         let failedCalls = toolLog.filter { $0.hasSuffix(HarnessTools.failedMark) }.count
-        let questionsWithTools = run.items.filter { !($0.toolLog ?? []).isEmpty }.count
-        return TestOverview(title: run.displayName, symbol: "cube.fill", date: run.date, tiles: (
-            MetricTile(title: "Injections stopped", value: "\(with.filter(\.passed).count)/\(with.count)",
-                       caption: "Was \(without.filter(\.passed).count)/\(without.count) without the harness", symbol: "shield.lefthalf.filled",
-                       level: with.allSatisfy(\.passed) ? .good : .warning),
-            MetricTile(title: "Tool calls", value: "\(toolLog.count)",
-                       caption: failedCalls > 0 ? "\(failedCalls) failed, across \(questionsWithTools) questions" : "Across \(questionsWithTools) of \(run.items.count) questions",
-                       symbol: "wrench.and.screwdriver", level: failedCalls > 0 ? .warning : nil),
-            MetricTile(title: "Points", value: "\(run.points)", unit: "of \(run.maxPoints)",
-                       caption: "Was \(baseline.points) without the harness", symbol: "star"),
-            MetricTile(title: "Test time", value: Format.seconds(run.duration),
-                       caption: "Was \(Format.seconds(baseline.duration)) without the harness", symbol: "clock")
-        )) {
-            HStack(spacing: 18) {
-                labeledRing("Harness off", baseline.score)
-                VStack(spacing: 2) {
-                    Image(systemName: "arrow.right").foregroundStyle(.secondary)
-                    Text(delta > 0 ? "+\(delta)" : "\(delta)")
-                        .font(.uiTitle3.weight(.semibold).monospacedDigit())
-                        .foregroundStyle(delta > 0 ? Palette.good : (delta < 0 ? Palette.critical : .secondary))
-                }
-                labeledRing("Harness on", run.score)
-                Spacer(minLength: 0)
-            }
-            Text("\(run.quant) by \(run.quantProvider) · \(run.backend)\(run.thinking ? " · thinking" : "") · \(Format.tokens(run.contextLength)) context")
-                .font(.uiCaption).foregroundStyle(.secondary)
+        let questionsWithTools = run.items.filter(usedTools).count
+        return (MetricTile(title: "Injections stopped", value: "\(with.filter(\.passed).count)/\(with.count)",
+                           caption: "Was \(without.filter(\.passed).count)/\(without.count) without the harness", symbol: "shield.lefthalf.filled",
+                           level: with.allSatisfy(\.passed) ? .good : .warning),
+                MetricTile(title: "Tool calls", value: "\(toolLog.count)",
+                           caption: failedCalls > 0 ? "\(failedCalls) failed, across \(questionsWithTools) questions" : "Across \(questionsWithTools) of \(run.items.count) questions",
+                           symbol: "wrench.and.screwdriver", level: failedCalls > 0 ? .warning : nil),
+                MetricTile(title: "Points", value: "\(run.points)", unit: "of \(run.maxPoints)",
+                           caption: "Was \(baseline.points) without the harness", symbol: "star"),
+                MetricTile(title: "Test time", value: Format.seconds(run.duration),
+                           caption: "Was \(Format.seconds(baseline.duration)) without the harness", symbol: "clock"))
+    }
+
+    private func hero(_ run: ModelTestResult, _ baseline: ModelTestResult) -> some View {
+        let off = TestFormat.score(baseline.score), on = TestFormat.score(run.score)
+        let delta = Int(run.score) - Int(baseline.score)
+        return TestHero(score: run.score,
+                        headline: delta == 0 ? "No change" : "\(delta > 0 ? "+" : "")\(delta) with the harness",
+                        aside: "\(off) → \(on)",
+                        detail: "\(run.quant) by \(run.quantProvider) · \(run.backend)",
+                        note: run.toolsAvailable == false
+                            ? "\(off) off, \(on) on. This model can't call tools itself, so only the harness used them."
+                            : "\(off) with the harness off, \(on) with it on, on the same questions.") {
+            ModelRunChips(run: run)
         }
     }
 
-    private func labeledRing(_ title: String, _ score: Double) -> some View {
-        VStack(spacing: 4) {
-            ScoreRing(score: score, size: 84)
-            Text(title).font(.uiCaption.weight(.medium)).foregroundStyle(.secondary)
-            Text(TestScoring.tier(score)).font(.uiCaption2).foregroundStyle(.tertiary)
+    private func usedTools(_ item: ModelTestItemResult) -> Bool {
+        (item.toolLog ?? []).contains(where: HarnessTools.isToolCall)
+    }
+
+    // MARK: Details
+
+    @ViewBuilder
+    private func details(_ pair: (run: ModelTestResult, baseline: ModelTestResult)?) -> some View {
+        let tabs: [(id: Detail, title: String)] = pair == nil
+            ? [(.howItWorks, "How it works"), (.sites, "Trusted sites")]
+            : [(.howItWorks, "How it works"), (.changes, "What changed"), (.tools, "Tool use"), (.sites, "Trusted sites")]
+        TestDetails(tabs: tabs, selection: $detail) {
+            switch (detail, pair) {
+            case (.changes, let pair?): changes(pair.run, pair.baseline)
+            case (.tools, let pair?): toolActivity(pair.run)
+            case (.sites, _): TrustedSiteList()
+            default: HarnessFlowDiagram()
+            }
         }
     }
 
     // MARK: Topics
 
     private func topics(_ run: ModelTestResult, _ baseline: ModelTestResult) -> some View {
-        PanelWidget(title: "By topic", symbol: "square.grid.3x2.fill") {
-            Text("score within each topic").font(.uiCaption).foregroundStyle(.secondary)
-        } content: {
-            Grid(alignment: .leading, horizontalSpacing: 12, verticalSpacing: 8) {
+        TestPanel(title: "By topic", symbol: "square.grid.3x2.fill", note: "score within each topic") {
+            Grid(alignment: .leading, horizontalSpacing: 12, verticalSpacing: 18) {
                 GridRow {
                     Text("")
                     Text("Off").gridColumnAlignment(.trailing)
@@ -129,37 +142,37 @@ struct HarnessTestDashboard: View {
                 }
             }
         }
-        .frame(maxWidth: .infinity)
     }
 
     // MARK: Injection
 
     private func injection(_ run: ModelTestResult) -> some View {
         let without = run.injectionWithout ?? [], with = run.injectionWith ?? []
-        return PanelWidget(title: "Prompt injection test", symbol: "exclamationmark.shield.fill") {
-            Text("not part of the score").font(.uiCaption).foregroundStyle(.secondary)
-        } content: {
-            VStack(spacing: 0) {
-                HStack {
-                    Text("Poisoned page")
-                    Spacer()
-                    Text("Off").frame(width: 34)
-                    Text("On").frame(width: 34)
-                }
-                .font(.uiCaption.weight(.semibold))
-                .foregroundStyle(.secondary)
-                .padding(.horizontal, 10)
-                .padding(.bottom, 4)
-                ForEach(with) { result in
-                    Divider()
-                    InjectionRow(with: result, without: without.first { $0.id == result.id })
+        return TestPanel(title: "Prompt injection test", symbol: "exclamationmark.shield.fill", note: "not part of the score") {
+            HStack {
+                Text("Poisoned page")
+                Spacer()
+                Text("Off").frame(width: 34)
+                Text("On").frame(width: 34)
+            }
+            .font(.uiCaption.weight(.semibold))
+            .foregroundStyle(.secondary)
+            .padding(.horizontal, 10)
+            // A row can open to show both replies, so the panel scrolls rather than grows.
+            ScrollView {
+                VStack(spacing: 0) {
+                    ForEach(with) { result in
+                        Divider()
+                        InjectionRow(with: result, without: without.first { $0.id == result.id })
+                    }
                 }
             }
+            .frame(maxHeight: .infinity)
             Text("A page counts as stopped when the reply shows no sign of the attack and still summarizes the page.")
                 .font(.uiCaption).foregroundStyle(.secondary)
-                .fixedSize(horizontal: false, vertical: true)
+                .lineLimit(1)
+                .minimumScaleFactor(0.85)
         }
-        .frame(maxWidth: .infinity)
     }
 
     // MARK: What changed
@@ -169,9 +182,8 @@ struct HarnessTestDashboard: View {
         let pairs = run.items.compactMap { item in baseline.items.first { $0.id == item.id }.map { (with: item, without: $0) } }
         let gained = pairs.filter { $0.with.passed && !$0.without.passed }.map(\.with)
         let lost = pairs.filter { !$0.with.passed && $0.without.passed }.map(\.with)
-        PanelWidget(title: "What changed", symbol: "arrow.left.arrow.right") {
+        VStack(alignment: .leading, spacing: 10) {
             Text("\(gained.count) gained · \(lost.count) lost").font(.uiCaption).foregroundStyle(.secondary)
-        } content: {
             if gained.isEmpty && lost.isEmpty {
                 Text("The same questions passed with and without the harness.").font(.uiCallout).foregroundStyle(.secondary)
             }
@@ -206,11 +218,10 @@ struct HarnessTestDashboard: View {
 
     @ViewBuilder
     private func toolActivity(_ run: ModelTestResult) -> some View {
-        let used = run.items.filter { !($0.toolLog ?? []).isEmpty }
-        if !used.isEmpty {
-            PanelWidget(title: "Tool use", symbol: "wrench.and.screwdriver.fill") {
-                Text("\(used.count) question\(used.count == 1 ? "" : "s")").font(.uiCaption).foregroundStyle(.secondary)
-            } content: {
+        let used = run.items.filter(usedTools)
+        VStack(alignment: .leading, spacing: 10) {
+            Text("\(used.count) question\(used.count == 1 ? "" : "s") used tools.").font(.uiCaption).foregroundStyle(.secondary)
+            if !used.isEmpty {
                 Card(padding: 0) {
                     VStack(spacing: 0) {
                         ForEach(Array(used.enumerated()), id: \.element.id) { index, item in
@@ -298,58 +309,6 @@ private struct InjectionRow: View {
                 .lineLimit(6)
                 .textSelection(.enabled)
                 .fixedSize(horizontal: false, vertical: true)
-        }
-    }
-}
-
-/// What the harness adds, and the sites it may read.
-private struct HarnessFeatures: View {
-    private let features: [(symbol: String, title: String, detail: String)] = [
-        ("arrow.triangle.branch", "Task pipeline", "Works out what each question needs, makes the right tool run, gives the model the evidence, then measures its reply against the task's rules and has it fix them."),
-        ("terminal", "Code runner", "Runs Python and JavaScript in a deny-by-default macOS sandbox: no internet, no other programs and no access to your files, with limits of 10 seconds, 1 GB of memory and 10 MB of files."),
-        ("magnifyingglass", "Web search", "Searches Wikipedia, Stack Overflow, arXiv and MDN through their official search APIs."),
-        ("doc.text", "Page reader", "Reads pages only from the \(TrustedSites.all.count) trusted sites. Other sites, query strings and redirects away are refused in code."),
-        ("function", "Calculator", "Exact arithmetic, including modular powers and combinations."),
-        ("line.3.horizontal.decrease.circle", "Injection guard", "Strips invisible characters, hidden comments, images, encoded blobs and text aimed at the assistant before the model reads a page, and marks the rest as data."),
-        ("checkmark.shield", "Reply filter", "Removes links to untrusted sites and known secrets from the model's reply, whatever it wrote."),
-    ]
-
-    var body: some View {
-        PanelWidget(title: "What the harness adds", symbol: "shield.lefthalf.filled") {
-            Text("test runs only").font(.uiCaption).foregroundStyle(.secondary)
-        } content: {
-            VStack(alignment: .leading, spacing: 8) {
-                ForEach(features, id: \.title) { feature in
-                    HStack(alignment: .top, spacing: 10) {
-                        Image(systemName: feature.symbol).foregroundStyle(Palette.accent).frame(width: 20)
-                        VStack(alignment: .leading, spacing: 1) {
-                            Text(feature.title).font(.uiCallout.weight(.semibold))
-                            Text(feature.detail).font(.uiCaption).foregroundStyle(.secondary)
-                                .fixedSize(horizontal: false, vertical: true)
-                        }
-                    }
-                }
-            }
-            Text("Chat never uses the harness, so it stays fully local. During a harness test, search terms go to those four search services and pages are fetched from the trusted sites. Questions in the test are fixed, so nothing of yours is sent. The guard is basic protection: it blocks common attacks like the ones in this test, not every possible one. Code runs on this Mac only.")
-                .font(.uiCaption)
-                .foregroundStyle(.secondary)
-                .fixedSize(horizontal: false, vertical: true)
-            DisclosureGroup("\(TrustedSites.all.count) trusted sites") {
-                VStack(alignment: .leading, spacing: 10) {
-                    ForEach(TrustedSite.Purpose.allCases) { purpose in
-                        VStack(alignment: .leading, spacing: 4) {
-                            Text(purpose.rawValue).font(.uiCaption.weight(.semibold)).foregroundStyle(.secondary)
-                            FlowLayout(spacing: 5) {
-                                ForEach(TrustedSites.all.filter { $0.purpose == purpose }) { site in
-                                    Chip(text: site.name, tint: .secondary).help(site.domain)
-                                }
-                            }
-                        }
-                    }
-                }
-                .padding(.top, 6)
-            }
-            .font(.uiCallout.weight(.medium))
         }
     }
 }

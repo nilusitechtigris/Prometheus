@@ -123,9 +123,9 @@ private struct ModelPickerPopover: View {
                     .font(.uiCaption2)
                     .foregroundStyle(.tertiary)
                 Spacer()
-                Button("Model Library…") {
+                Button("Model Library") {
                     dismiss()
-                    ui.showLibrary = true
+                    ui.destination = .library
                 }
                 .controlSize(.small)
             }

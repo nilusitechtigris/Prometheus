@@ -2,7 +2,6 @@ import AppKit
 import SwiftUI
 
 struct ModelLibraryView: View {
-    @Environment(\.dismiss) private var dismiss
     @Environment(BackendController.self) private var backends
     @Environment(SystemMonitor.self) private var monitor
     @Environment(AppSettings.self) private var settings
@@ -10,25 +9,25 @@ struct ModelLibraryView: View {
     @State private var removing: String?
 
     var body: some View {
-        VStack(spacing: 0) {
-            header
-            Divider()
-            ScrollView {
-                VStack(alignment: .leading, spacing: 18) {
-                    SafetyCallout()
-                    filterBar
-                    LazyVGrid(columns: [GridItem(.adaptive(minimum: 290, maximum: 420), spacing: 14)], spacing: 14) {
-                        ForEach(filtered) { model in
-                            ModelCard(model: model)
-                        }
-                    }
-                    if backends.kind == .ollama && !backends.unverifiedModels.isEmpty {
-                        unverifiedSection
+        ScrollView {
+            VStack(alignment: .leading, spacing: 16) {
+                PageHeader(title: "Model Library", symbol: "square.stack.3d.up.fill", subtitle: subtitle) { EmptyView() }
+                SafetyCallout()
+                filterBar
+                LazyVGrid(columns: [GridItem(.adaptive(minimum: 290, maximum: 420), spacing: 14)], spacing: 14) {
+                    ForEach(filtered) { model in
+                        ModelCard(model: model)
                     }
                 }
-                .padding(22)
+                if backends.kind == .ollama && !backends.unverifiedModels.isEmpty {
+                    unverifiedSection
+                }
             }
+            .padding(24)
+            .frame(maxWidth: 1180)
+            .frame(maxWidth: .infinity)
         }
+        .background(AmbientBackground())
         .confirmationDialog("Remove \(removing ?? "")?", isPresented: Binding(get: { removing != nil }, set: { if !$0 { removing = nil } }),
                             titleVisibility: .visible) {
             Button("Remove from Disk", role: .destructive) {
@@ -40,21 +39,8 @@ struct ModelLibraryView: View {
         }
     }
 
-    private var header: some View {
-        HStack(spacing: 14) {
-            BrandMark(size: 34)
-            VStack(alignment: .leading, spacing: 2) {
-                Text("Model Library").font(.uiTitle2.weight(.semibold))
-                Text("\(monitor.chipName) · \(Format.gigabytes(Int64(ProcessInfo.processInfo.physicalMemory))) unified memory · ≈ \(Format.gigabytes(monitor.gpuBudgetBytes)) usable by the GPU · estimates at \(Format.tokens(settings.contextLength)) context")
-                    .font(.uiCallout)
-                    .foregroundStyle(.secondary)
-            }
-            Spacer()
-            Button("Done") { dismiss() }
-                .keyboardShortcut(.defaultAction)
-        }
-        .padding(.horizontal, 22)
-        .padding(.vertical, 16)
+    private var subtitle: String {
+        "\(monitor.chipName) · \(Format.gigabytes(Int64(ProcessInfo.processInfo.physicalMemory))) unified memory · ≈ \(Format.gigabytes(monitor.gpuBudgetBytes)) usable by the GPU · estimates at \(Format.tokens(settings.contextLength)) context"
     }
 
     private var filterBar: some View {

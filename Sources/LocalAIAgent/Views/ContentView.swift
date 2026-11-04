@@ -9,19 +9,12 @@ struct ContentView: View {
     @Environment(\.dismissWindow) private var dismissWindow
 
     var body: some View {
-        @Bindable var ui = ui
-
         Group {
             if settings.draftLayout {
                 DraftShell()
             } else {
                 classicLayout
             }
-        }
-        .sheet(isPresented: $ui.showLibrary) {
-            ModelLibraryView()
-                .frame(minWidth: 860, idealWidth: 980, minHeight: 620, idealHeight: 760)
-                .tint(Palette.accent)
         }
         .tint(Palette.accent)
         #if DEBUG
@@ -34,14 +27,7 @@ struct ContentView: View {
             SidebarView()
                 .navigationSplitViewColumnWidth(min: 220, ideal: 260, max: 340)
         } detail: {
-            Group {
-                switch ui.destination {
-                case .chat: ChatView()
-                case .modelTest: ModelTestDashboard()
-                case .hardwareTest: HardwareTestDashboard()
-                case .harnessTest: HarnessTestDashboard()
-                }
-            }
+            MainPage()
         }
         .navigationTitle(title)
         .navigationSubtitle(backends.selectedModel.map { "\($0.displayName) · \($0.quantLabel) · \(backends.kind.displayName)" } ?? backends.kind.displayName)
@@ -74,9 +60,21 @@ struct ContentView: View {
     private var title: String {
         switch ui.destination {
         case .chat: return chat.selected?.title ?? Brand.name
-        case .modelTest: return "Model Test"
-        case .hardwareTest: return "Hardware Test"
-        case .harnessTest: return "Harness Test"
+        case .tests: return "Tests"
+        case .library: return "Model Library"
+        }
+    }
+}
+
+/// What the main area shows, in either layout.
+struct MainPage: View {
+    @Environment(UIState.self) private var ui
+
+    var body: some View {
+        switch ui.destination {
+        case .chat: ChatView()
+        case .tests: TestsPage()
+        case .library: ModelLibraryView()
         }
     }
 }

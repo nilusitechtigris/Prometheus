@@ -3,6 +3,8 @@ import SwiftUI
 
 /// Full results of the hardware test, and what they mean for running models on this Mac.
 struct HardwareTestDashboard: View {
+    enum Detail: Hashable { case localAI, phases }
+
     @Environment(TestLab.self) private var lab
     @Environment(BackendController.self) private var backends
     @Environment(ChatController.self) private var chat
@@ -11,6 +13,7 @@ struct HardwareTestDashboard: View {
 
     /// Off only for debug renders of the whole page.
     var scrollable = true
+    @State var detail = Detail.localAI
 
     var body: some View {
         TestPage(title: "Hardware Test", symbol: "cpu.fill",
@@ -30,13 +33,21 @@ struct HardwareTestDashboard: View {
             }
         } content: {
             if let run = lab.selectedHardwareRun {
-                summary(run)
-                AdaptiveStack {
+                TestBlocks(title: run.chip, symbol: "laptopcomputer", date: run.date, tiles: tiles(run)) {
+                    hero(run)
+                } left: {
                     measurements(run)
+                } right: {
                     thermals(run)
+                } runs: {
+                    history(selected: run)
                 }
-                meaning(run)
-                history(selected: run)
+                TestDetails(tabs: [(.localAI, "Local AI speed"), (.phases, "Test steps")], selection: $detail) {
+                    switch detail {
+                    case .localAI: meaning(run)
+                    case .phases: phases(run)
+                    }
+                }
             } else if lab.hardwareProgress == nil {
                 TestEmptyState(text: "Run the test to measure what drives local AI on this Mac: GPU math for reading prompts, memory bandwidth for generating tokens, and disk speed for loading models.")
             }
@@ -45,34 +56,27 @@ struct HardwareTestDashboard: View {
 
     // MARK: Overview
 
-    private func summary(_ run: HardwareTestResult) -> some View {
-        TestOverview(title: run.chip, symbol: "laptopcomputer", date: run.date, tiles: (
-            MetricTile(title: "GPU compute", value: TestFormat.number(run.gpuTFLOPS, decimals: 2), unit: "TFLOPS",
-                       caption: "Sets prompt reading speed", symbol: "square.stack.3d.up.fill"),
-            MetricTile(title: "Memory bandwidth", value: TestFormat.gbPerSecond(run.gpuBandwidth), unit: "GB/s",
-                       caption: "Sets token generation speed", symbol: "arrow.left.arrow.right"),
-            MetricTile(title: "Disk read", value: TestFormat.gbPerSecond(run.diskRead), unit: "GB/s",
-                       caption: run.diskRead.map { "Reads a 5 GB model in ≈ \(Format.seconds(5 / max($0, 0.01)))" }, symbol: "internaldrive"),
-            MetricTile(title: "Test time", value: Format.seconds(run.duration),
-                       caption: "Thermal state stayed \((run.worstThermalState ?? "unknown").lowercased())", symbol: "clock")
-        )) {
-            HStack(spacing: 16) {
-                ScoreRing(score: run.sustainedPercent, size: 92, unit: "%", bands: TestScoring.sustained)
-                VStack(alignment: .leading, spacing: 6) {
-                    Text(TestScoring.sustained.level(run.sustainedPercent) == .good ? "No throttling" : "Throttling under load")
-                        .font(.uiTitle3.weight(.semibold))
-                    Text("GPU speed after 15 s at full load, compared with its best burst.").font(.uiCallout).foregroundStyle(.secondary)
-                        .fixedSize(horizontal: false, vertical: true)
-                    HStack(spacing: 6) {
-                        Chip(text: "\(run.cpuCores) CPU", symbol: "cpu", tint: .secondary)
-                        if let gpu = run.gpuCores { Chip(text: "\(gpu) GPU", symbol: "square.stack.3d.up", tint: .secondary) }
-                        Chip(text: Format.gigabytes(run.memoryBytes), symbol: "memorychip", tint: .secondary)
-                    }
-                }
-                Spacer(minLength: 0)
-            }
-            Text("≈ \(Format.gigabytes(run.gpuBudgetBytes)) of memory is usable by the GPU, which limits the largest model.")
-                .font(.uiCaption).foregroundStyle(.secondary)
+    private func tiles(_ run: HardwareTestResult) -> (MetricTile, MetricTile, MetricTile, MetricTile) {
+        (MetricTile(title: "GPU compute", value: TestFormat.number(run.gpuTFLOPS, decimals: 2), unit: "TFLOPS",
+                    caption: "Sets prompt reading speed", symbol: "square.stack.3d.up.fill"),
+         MetricTile(title: "Memory bandwidth", value: TestFormat.gbPerSecond(run.gpuBandwidth), unit: "GB/s",
+                    caption: "Sets token generation speed", symbol: "arrow.left.arrow.right"),
+         MetricTile(title: "Disk read", value: TestFormat.gbPerSecond(run.diskRead), unit: "GB/s",
+                    caption: run.diskRead.map { "Reads a 5 GB model in ≈ \(Format.seconds(5 / max($0, 0.01)))" }, symbol: "internaldrive"),
+         MetricTile(title: "Test time", value: Format.seconds(run.duration),
+                    caption: "Thermal state stayed \((run.worstThermalState ?? "unknown").lowercased())", symbol: "clock"))
+    }
+
+    private func hero(_ run: HardwareTestResult) -> some View {
+        TestHero(score: run.sustainedPercent, unit: "%", bands: TestScoring.sustained,
+                 headline: TestScoring.sustained.level(run.sustainedPercent) == .good ? "No throttling" : "Throttling under load",
+                 aside: "sustained speed",
+                 detail: "GPU speed after 15 s at full load, compared with its best burst.",
+                 scale: ["Throttling", "Steady"],
+                 note: "≈ \(Format.gigabytes(run.gpuBudgetBytes)) of memory is usable by the GPU, which limits the largest model.") {
+            Chip(text: "\(run.cpuCores) CPU", symbol: "cpu", tint: .secondary)
+            if let gpu = run.gpuCores { Chip(text: "\(gpu) GPU", symbol: "square.stack.3d.up", tint: .secondary) }
+            Chip(text: Format.gigabytes(run.memoryBytes), symbol: "memorychip", tint: .secondary)
         }
     }
 
@@ -89,10 +93,8 @@ struct HardwareTestDashboard: View {
             ("Disk read", "\(TestFormat.gbPerSecond(run.diskRead)) GB/s", "Sets model load time"),
             ("Disk write", "\(TestFormat.gbPerSecond(run.diskWrite)) GB/s", "Sets download saving"),
         ]
-        return PanelWidget(title: "All measurements", symbol: "square.grid.3x2.fill") {
-            Text("\(rows.count) tests").font(.uiCaption).foregroundStyle(.secondary)
-        } content: {
-            Grid(alignment: .leading, horizontalSpacing: 12, verticalSpacing: 9) {
+        return TestPanel(title: "All measurements", symbol: "square.grid.3x2.fill", note: "\(rows.count) tests") {
+            Grid(alignment: .leading, horizontalSpacing: 12, verticalSpacing: 18) {
                 ForEach(rows, id: \.0) { row in
                     GridRow {
                         Text(row.0).frame(maxWidth: .infinity, alignment: .leading)
@@ -103,7 +105,6 @@ struct HardwareTestDashboard: View {
                 }
             }
         }
-        .frame(maxWidth: .infinity)
     }
 
     // MARK: Thermals
@@ -114,10 +115,8 @@ struct HardwareTestDashboard: View {
     ]
 
     private func thermals(_ run: HardwareTestResult) -> some View {
-        PanelWidget(title: "Thermals during the test", symbol: "thermometer.medium") {
-            Text("peak CPU \(Format.temp(run.peakCPUTemp)) · GPU \(Format.temp(run.peakGPUTemp))")
-                .font(.uiCaption.monospacedDigit()).foregroundStyle(.secondary)
-        } content: {
+        TestPanel(title: "Thermals during the test", symbol: "thermometer.medium",
+                  note: "peak CPU \(Format.temp(run.peakCPUTemp)) · GPU \(Format.temp(run.peakGPUTemp))") {
             Chart {
                 ForEach(Array(run.phases.enumerated()), id: \.element.id) { index, phase in
                     RectangleMark(xStart: .value("Start", phase.start), xEnd: .value("End", phase.end))
@@ -157,7 +156,8 @@ struct HardwareTestDashboard: View {
             .chartYScale(domain: 0...105)
             .chartXScale(domain: 0...max(run.duration, 1))
             .chartXAxisLabel("seconds")
-            .frame(height: 220)
+            .padding(.top, 14)
+            .frame(maxHeight: .infinity)
             HStack(spacing: 14) {
                 legend("CPU temperature °C", Palette.accent2)
                 legend("GPU temperature °C", Palette.accent)
@@ -165,7 +165,6 @@ struct HardwareTestDashboard: View {
                 Spacer()
             }
         }
-        .frame(maxWidth: .infinity)
     }
 
     private func legend(_ title: String, _ color: Color) -> some View {
@@ -204,9 +203,8 @@ struct HardwareTestDashboard: View {
     private func meaning(_ run: HardwareTestResult) -> some View {
         let rows = estimates(run)
         let top = max(rows.map { max($0.tokensPerSecond, $0.measured ?? 0) }.max() ?? 1, 1)
-        return PanelWidget(title: "What this means for local AI", symbol: "sparkles") {
-            Text("generation speed per model").font(.uiCaption).foregroundStyle(.secondary)
-        } content: {
+        return VStack(alignment: .leading, spacing: 10) {
+            Text("Generation speed each model can reach on this Mac.").font(.uiCaption).foregroundStyle(.secondary)
             VStack(spacing: 6) {
                 ForEach(rows) { row in
                     HStack(spacing: 10) {
@@ -258,7 +256,28 @@ struct HardwareTestDashboard: View {
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
         }
-        .frame(maxWidth: .infinity)
+    }
+
+    // MARK: Test steps
+
+    private func phases(_ run: HardwareTestResult) -> some View {
+        Grid(alignment: .leading, horizontalSpacing: 12, verticalSpacing: 9) {
+            GridRow {
+                Text("Step")
+                Text("Started").gridColumnAlignment(.trailing)
+                Text("Took").gridColumnAlignment(.trailing)
+            }
+            .font(.uiCaption.weight(.semibold))
+            .foregroundStyle(.secondary)
+            ForEach(run.phases) { phase in
+                GridRow {
+                    Text(phase.name).frame(maxWidth: .infinity, alignment: .leading)
+                    Text(Format.seconds(phase.start)).monospacedDigit().foregroundStyle(.secondary)
+                    Text(Format.seconds(phase.end - phase.start)).monospacedDigit().fontWeight(.medium)
+                }
+                .font(.uiCallout)
+            }
+        }
     }
 
     // MARK: History

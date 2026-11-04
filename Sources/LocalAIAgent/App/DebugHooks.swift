@@ -4,12 +4,13 @@ import SwiftUI
 
 /// Debug-build-only automation used for UI verification without Screen Recording permission.
 ///   LOCALAI_SNAPSHOT_DIR=/path      write window snapshots (snap-N.png) every LOCALAI_SNAPSHOT_INTERVAL seconds
-///   LOCALAI_AUTOPROMPT="text"       start a new chat and send this prompt after launch
-///   LOCALAI_SHOW_LIBRARY=1          open the model library after launch
+///   LOCALAI_AUTOPROMPT="text"       start a new chat and send this prompt after launch; " || " separates several
+///   LOCALAI_STOP_AFTER=3            press Stop this many seconds after the autoprompt starts
+///   LOCALAI_SCROLL_TO=0.8           scroll the page to this fraction of its height after 2 s
 ///   LOCALAI_SHOW_MODEL_PICKER=1     open the model + quant picker after launch
 ///   LOCALAI_NO_ACTIVATE=1           don't bring the app to the front on launch
 ///   LOCALAI_DATA_DIR=/path          keep chats in this folder instead of the user's
-///   LOCALAI_DESTINATION=model|hardware|harness   open that test dashboard after launch
+///   LOCALAI_DESTINATION=model|hardware|harness|library   open that page after launch
 ///   LOCALAI_AUTOTEST=model|hardware|harness      run that test after launch
 ///   LOCALAI_TEST_MODEL=tag          model the model test runs on (the chat's model stays as it is)
 ///   LOCALAI_SHOW_TEST_PICKER=1      open the model test's model picker after launch
@@ -25,6 +26,8 @@ import SwiftUI
 ///   LOCALAI_CLOSE_MAIN=3            close the main window after this many seconds, like its red button
 ///   LOCALAI_DRAFT=1                 open the Forge draft after launch; =cycle leaves it again after 3 s
 ///   LOCALAI_HARNESS_SAMPLE=id,id    run these questions through the harness; LOCALAI_SAMPLE_OUT=/path gets the report
+///   LOCALAI_CHAT_HARNESS=1          turn the harness on for chat
+///   LOCALAI_WINDOW_SIZE=1380x2400   resize the main window after launch, to snapshot more of a page
 ///   LOCALAI_RENDER_DIR=/path        render both full dashboards (narrow and wide) after LOCALAI_RENDER_DELAY seconds
 @MainActor
 enum DebugHooks {
@@ -41,6 +44,15 @@ enum DebugHooks {
                 main?.close()
             }
         }
+        if env["LOCALAI_CHAT_HARNESS"] != nil { settings.harnessEnabled = true }
+        if let size = env["LOCALAI_WINDOW_SIZE"]?.split(separator: "x").compactMap({ Double($0) }), size.count == 2 {
+            Task {
+                try? await Task.sleep(for: .seconds(1))
+                if let window = NSApp.windows.first(where: { $0.identifier?.rawValue.hasPrefix("main") == true }) {
+                    window.setFrame(NSRect(x: 40, y: 40, width: size[0], height: size[1]), display: true)
+                }
+            }
+        }
         if let draft = env["LOCALAI_DRAFT"] {
             settings.draftLayout = true
             if draft == "cycle" {
@@ -51,9 +63,10 @@ enum DebugHooks {
             }
         }
         switch env["LOCALAI_DESTINATION"] {
-        case "model": ui.destination = .modelTest
-        case "hardware": ui.destination = .hardwareTest
-        case "harness": ui.destination = .harnessTest
+        case "model": ui.openTests(.model)
+        case "hardware": ui.openTests(.hardware)
+        case "harness": ui.openTests(.harness)
+        case "library": ui.destination = .library
         default: break
         }
         if let zoom = Double(env["LOCALAI_WIDGET_ZOOM"] ?? "") {
@@ -70,8 +83,13 @@ enum DebugHooks {
             Task {
                 try? await Task.sleep(for: .seconds(Double(env["LOCALAI_RENDER_DELAY"] ?? "") ?? 3))
                 let pages: [(String, AnyView)] = [("model", AnyView(ModelTestDashboard(scrollable: false))),
+                                                  ("model-leaderboard", AnyView(ModelTestDashboard(scrollable: false, detail: .leaderboard))),
                                                   ("hardware", AnyView(HardwareTestDashboard(scrollable: false))),
-                                                  ("harness", AnyView(HarnessTestDashboard(scrollable: false)))]
+                                                  ("hardware-steps", AnyView(HardwareTestDashboard(scrollable: false, detail: .phases))),
+                                                  ("harness", AnyView(HarnessTestDashboard(scrollable: false))),
+                                                  ("harness-changes", AnyView(HarnessTestDashboard(scrollable: false, detail: .changes))),
+                                                  ("harness-tools", AnyView(HarnessTestDashboard(scrollable: false, detail: .tools))),
+                                                  ("harness-sites", AnyView(HarnessTestDashboard(scrollable: false, detail: .sites)))]
                 for (name, page) in pages {
                     for width in [760.0, 1120.0] {
                         let content = page
@@ -145,19 +163,34 @@ enum DebugHooks {
             Task {
                 for _ in 0..<40 where !chat.canSend { try? await Task.sleep(for: .milliseconds(250)) }
                 chat.newConversation()
-                chat.send(prompt)
+                if let stop = Double(env["LOCALAI_STOP_AFTER"] ?? "") {
+                    Task {
+                        try? await Task.sleep(for: .seconds(stop))
+                        chat.stop()
+                    }
+                }
+                for part in prompt.components(separatedBy: " || ") {
+                    chat.send(part)
+                    while chat.isGenerating { try? await Task.sleep(for: .milliseconds(250)) }
+                }
+            }
+        }
+        if let fraction = Double(env["LOCALAI_SCROLL_TO"] ?? "") {
+            Task {
+                try? await Task.sleep(for: .seconds(2))
+                func scrollViews(in view: NSView) -> [NSScrollView] {
+                    (view as? NSScrollView).map { [$0] } ?? view.subviews.flatMap(scrollViews)
+                }
+                guard let content = NSApp.windows.first(where: { $0.identifier?.rawValue.hasPrefix("main") == true })?.contentView,
+                      let page = scrollViews(in: content).max(by: { ($0.documentView?.frame.height ?? 0) < ($1.documentView?.frame.height ?? 0) }),
+                      let height = page.documentView?.frame.height else { return }
+                page.documentView?.scroll(NSPoint(x: 0, y: (height - page.contentView.bounds.height) * fraction))
             }
         }
         if env["LOCALAI_SHOW_MODEL_PICKER"] != nil {
             Task {
                 try? await Task.sleep(for: .seconds(2.5))
                 ui.showModelPicker = true
-            }
-        }
-        if env["LOCALAI_SHOW_LIBRARY"] != nil {
-            Task {
-                try? await Task.sleep(for: .seconds(2))
-                ui.showLibrary = true
             }
         }
         if let dir = env["LOCALAI_SNAPSHOT_DIR"] {

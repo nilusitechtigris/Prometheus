@@ -28,13 +28,53 @@ struct ScoreRing: View {
     }
 }
 
-/// The page all three test dashboards share, so each reads the same way from top to bottom:
-/// header, live progress, overview, two panels, details, then every run.
+/// The title block at the top of a page.
+struct PageHeader<Controls: View>: View {
+    let title: String
+    let symbol: String
+    let subtitle: String
+    var caption: String?
+    /// A second line under the controls, for what the page is showing instead.
+    var notice: String?
+    @ViewBuilder var controls: Controls
+
+    var body: some View {
+        HStack(alignment: .center, spacing: 14) {
+            Image(systemName: symbol)
+                .font(.system(size: 22, weight: .semibold))
+                .foregroundStyle(.white)
+                .frame(width: 46, height: 46)
+                .background(Palette.gradient, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+            VStack(alignment: .leading, spacing: 2) {
+                Text(title).font(Brand.display(28))
+                // Always two lines' worth, so the blocks below start at the same height on every page.
+                Text(subtitle)
+                    .font(.uiCallout)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(2, reservesSpace: true)
+            }
+            Spacer(minLength: 16)
+            VStack(alignment: .trailing, spacing: 6) {
+                HStack(spacing: 8) { controls }
+                if let caption {
+                    Text(caption).font(.uiCaption).foregroundStyle(.secondary)
+                }
+                if let notice {
+                    Text(notice).font(.uiCaption).foregroundStyle(Palette.accent)
+                }
+            }
+            .fixedSize(horizontal: true, vertical: false)
+        }
+    }
+}
+
+/// The page all three tests share: header, live progress, then the blocks.
 struct TestPage<Controls: View, Content: View>: View {
     let title: String
     let symbol: String
     let subtitle: String
     var caption: String?
+    var notice: String?
     var progress: TestProgress?
     var progressNote: String?
     let onStop: () -> Void
@@ -47,7 +87,7 @@ struct TestPage<Controls: View, Content: View>: View {
 
     var body: some View {
         if scrollable {
-            ScrollView { page }.background(AmbientBackground())
+            ScrollView { page }
         } else {
             page
         }
@@ -55,7 +95,7 @@ struct TestPage<Controls: View, Content: View>: View {
 
     private var page: some View {
         VStack(alignment: .leading, spacing: 16) {
-            header
+            PageHeader(title: title, symbol: symbol, subtitle: subtitle, caption: caption, notice: notice) { controls }
             if let progress {
                 PanelWidget(title: "Running", symbol: "hourglass") { EmptyView() } content: {
                     TestProgressView(progress: progress, onStop: onStop)
@@ -71,61 +111,170 @@ struct TestPage<Controls: View, Content: View>: View {
         .frame(maxWidth: 1180)
         .frame(maxWidth: .infinity)
     }
+}
 
-    private var header: some View {
-        HStack(alignment: .center, spacing: 14) {
-            Image(systemName: symbol)
-                .font(.system(size: 22, weight: .semibold))
-                .foregroundStyle(.white)
-                .frame(width: 46, height: 46)
-                .background(Palette.gradient, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
-            VStack(alignment: .leading, spacing: 2) {
-                Text(title).font(Brand.display(28))
-                Text(subtitle)
-                    .font(.uiCallout)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(2)
-                    .fixedSize(horizontal: false, vertical: true)
+/// Block sizes every test page uses, so each block has the same size and place on all of them.
+enum TestLayout {
+    static let overviewHeight: CGFloat = 236
+    static let panelHeight: CGFloat = 330
+    static let runsHeight: CGFloat = 200
+    static let tileSpacing: CGFloat = 12
+    /// Below this the two columns stack.
+    static let twoColumnWidth: CGFloat = 860
+}
+
+/// Two equal columns of a fixed height, or one above the other in a narrow window.
+struct TestColumns<Left: View, Right: View>: View {
+    let height: CGFloat
+    @ViewBuilder var left: Left
+    @ViewBuilder var right: Right
+
+    var body: some View {
+        ViewThatFits(in: .horizontal) {
+            HStack(alignment: .top, spacing: 16) {
+                left.frame(maxWidth: .infinity, maxHeight: .infinity)
+                right.frame(maxWidth: .infinity, maxHeight: .infinity)
             }
-            Spacer(minLength: 16)
-            VStack(alignment: .trailing, spacing: 6) {
-                HStack(spacing: 8) { controls }
-                if let caption {
-                    Text(caption).font(.uiCaption).foregroundStyle(.secondary)
-                }
+            .frame(minWidth: TestLayout.twoColumnWidth)
+            .frame(height: height)
+            VStack(spacing: 16) {
+                left.frame(height: height)
+                right.frame(height: height)
             }
-            .fixedSize(horizontal: true, vertical: false)
         }
     }
 }
 
-/// The first row of every test page: one main card, then four tiles.
-struct TestOverview<Hero: View>: View {
+/// The blocks of every test page, in order: main card and four tiles, two panels, then all runs.
+/// The details panel follows them because it's the only block whose height changes.
+struct TestBlocks<Hero: View, Left: View, Right: View, Runs: View>: View {
     let title: String
     let symbol: String
     let date: Date
     let tiles: (MetricTile, MetricTile, MetricTile, MetricTile)
     @ViewBuilder var hero: Hero
+    @ViewBuilder var left: Left
+    @ViewBuilder var right: Right
+    @ViewBuilder var runs: Runs
 
     var body: some View {
-        AdaptiveStack(minWidth: 940) {
-            PanelWidget(title: title, symbol: symbol) {
+        TestColumns(height: TestLayout.overviewHeight) {
+            PanelWidget(title: title, symbol: symbol, fill: true) {
                 Text(TestFormat.relative(date)).font(.uiCaption).foregroundStyle(.secondary)
             } content: {
                 hero
             }
-            .frame(minWidth: 380, maxWidth: .infinity)
-
-            Grid(horizontalSpacing: 12, verticalSpacing: 12) {
-                GridRow {
+        } right: {
+            VStack(spacing: TestLayout.tileSpacing) {
+                HStack(spacing: TestLayout.tileSpacing) {
                     tiles.0
                     tiles.1
                 }
-                GridRow {
+                HStack(spacing: TestLayout.tileSpacing) {
                     tiles.2
                     tiles.3
                 }
             }
+        }
+        TestColumns(height: TestLayout.panelHeight) { left } right: { right }
+        runs
+    }
+}
+
+/// What the main card holds on every test page: a score ring with three lines beside it, then its scale.
+struct TestHero<Chips: View>: View {
+    let score: Double?
+    var unit = "/100"
+    var bands = TestScoring.modelScore
+    let headline: String
+    var aside: String?
+    let detail: String
+    var scale = ["Basic", "Capable", "Advanced", "Expert", "Frontier"]
+    let note: String
+    @ViewBuilder var chips: Chips
+
+    var body: some View {
+        HStack(spacing: 16) {
+            ScoreRing(score: score, size: 92, unit: unit, bands: bands)
+            VStack(alignment: .leading, spacing: 6) {
+                HStack(alignment: .firstTextBaseline, spacing: 8) {
+                    Text(headline).font(.uiTitle3.weight(.semibold)).lineLimit(1)
+                    if let aside {
+                        Text(aside).font(.uiCallout).foregroundStyle(.secondary).lineLimit(1)
+                    }
+                }
+                Text(detail).font(.uiCallout).foregroundStyle(.secondary).lineLimit(2)
+                HStack(spacing: 6) { chips }
+            }
+            Spacer(minLength: 0)
+        }
+        Spacer(minLength: 0)
+        VStack(alignment: .leading, spacing: 4) {
+            RangeBar(value: score, threshold: bands, height: 5)
+            HStack {
+                ForEach(Array(scale.enumerated()), id: \.element) { index, label in
+                    if index > 0 { Spacer(minLength: 0) }
+                    Text(label).font(.uiCaption2).foregroundStyle(.secondary)
+                }
+            }
+            Text(note).font(.uiCaption2).foregroundStyle(.tertiary).lineLimit(1).minimumScaleFactor(0.85)
+        }
+    }
+}
+
+/// How a model run was set up, for the main card.
+struct ModelRunChips: View {
+    let run: ModelTestResult
+
+    var body: some View {
+        Chip(text: run.thinking ? "Thinking on" : "Thinking off", symbol: "brain", tint: run.thinking ? Palette.accent : .secondary)
+        Chip(text: "\(Format.tokens(run.contextLength)) context", symbol: "text.word.spacing", tint: .secondary)
+        if run.usesHarness { Chip(text: "Harness", symbol: "shield.lefthalf.filled", tint: Palette.accent) }
+    }
+}
+
+/// One of the two panels in the middle of a test page.
+struct TestPanel<Content: View>: View {
+    let title: String
+    let symbol: String
+    let note: String
+    @ViewBuilder var content: Content
+
+    var body: some View {
+        PanelWidget(title: title, symbol: symbol, fill: true) {
+            Text(note).font(.uiCaption).foregroundStyle(.secondary).lineLimit(1)
+        } content: {
+            content
+        }
+    }
+}
+
+/// The last block of a test page: one panel, with tabs for what each test has to show.
+struct TestDetails<Tab: Hashable, Content: View>: View {
+    let tabs: [(id: Tab, title: String)]
+    @Binding var selection: Tab
+    @ViewBuilder var content: Content
+
+    var body: some View {
+        PanelWidget(title: "Details", symbol: "list.bullet.rectangle.portrait.fill") {
+            HStack(spacing: 4) {
+                ForEach(tabs, id: \.id) { tab in
+                    Button {
+                        withAnimation(.snappy(duration: 0.2)) { selection = tab.id }
+                    } label: {
+                        Text(tab.title)
+                            .font(.uiCaption.weight(.medium))
+                            .foregroundStyle(selection == tab.id ? .white : .secondary)
+                            .padding(.horizontal, 10)
+                            .padding(.vertical, 4)
+                            .background(selection == tab.id ? AnyShapeStyle(Palette.gradient) : AnyShapeStyle(Color.primary.opacity(0.06)), in: Capsule())
+                            .contentShape(Capsule())
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+        } content: {
+            content
         }
     }
 }
@@ -143,19 +292,22 @@ struct TestEmptyState: View {
     }
 }
 
-/// The last panel of every test page.
+/// Every run of a test, in a block of a fixed height.
 struct TestRunList<Run: Identifiable, Row: View>: View {
     let runs: [Run]
     @ViewBuilder var row: (Run) -> Row
 
     var body: some View {
-        PanelWidget(title: "All runs", symbol: "clock.arrow.circlepath") {
+        PanelWidget(title: "All runs", symbol: "clock.arrow.circlepath", fill: true) {
             Text("\(runs.count)").font(.uiCaption).foregroundStyle(.secondary)
         } content: {
-            VStack(spacing: 6) {
-                ForEach(runs) { row($0) }
+            ScrollView {
+                VStack(spacing: 6) {
+                    ForEach(runs) { row($0) }
+                }
             }
         }
+        .frame(height: TestLayout.runsHeight)
     }
 }
 
@@ -220,24 +372,9 @@ struct MetricTile: View {
                 }
                 if let caption {
                     Text(caption).font(.uiCaption).foregroundStyle(.secondary).lineLimit(2)
-                        .fixedSize(horizontal: false, vertical: true)
                 }
             }
-            // Fills the grid row, so tiles side by side share one height.
-            .frame(maxHeight: .infinity, alignment: .topLeading)
-        }
-    }
-}
-
-/// Side by side when there's room, stacked otherwise.
-struct AdaptiveStack<Content: View>: View {
-    var minWidth: CGFloat = 900
-    @ViewBuilder var content: Content
-
-    var body: some View {
-        ViewThatFits(in: .horizontal) {
-            HStack(alignment: .top, spacing: 16) { content }.frame(minWidth: minWidth)
-            VStack(alignment: .leading, spacing: 16) { content }
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         }
     }
 }

@@ -72,6 +72,10 @@ private struct AssistantMessage: View {
                     }
                 }
 
+                if let steps = message.harnessSteps, !steps.isEmpty {
+                    HarnessStepsView(steps: steps, isLive: isStreaming && message.content.isEmpty)
+                }
+
                 if let thinking = message.thinking, !thinking.isEmpty {
                     ThinkingView(text: thinking, isLive: isStreaming && message.content.isEmpty,
                                  duration: message.metrics?.thinkingDuration)
@@ -96,6 +100,50 @@ private struct AssistantMessage: View {
             .frame(maxWidth: .infinity, alignment: .leading)
         }
         .onHover { hovering = $0 }
+    }
+}
+
+/// What the harness did for a reply, including every search that left this Mac.
+private struct HarnessStepsView: View {
+    let steps: [String]
+    let isLive: Bool
+    @State private var expanded: Bool?
+
+    var body: some View {
+        let isOpen = expanded ?? isLive
+        VStack(alignment: .leading, spacing: 6) {
+            Button {
+                withAnimation(.snappy) { expanded = !isOpen }
+            } label: {
+                HStack(spacing: 6) {
+                    Image(systemName: "shield.lefthalf.filled")
+                        .symbolEffect(.pulse, isActive: isLive)
+                    Text(isLive ? "Harness working…" : "Harness · \(steps.count) step\(steps.count == 1 ? "" : "s")")
+                    Image(systemName: "chevron.right")
+                        .rotationEffect(.degrees(isOpen ? 90 : 0))
+                        .imageScale(.small)
+                }
+                .font(.uiCallout)
+                .foregroundStyle(.secondary)
+            }
+            .buttonStyle(.plain)
+
+            if isOpen {
+                VStack(alignment: .leading, spacing: 3) {
+                    ForEach(Array(steps.enumerated()), id: \.offset) { _, step in
+                        Text(step)
+                            .font(.uiCallout)
+                            .foregroundStyle(step.hasSuffix(HarnessTools.failedMark) ? AnyShapeStyle(Palette.warning) : AnyShapeStyle(.secondary))
+                            .textSelection(.enabled)
+                    }
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.leading, 12)
+                .overlay(alignment: .leading) {
+                    Rectangle().fill(.separator).frame(width: 2)
+                }
+            }
+        }
     }
 }
 

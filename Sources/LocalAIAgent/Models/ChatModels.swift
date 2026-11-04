@@ -11,6 +11,8 @@ struct ChatMessage: Identifiable, Codable, Equatable {
     var modelName: String?
     var metrics: GenerationMetrics?
     var errorText: String?
+    /// What the harness did for this reply, one line per step. Nil when it was off.
+    var harnessSteps: [String]?
 }
 
 struct GenerationMetrics: Codable, Equatable {

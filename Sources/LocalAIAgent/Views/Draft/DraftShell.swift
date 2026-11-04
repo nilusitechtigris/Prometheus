@@ -4,26 +4,15 @@ import SwiftUI
 /// Draft "Forge" layout: near-black, one fire colour, Geist type, thin rules instead of boxes.
 /// Turned on from the sidebar or View › Try Forge Draft. The classic layout stays as it was.
 struct DraftShell: View {
-    enum Page: Hashable { case chat, hardware, tests, harness }
-
-    @State private var page: Page = .chat
-
     var body: some View {
         HStack(spacing: 0) {
-            DraftRail(page: $page)
+            DraftRail()
             Forge.rule(vertical: true)
             VStack(spacing: 0) {
                 DraftTopBar()
                 Forge.rule()
-                Group {
-                    switch page {
-                    case .chat: ChatView()
-                    case .hardware: HardwareTestDashboard()
-                    case .tests: ModelTestDashboard()
-                    case .harness: HarnessTestDashboard()
-                    }
-                }
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                MainPage()
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
                 Forge.rule()
                 DraftStatusBar()
             }
@@ -99,7 +88,6 @@ private struct DraftWindowStyle: NSViewRepresentable {
 // MARK: - Rail
 
 private struct DraftRail: View {
-    @Binding var page: DraftShell.Page
     @Environment(AppSettings.self) private var settings
     @Environment(UIState.self) private var ui
     @Environment(\.openWindow) private var openWindow
@@ -111,10 +99,8 @@ private struct DraftRail: View {
                 .padding(.top, 44)
                 .padding(.bottom, 16)
             item("bubble.left", "Chat", .chat)
-            item("checklist", "Model", .tests)
-            item("cpu", "Hardware", .hardware)
-            item("shield.lefthalf.filled", "Harness", .harness)
-            action("square.stack.3d.up", "Library") { ui.showLibrary = true }
+            item("checklist", "Tests", .tests)
+            item("square.stack.3d.up", "Library", .library)
             Forge.rule().padding(.horizontal, 18).padding(.vertical, 6)
             widget(.generation, "Speed")
             widget(.hardware, "Vitals")
@@ -127,8 +113,8 @@ private struct DraftRail: View {
         .frame(width: 72)
     }
 
-    private func item(_ symbol: String, _ title: String, _ target: DraftShell.Page) -> some View {
-        Button { page = target } label: { rowLabel(symbol, title, selected: page == target) }
+    private func item(_ symbol: String, _ title: String, _ target: UIState.Destination) -> some View {
+        Button { ui.destination = target } label: { rowLabel(symbol, title, selected: ui.destination == target) }
             .buttonStyle(.plain)
     }
 
@@ -193,6 +179,12 @@ private struct DraftStatusBar: View {
     @Environment(SystemMonitor.self) private var monitor
     @Environment(TestLab.self) private var lab
     @Environment(BackendController.self) private var backends
+    @Environment(AppSettings.self) private var settings
+
+    private var harnessStatus: (text: String, color: Color) {
+        guard backends.kind.supportsTools else { return ("Needs Ollama", Forge.ink) }
+        return settings.harnessEnabled ? ("On", Forge.flame) : ("Off", Forge.ink)
+    }
 
     private var load: (text: String, color: Color) {
         let s = monitor.snapshot
@@ -210,7 +202,7 @@ private struct DraftStatusBar: View {
 
     var body: some View {
         HStack(spacing: 22) {
-            status("Harness", backends.kind.supportsTools ? (lab.harnessProgress != nil ? "Running" : "Ready") : "Needs Ollama", Forge.ink)
+            status("Harness", harnessStatus.text, harnessStatus.color)
             status("Load", load.text, load.color)
             status("Tests", runningTests > 0 ? "\(runningTests) running" : "Idle", runningTests > 0 ? Forge.flame : Forge.ink)
             Spacer()

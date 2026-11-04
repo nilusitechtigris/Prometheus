@@ -8,6 +8,8 @@ import SwiftUI
 struct PanelWidget<Trailing: View, Content: View>: View {
     let title: String
     let symbol: String
+    /// Fills the space it's given, for blocks of a fixed size.
+    var fill = false
     @ViewBuilder var trailing: Trailing
     @ViewBuilder var content: Content
 
@@ -27,6 +29,7 @@ struct PanelWidget<Trailing: View, Content: View>: View {
             content
         }
         .padding(12)
+        .frame(maxWidth: fill ? .infinity : nil, maxHeight: fill ? .infinity : nil, alignment: .topLeading)
         .background {
             shape.fill(Color.primary.opacity(0.045))
             shape.fill(LinearGradient(colors: [Palette.accent.opacity(0.10), .clear], startPoint: .top, endPoint: .center))

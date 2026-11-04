@@ -9,6 +9,8 @@ struct LiveGeneration {
     var firstTokenAt: Date?
     var tokens = 0
     var thinkingTokens = 0
+    /// The harness step under way, when the harness is on.
+    var stage: HarnessStage?
 
     var timeToFirstToken: Double? { firstTokenAt.map { $0.timeIntervalSince(startedAt) } }
 
@@ -139,8 +141,10 @@ final class ChatController {
         guard let model = backends.selectedModel, let ci = index(of: convID) else { return }
         let backend = backends.backend
         let context = backends.effectiveContext
+        let useHarness = settings.harnessEnabled && backend.kind.supportsTools
 
-        let (turns, trimmed, estimatedPrompt) = buildTurns(conversations[ci].messages, context: context)
+        let messages = conversations[ci].messages
+        let (turns, trimmed, estimatedPrompt) = buildTurns(messages, context: context)
         trimmedMessageCount = trimmed
         let request = ChatRequest(
             model: model.id,
@@ -161,8 +165,68 @@ final class ChatController {
         live = LiveGeneration()
 
         generationTask = Task { [weak self] in
-            await self?.stream(request, backend: backend, messageID: assistant.id, convID: convID, estimatedPrompt: estimatedPrompt)
+            guard let self else { return }
+            var request = request, estimatedPrompt = estimatedPrompt
+            var harness: HarnessRun?
+            if useHarness {
+                let run = await startHarness(request, messages: messages, model: model, messageID: assistant.id, convID: convID)
+                harness = run
+                // Rebuilt, because what the tools found takes room from the chat history.
+                let evidence = String(TestLab.evidenceNote(run.plan.evidence).prefix(context * 7 / 6))
+                let built = buildTurns(messages, context: context, harness: (HarnessTools.chatRules, evidence))
+                request.messages = built.turns
+                estimatedPrompt = built.estimated
+                trimmedMessageCount = built.trimmed
+                live = LiveGeneration()
+                live?.stage = .answer
+            }
+            await stream(request, backend: backend, messageID: assistant.id, convID: convID, estimatedPrompt: estimatedPrompt)
+            if let harness { await finishHarness(harness, maxTokens: request.maxTokens, messageID: assistant.id, convID: convID) }
+            isGenerating = false
+            streamingMessageID = nil
+            live = nil
+            generationTask = nil
+            scheduleSave()
         }
+    }
+
+    // MARK: Harness
+
+    /// One reply's trip through the harness.
+    private struct HarnessRun {
+        let prompt: String
+        let setup: TestLab.TestSetup
+        let plan: TestLab.Preparation
+        var reply: TestLab.Reply
+    }
+
+    /// Understands the task and runs its tools, before the model starts to answer. Only the harness uses
+    /// tools here. The model never gets them, so a page it reads can't steer one with this chat in view.
+    private func startHarness(_ request: ChatRequest, messages: [ChatMessage], model: LocalModel,
+                              messageID: UUID, convID: UUID) async -> HarnessRun {
+        let setup = TestLab.TestSetup(model: model, backend: backends.backend, context: request.contextLength, think: request.think,
+                                      supportsTools: false, temperature: request.temperature)
+        var reply = TestLab.Reply()
+        reply.onStage = { [weak self] stage in self?.live?.stage = stage }
+        reply.onLog = { [weak self] steps in
+            self?.update(messageID, in: convID) { $0.harnessSteps = steps }
+        }
+        let prompt = messages.last?.content ?? ""
+        let earlier = messages.dropLast().filter { !$0.content.isEmpty }.suffix(2)
+            .map { "\($0.role == .user ? "User" : "Assistant"): \($0.content.prefix(600))" }
+            .joined(separator: "\n")
+        let plan = await TestLab.prepare(prompt: prompt, earlier: earlier, setup: setup, total: &reply)
+        return HarnessRun(prompt: prompt, setup: setup, plan: plan, reply: reply)
+    }
+
+    /// Checks the finished reply.
+    private func finishHarness(_ run: HarnessRun, maxTokens: Int?, messageID: UUID, convID: UUID) async {
+        guard let ci = index(of: convID), let message = conversations[ci].messages.first(where: { $0.id == messageID }) else { return }
+        var reply = run.reply
+        reply.answer = message.content
+        reply.error = message.errorText
+        await TestLab.check(prompt: run.prompt, plan: run.plan, setup: run.setup, maxTokens: maxTokens ?? 2_048, total: &reply)
+        update(messageID, in: convID) { $0.content = reply.answer }
     }
 
     private func stream(_ request: ChatRequest, backend: LLMBackend, messageID: UUID, convID: UUID, estimatedPrompt: Int) async {
@@ -190,6 +254,7 @@ final class ChatController {
         }
 
         do {
+            try Task.checkCancellation()
             for try await event in backend.chat(request) {
                 switch event {
                 case .thinking(let t):
@@ -272,20 +337,17 @@ final class ChatController {
             $0.errorText = errorText
         }
         if cancelled, !gotOutput { removeMessage(messageID, in: convID) }
-
-        isGenerating = false
-        streamingMessageID = nil
-        live = nil
-        generationTask = nil
-        scheduleSave()
     }
 
     /// Picks the newest messages that fit ~75% of the context window, leaving room for the answer.
-    private func buildTurns(_ messages: [ChatMessage], context: Int) -> ([ChatTurn], Int, Int) {
+    private func buildTurns(_ messages: [ChatMessage], context: Int, harness: (rules: String, evidence: String)? = nil)
+        -> (turns: [ChatTurn], trimmed: Int, estimated: Int) {
         func estimate(_ s: String) -> Int { s.count * 10 / 35 + 4 }
-        let system = settings.systemPrompt.trimmingCharacters(in: .whitespacesAndNewlines)
+        let system = [settings.systemPrompt.trimmingCharacters(in: .whitespacesAndNewlines), harness?.rules ?? ""]
+            .filter { !$0.isEmpty }
+            .joined(separator: "\n\n")
         let budget = Int(Double(context) * 0.75)
-        var used = system.isEmpty ? 0 : estimate(system)
+        var used = (system.isEmpty ? 0 : estimate(system)) + estimate(harness?.evidence ?? "")
         let history = messages.filter { ($0.role == .user || $0.role == .assistant) && !$0.content.isEmpty }
         var kept: [ChatTurn] = []
         var trimmed = 0
@@ -297,6 +359,9 @@ final class ChatController {
             }
             kept.insert(ChatTurn(role: msg.role.rawValue, content: msg.content), at: 0)
             used += cost
+        }
+        if let evidence = harness?.evidence, !evidence.isEmpty, let last = kept.last {
+            kept[kept.count - 1] = ChatTurn(role: last.role, content: last.content + evidence)
         }
         if !system.isEmpty { kept.insert(ChatTurn(role: "system", content: system), at: 0) }
         return (kept, trimmed, used)
