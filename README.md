@@ -1,48 +1,40 @@
 <p align="center"><img src="assets/icon.png" width="128" alt="Prometheus icon"></p>
 
 <h1 align="center">Prometheus</h1>
-<p align="center"><b>The fire is yours.</b></p>
+<p align="center"><b>Bring the fire home.</b></p>
+<p align="center">A native Mac app for running open AI models on your own machine, with a harness that helps small models do more.</p>
 
-Prometheus is a native macOS app (SwiftUI, Apple Silicon) for chatting with local LLMs. It includes live observability and a curated list of verified models. Everything runs on your Mac.
+![The Prometheus home page](docs/screenshots/home.png)
 
-## Features
+## What it is
 
-- **Chat**: streaming responses, Markdown (code blocks with copy, tables, lists, math blocks), collapsible "thinking" for reasoning models, stop/regenerate, saved conversations with search.
-- **Per-reply stats card** under every answer: speed · time (first token + generation, with a bar; the first-token segment keeps its health colour) · tokens (output + thinking, with a bar) · model temp (the sampling temperature used). It collapses to a small arrow, and the choice applies to every reply. Times are always shown in seconds (0.20 s).
-- **Controls under the message box**: Framework · Model + quant · Context · Think · Temp
-- **Model and quant selection** (⇧⌘M):
-  - Always shows the quantization (Q4_K_M, Q8_0, FP16, Q4_0 QAT, MXFP4) and who made the quantized file (Ollama, Google, OpenAI, or the publisher on LM Studio and MLX).
-  - Switch between quants of the same model in one click. A variant you don't have yet is downloaded first.
-  - Verified models only by default. The Model Library lets you download, use and remove models with one click (Ollama), and shows a memory-fit badge for your Mac.
-- **Framework selection**: Ollama (recommended), LM Studio, llama.cpp `llama-server`, and MLX LM. A green dot shows which ones are running.
-- **Context window**: pick 2K–128K tokens, limited to what the model supports, with a memory estimate for each size. Older messages are trimmed automatically when they don't fit.
-- **Telemetry** (Telemetry button under the message box, or ⌥⌘1): live hardware numbers in a panel docked along the bottom of the Chat page, with compact cards for each part's load next to its temperature, in data-path order: GPU, then memory (with pressure and swap), then CPU, plus the macOS thermal state. It takes its height from the chat above it, so nothing covers the conversation. Collapse it with the arrow at its right, and drag its top edge to resize it.
-  - Temperatures come from the SMC. No admin rights needed.
-  - Every metric uses green / yellow / red ranges
-- **Home**: the start page. Start a task straight from the Task Builder or a template, see the active model and its real numbers, reopen recent tasks, and switch between Local Mode and the harness.
-- **Tests** (sidebar › Tests): one page with a Model, Hardware and Harness tab, each laid out the same way: main card and four tiles, two panels, all runs, then a Details panel with tabs.
-  - **Model Test** (⌥⌘3): 24 auto-graded questions on any installed model, chosen in the dashboard without changing the model you chat with. Six topics (math, reasoning, knowledge, instructions, code, long context), each with Basic, Intermediate, Advanced and Expert questions. Each level is worth double the one below it (1, 2, 4, 8 points), so most of the score sits in the expert questions, and the score is the share of the 90 points. 100 is the level of Opus 5.5 at max effort, which scored 90 of 90 in a blind run of these questions (no tools, answers unseen). Also measures tokens/sec, first-token time and prompt reading speed. The dashboard shows the score and tier, a skill map of topics by level, every question (expand one to see what it checks, what was asked, and the model's reply), a quality-vs-speed chart and a leaderboard of every model and quant you've tested.
-  - **Hardware Test** (⌥⌘4, about 30 s): CPU single and multi-core, CPU and GPU memory bandwidth, GPU FP16 matrix math (Metal Performance Shaders), disk read/write with the cache bypassed, and 15 s of sustained GPU load to check for throttling. The dashboard shows temperatures and load through the run, and estimates each catalog model's generation speed on this Mac from the measured bandwidth (tokens/sec ≈ bandwidth ÷ model size), next to the speeds the model test measured.
-  - **Harness Test** (⌥⌘5): the same 24 questions on the same model with the harness off and on, reusing a matching run without it if there is one, then 7 poisoned web pages both ways. Small models rarely call tools by themselves, so the harness drives each question in a loop: it works out what the task needs, makes the right tool run, gives the model the evidence, then checks the reply in code. If the reply fails, it goes round again with what it learned, up to the rounds set in Settings › Safety (3 by default, and capped at a minute a round). Check looks for replies that were cut off or left out the tool's result, answers that aren't in the sources, and broken rules such as word counts, first letters, banned letters or JSON only. Rounds can read the next page, search again, fix a program with its error message, or ask for eight options for one sentence and let code pick one that passes. It stops when a round changes nothing, and it keeps the best attempt so far. Long pages and documents are cut down to the few passages that match the question, following names and references from one note to the next, so the harness suits very small models with small context windows. It only ever sees the question, never the expected answer. The tools are web search (Wikipedia, Stack Overflow, arXiv and MDN through their official APIs), a page reader limited to 100 trusted sites, an exact calculator, and a code runner for Python and JavaScript. Code runs in a deny-by-default macOS sandbox with no internet, no other programs and no access to your files, limited to 10 seconds, 1 GB of memory and 10 MB of files. There's also basic prompt injection protection: invisible text, hidden comments, images, encoded blobs and text aimed at the assistant are removed before the model reads a page, and links to untrusted sites and known secrets are removed from its replies. The allowlist is enforced in code, and query strings and redirects off the list are refused. Tools need Ollama and a model that supports them. During a harness test, the test's fixed search terms go to those search services. The Harness tab draws these steps as a diagram.
-  - Chat waits while a test runs, so the numbers stay clean. Results are saved in `tests.json` next to the conversations.
-- **Harness in chat**: turn it on or off at any time with the Harness button under the message box. It's off by default, and chat stays fully local while it's off. With it on, each reply goes through the same loop as the Harness Test, and the steps and rounds show above the reply, including every search and page. Search terms then leave this Mac, going to Wikipedia, Stack Overflow, arXiv and MDN, and pages come from the trusted sites. In chat only the harness uses the tools, never the model, so a web page can't steer one with your chat in view. Needs Ollama.
-- **Chats**: a column docked beside the conversation on the Chat page. Search covers titles and messages (⌘F). Hover over a chat for its trash button, or right-click to rename or delete it. The Select button ticks several chats, with Select All and Deselect All, to delete them together. The sidebar's Chat button or ⌥⌘2 opens and collapses the column.
-- **Look and feel**:
-  - The Forge layout: near-black with a lime accent and Geist type, with a wide sidebar and each page in a rounded panel beside it
-  - Seven colour themes (View › Theme, or Settings › Appearance) and AI-generated background pictures in `assets/art`
-  - Green, yellow and red always keep their health meaning, whatever the theme
-  - The Prometheus brand: a tall lime flame around a diamond, and a Prometheus theme to match. The mark and wordmark stay the same in every theme. The icon is an AI-generated flame (`assets/icon-source.png`), framed by `scripts/make-icon.swift`.
+Prometheus runs open models such as Qwen, Llama and Gemma on your Mac, through Ollama, LM Studio, llama.cpp or MLX LM. There's no account and no cloud service, and your chats stay on your Mac.
 
-## Run it
+Small models are fast and private, but they get arithmetic wrong, misremember facts and break rules like "exactly three words". The **harness** is an optional layer that helps with this. It can run code in a sandbox, search trusted sites, and check replies in code before you see them. It's off by default, because its searches leave your Mac.
 
-Requirements: an Apple Silicon Mac, macOS 14 or later, and Command Line Tools or Xcode.
+The app also measures all of this for you: how capable a model is, how fast your Mac is, and how much each version of the harness really helps.
+
+## Start it
+
+You'll need an Apple Silicon Mac with macOS 14 or later, plus Xcode or the Command Line Tools (`xcode-select --install`). There's no prebuilt download yet, so you build it yourself.
+
+**1. Build and open the app**
 
 ```bash
-make run        # builds "build/Prometheus.app" and opens it
-make install    # copies it to /Applications
+git clone https://github.com/nilusitechtigris/Prometheus.git
 ```
 
-Then start a framework. Ollama is the easiest:
+```bash
+cd Prometheus && make run
+```
+
+To keep a copy in your Applications folder, run this as well:
+
+```bash
+make install
+```
+
+**2. Start a framework.** Ollama is the easiest:
 
 ```bash
 brew install ollama && brew services start ollama
@@ -50,14 +42,93 @@ brew install ollama && brew services start ollama
 
 If Ollama is installed but not running, the app shows a **Start Ollama** button.
 
-## Safety model
+**3. Download a model.** Open **Models** in the sidebar and pick one. It shows which models fit your Mac. Qwen3 4B Instruct 2507 is a good first choice on 16 GB.
 
-The catalog (`Sources/LocalAIAgent/Models/ModelCatalog.swift`) only lists official open-weight models from Meta, Google, Microsoft, Alibaba Qwen, Mistral AI, IBM, DeepSeek and OpenAI. These are widely used models, and the app verified each Ollama tag against the registry. They download as GGUF files: tensors only, no executable code, checksum-verified. Models outside the catalog are disabled unless you turn on **Settings › Safety › Allow unverified models**.
+**4. Chat.** Open **Chat** and send a message. To try the harness, click the **Harness** button under the message box and pick a version.
+
+## What's inside
+
+### Chat
+
+![A chat with the harness on and hardware telemetry below it](docs/screenshots/chat.png)
+
+- Streaming replies with Markdown, code blocks, tables and collapsible thinking
+- Stop, regenerate, and saved chats with search (⌘F). Select several chats to delete them together
+- Speed, time and token numbers under every reply
+- Framework, model and quantization, context window, Think, Harness and temperature under the message box
+- Live hardware telemetry along the bottom (⌥⌘1): GPU, memory and CPU load and temperatures, with no admin rights needed
+
+### Models
+
+![The Model Library](docs/screenshots/models.png)
+
+Verified open models from Meta, Google, Microsoft, Alibaba Qwen, Mistral AI, IBM, DeepSeek and OpenAI, with each one's license and a memory estimate for your Mac. With Ollama, you can download, use and remove them in one click, and switch between quantizations of a model. See who made the quantized file (⇧⌘M).
+
+### Tests
+
+One page with three tabs, all laid out the same way:
+
+- **Model Test** (⌥⌘3): 24 auto-graded questions across math, reasoning, knowledge, instructions, code and long context. Each topic has four levels worth 1, 2, 4 and 8 points. A score of 100 is the level of Claude Opus 5.5 at max effort, from a blind run of the same questions.
+- **Hardware Test** (⌥⌘4, about 30 seconds): CPU, GPU, memory bandwidth and disk speed, plus 15 seconds of sustained GPU load to check for throttling.
+- **Harness Test** (⌥⌘5): the same 24 questions with the harness off and on, then 7 poisoned web pages both ways.
+
+## The harness
+
+Every version stays available, in chat and in the Harness Test, so you can compare them on your own models.
+
+| Version | What it does |
+| --- | --- |
+| **v1 Model tools** | The model gets the tools and decides when to call them. |
+| **v2 Pipeline** | The harness works out what the task needs and runs one tool, then the model answers from what it found. Kept exactly as it was. |
+| **v3 Loop** | The newest. The pipeline, plus code that checks each reply and goes round again until it passes. |
+
+![The Harness Test results](docs/screenshots/harness.png)
+
+The Versions tab puts them side by side, question by question, for runs on the same model and setup:
+
+![Each harness version compared, question by question](docs/screenshots/harness-versions.png)
+
+### Results so far
+
+Scores out of 100, with thinking on:
+
+| Model | Context | Off | v1 | v2 | v3 |
+| --- | --- | --- | --- | --- | --- |
+| Qwen3 1.7B Q4_K_M | 4K | 24 | 25 | 42 | not run |
+| Qwen3 1.7B FP16 | 8K | 28 | not run | not run | 48 |
+
+These are single runs, so don't read much into small differences, and the two rows use different setups. The v3 run came before a calculator fix that affected one 4-point question. Injection protection stopped 7 of 7 poisoned pages in these runs, against 0 of 7 without it.
+
+### How v3 works
+
+1. **Understand**: works out what kind of task this is.
+2. **Act**: runs the right tool. A math or code task runs in the sandbox, a fact is looked up, and a long text is cut down to the passages that matter.
+3. **Answer**: the model replies with that evidence in front of it.
+4. **Check**: code tests the reply. Was it cut off? Does it state the tool's result? Is the answer in the sources? Does it break a rule such as a word count? If it fails, it goes back to Act with what it learned.
+
+It stops when a reply passes, when a round changes nothing, or at the rounds set in Settings › Safety, and it keeps the best attempt so far. It only ever sees the question, never the expected answer.
+
+### Can the models call tools themselves?
+
+Yes. All six Qwen3 models tried so far (1.7B, 4B and 8B, in several quantizations) produce real tool calls, in 34 of 44 prompts in a short check, and all of them used a calculator result correctly. All 10 misses had thinking on and ran out of tokens before making a call, so try v1 with Think off. Being able to call a tool doesn't make the reply right, though: the 1.7B models sometimes search the web for arithmetic, or search for a fact and still get it wrong. That's why v2 and v3 don't leave it to the model.
+
+## Privacy and safety
+
+- **Harness off:** the only internet access is downloading models you choose, through your framework.
+- **Harness on:** search terms go to Wikipedia, Stack Overflow, arXiv and MDN, and pages come only from a list of 100 trusted sites. Every search and page is listed above the reply.
+- **Code** runs in a deny-by-default macOS sandbox with no internet, no other programs and no access to your files, limited to 10 seconds, 1 GB of memory and 10 MB of files.
+- **Prompt injection:** hidden text and text aimed at the assistant are removed before the model reads a page, and links to untrusted sites are removed from its replies. This is basic protection: it blocks common attacks, not every possible one.
+- **Tools in chat:** in v2 and v3 only the harness uses them, so a web page can't steer one. In v1 the model holds them, so once it has read the web it can't search again and can only open links it was given.
+- **Models:** The catalog (`Sources/LocalAIAgent/Models/ModelCatalog.swift`) only lists official open-weight models from Meta, Google, Microsoft, Alibaba Qwen, Mistral AI, IBM, DeepSeek and OpenAI. These are widely used models, and the app verified each Ollama tag against the registry. They download as GGUF files: tensors only, no executable code, checksum-verified. Models outside the catalog are disabled unless you turn on **Settings › Safety › Allow unverified models**.
+
+The harness needs Ollama, and a model that supports tools for v1.
 
 ## Project layout
 
 ```
+assets/art/                 AI-generated pictures; originals/ holds the unedited exports
 assets/fonts/               Geist and Geist Mono (SIL Open Font License)
+docs/screenshots/           The pictures in this file
 Sources/SensorsC/           C bridge: Apple SMC + HID temperature sensors
 Sources/LocalAIAgent/
   App/                      App entry, settings, debug hooks
@@ -73,3 +144,13 @@ scripts/build-app.sh        Builds and ad-hoc signs the .app bundle
 Conversations are stored in `~/Library/Application Support/LocalAIAgent/conversations.json`.
 
 > **Note:** The macOS 27 SDK in Command Line Tools declares SwiftUI's `@State` as a macro whose plugin only ships with Xcode. `build-app.sh` detects this and builds against the newest installed SDK that doesn't need the macro (26.5 here).
+
+## License
+
+The code is licensed under the [Apache License 2.0](LICENSE). A few things in this repository have their own terms, listed in [NOTICE](NOTICE):
+
+- **Fonts:** Geist and Geist Mono are under the [SIL Open Font License](assets/fonts/OFL.txt).
+- **Pictures:** the backgrounds and the icon were made with Canva's AI tools. They aren't under the Apache License, and Canva's [AI Product Terms](https://www.canva.com/policies/ai-product-terms/) apply to them.
+- **Models:** none are included. You download them yourself, and each has its own license, shown in the Model Library.
+
+Prometheus isn't related to the Prometheus monitoring system.

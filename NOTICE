@@ -1,0 +1,24 @@
+Prometheus
+Copyright 2026 nilusitechtigris
+
+The code in this repository is licensed under the Apache License, Version 2.0.
+See the LICENSE file.
+
+This repository also contains material that isn't covered by that license:
+
+Fonts (assets/fonts/)
+  Geist and Geist Mono, copyright 2024 The Geist Project Authors.
+  Licensed under the SIL Open Font License, Version 1.1. See assets/fonts/OFL.txt.
+
+AI-generated pictures (assets/art/, assets/icon.png, assets/icon-source.png)
+  Made with Canva's AI tools, and subject to Canva's AI Product Terms:
+  https://www.canva.com/policies/ai-product-terms/
+  They aren't licensed under the Apache License.
+
+  assets/art/originals/ and assets/icon-source.png are the unedited exports, with
+  Canva's C2PA provenance record. The other files are edited copies. Editing
+  invalidates a signed record, so they carry a plain AI-generated label instead.
+
+Models
+  Prometheus doesn't include any model. You download models yourself, and each one
+  comes with its own license, which is shown in the app's Model Library.
