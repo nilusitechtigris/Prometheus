@@ -42,12 +42,13 @@ enum Palette {
 }
 
 enum AppTheme: String, CaseIterable, Identifiable {
-    case aurora, ocean, ember, orchid, mint, graphite
+    case prometheus, aurora, ocean, ember, orchid, mint, graphite
 
     var id: String { rawValue }
 
     var name: String {
         switch self {
+        case .prometheus: return "Prometheus"
         case .aurora: return "Aurora"
         case .ocean: return "Ocean"
         case .ember: return "Ember"
@@ -63,6 +64,7 @@ enum AppTheme: String, CaseIterable, Identifiable {
 
     var accent: Color {
         switch self {
+        case .prometheus: return Self.hex(0xEA580C)
         case .aurora: return Self.hex(0x6366F1)
         case .ocean: return Self.hex(0x0A84FF)
         case .ember: return Self.hex(0xFF6B3D)
@@ -74,6 +76,7 @@ enum AppTheme: String, CaseIterable, Identifiable {
 
     var accent2: Color {
         switch self {
+        case .prometheus: return Self.hex(0xFB9A2B)
         case .aurora: return Self.hex(0x22D3EE)
         case .ocean: return Self.hex(0x5AC8FA)
         case .ember: return Self.hex(0xFF2D78)
@@ -86,6 +89,7 @@ enum AppTheme: String, CaseIterable, Identifiable {
     /// Third colour used only in the ambient background.
     var glow: Color {
         switch self {
+        case .prometheus: return Self.hex(0xDC2626)
         case .aurora: return Self.hex(0xA855F7)
         case .ocean: return Self.hex(0x30D5C8)
         case .ember: return Self.hex(0xFFB340)
@@ -106,7 +110,13 @@ final class ThemeStore {
     }
 
     private init() {
-        theme = AppTheme(rawValue: UserDefaults.standard.string(forKey: "theme") ?? "") ?? .aurora
+        let defaults = UserDefaults.standard
+        // Aurora was the default before this brand, so it moves over once. Any other pick is kept.
+        if defaults.string(forKey: "theme") == AppTheme.aurora.rawValue, !defaults.bool(forKey: "movedToPrometheusTheme") {
+            defaults.set(AppTheme.prometheus.rawValue, forKey: "theme")
+        }
+        defaults.set(true, forKey: "movedToPrometheusTheme")
+        theme = AppTheme(rawValue: defaults.string(forKey: "theme") ?? "") ?? .prometheus
     }
 }
 

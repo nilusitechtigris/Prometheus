@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
-# Builds "Medonom.app" into ./build — no Xcode project required.
+# Builds "Prometheus.app" into ./build — no Xcode project required.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
-APP_NAME="Medonom"
+APP_NAME="Prometheus"
 EXECUTABLE="LocalAIAgent"
 # Kept from the original "Local AI Agent" name so existing settings carry over.
 BUNDLE_ID="com.localaiagent.app"

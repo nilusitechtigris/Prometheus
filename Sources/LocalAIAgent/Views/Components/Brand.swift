@@ -1,96 +1,99 @@
 import SwiftUI
 
-/// Name and voice in one place, so a rename is a one-line change.
+/// Name, voice and type in one place, so a rename is a one-line change.
 enum Brand {
-    static let name = "Medonom"
-    static let tagline = "Local AI, measured."
+    static let name = "Prometheus"
+    static let tagline = "The fire is yours."
+
+    /// Display type: a serif for the mythic name, used for the wordmark and page titles.
+    static func display(_ size: CGFloat, weight: Font.Weight = .semibold) -> Font {
+        .system(size: size, weight: weight, design: .serif)
+    }
+
+    /// The brand's fire, the same in every theme.
+    static let fire = LinearGradient(colors: [Color(hex: 0xFFB13D), Color(hex: 0xF4631E), Color(hex: 0xD92D20)],
+                                     startPoint: .topLeading, endPoint: .bottomTrailing)
+    /// The same fire, deep enough to read on light backgrounds.
+    static let deepFire = LinearGradient(colors: [Color(hex: 0xE8590C), Color(hex: 0xD9401A), Color(hex: 0xB91C1C)],
+                                         startPoint: .topLeading, endPoint: .bottomTrailing)
 }
 
-/// The Medonom mark: an "M" drawn as a glowing telemetry line, with a spark on its peak and the
-/// app's green / yellow / red range bar underneath. Same drawing as the app icon
-/// (scripts/make-icon.swift), with the line in the current theme's colours.
+private extension Color {
+    init(hex: UInt32) {
+        self.init(red: Double((hex >> 16) & 0xFF) / 255, green: Double((hex >> 8) & 0xFF) / 255, blue: Double(hex & 0xFF) / 255)
+    }
+}
+
+/// The Prometheus mark: a flame with the AI spark at its heart, on a dark ember tile. Same drawing as
+/// the app icon (scripts/make-icon.swift). Small sizes drop the finer layers so it stays a clear flame.
 struct BrandMark: View {
     var size: CGFloat = 28
 
     var body: some View {
         let tile = RoundedRectangle(cornerRadius: size * 0.28, style: .continuous)
         let detailed = size >= 44
-        let lineColors = [Palette.accent2, Palette.accent, Palette.glow]
         tile
-            .fill(LinearGradient(colors: [Color(red: 0.12, green: 0.11, blue: 0.29), Color(red: 0.04, green: 0.04, blue: 0.12)],
-                                 startPoint: .top, endPoint: .bottom))
+            .fill(LinearGradient(colors: [Color(hex: 0x0C0705), Color(hex: 0x2A1710)], startPoint: .top, endPoint: .bottom))
             .overlay {
-                RadialGradient(colors: [Palette.accent.opacity(0.5), .clear], center: .center,
-                               startRadius: 0, endRadius: size * 0.6)
+                RadialGradient(colors: [Color(hex: 0xFF6A00).opacity(0.5), .clear], center: UnitPoint(x: 0.5, y: 0.62),
+                               startRadius: 0, endRadius: size * 0.58)
             }
             .overlay {
                 Canvas { ctx, canvas in
-                    let m = MarkGeometry(side: canvas.width)
-                    if detailed {
-                        for y in MarkGeometry.gridLines {
-                            var line = Path()
-                            line.move(to: m.point(180, y))
-                            line.addLine(to: m.point(844, y))
-                            ctx.stroke(line, with: .color(.white.opacity(0.06)), lineWidth: max(m.scale(4), 0.5))
-                        }
-                        for segment in m.rangeSegments {
-                            ctx.fill(Path(roundedRect: segment.rect, cornerRadius: segment.rect.height / 2), with: .color(segment.color))
-                        }
-                        ctx.fill(Path(ellipseIn: m.circle(m.marker, radius: m.scale(20))), with: .color(.white))
-                    }
-                    let stroke = StrokeStyle(lineWidth: m.scale(detailed ? 80 : 104), lineCap: .round, lineJoin: .round)
+                    let mark = FlameGeometry(side: canvas.width)
                     var glow = ctx
-                    glow.addFilter(.shadow(color: Palette.accent.opacity(0.9), radius: m.scale(36)))
-                    glow.stroke(m.letter, with: .linearGradient(Gradient(colors: lineColors), startPoint: m.point(240, 0), endPoint: m.point(784, 0)),
-                                style: stroke)
-                    var spark = ctx
-                    spark.addFilter(.shadow(color: .white.opacity(0.85), radius: m.scale(30)))
-                    spark.fill(SparkShape().path(in: m.circle(m.sparkCenter, radius: m.scale(detailed ? 92 : 120))), with: .color(.white))
+                    glow.addFilter(.shadow(color: Color(hex: 0xFF5A1F).opacity(0.8), radius: mark.scale(44)))
+                    glow.fill(mark.flame(), with: .linearGradient(
+                        Gradient(colors: [Color(hex: 0xFF8A1E), Color(hex: 0xF04A0C), Color(hex: 0xC81E1E)]),
+                        startPoint: mark.point(512, 890), endPoint: mark.point(512, 168)))
+                    if detailed {
+                        ctx.fill(mark.flame(scale: 0.70, shift: CGPoint(x: 6, y: 18)), with: .linearGradient(
+                            Gradient(colors: [Color(hex: 0xFFA928), Color(hex: 0xFF7A12)]),
+                            startPoint: mark.point(512, 700), endPoint: mark.point(512, 180)))
+                    }
+                    ctx.fill(mark.flame(scale: detailed ? 0.42 : 0.5, shift: CGPoint(x: 8, y: 34)), with: .linearGradient(
+                        Gradient(colors: [Color(hex: 0xFFF0B8), Color(hex: 0xFFC93C)]),
+                        startPoint: mark.point(512, 520), endPoint: mark.point(512, 200)))
+                    if detailed {
+                        var spark = ctx
+                        spark.addFilter(.shadow(color: .white.opacity(0.9), radius: mark.scale(20)))
+                        spark.fill(SparkShape().path(in: mark.circle(mark.point(518, 306), radius: mark.scale(74))), with: .color(.white))
+                    }
                 }
             }
             .clipShape(tile)
             .overlay(tile.strokeBorder(.white.opacity(0.14), lineWidth: 0.5))
             .frame(width: size, height: size)
-            .shadow(color: Palette.accent.opacity(0.35), radius: size * 0.12, y: size * 0.05)
+            .shadow(color: Color(hex: 0xF4631E).opacity(0.35), radius: size * 0.12, y: size * 0.05)
     }
 }
 
 /// Mark geometry in the 1024-point icon space (y up, tile from 100 to 924), mapped onto a square view.
-struct MarkGeometry {
+private struct FlameGeometry {
     let side: CGFloat
 
     func scale(_ v: CGFloat) -> CGFloat { v / 824 * side }
     func point(_ x: CGFloat, _ y: CGFloat) -> CGPoint { CGPoint(x: (x - 100) / 824 * side, y: (924 - y) / 824 * side) }
     func circle(_ c: CGPoint, radius r: CGFloat) -> CGRect { CGRect(x: c.x - r, y: c.y - r, width: r * 2, height: r * 2) }
 
-    /// The "M": two peaks, like a telemetry line.
-    static let letterPoints: [CGPoint] = [
-        CGPoint(x: 252, y: 330), CGPoint(x: 352, y: 700), CGPoint(x: 512, y: 450),
-        CGPoint(x: 672, y: 700), CGPoint(x: 772, y: 330),
-    ]
-    static let gridLines: [CGFloat] = [330, 453, 577, 700, 823]
-
-    var letter: Path {
-        var p = Path()
-        p.addLines(Self.letterPoints.map { point($0.x, $0.y) })
-        return p
-    }
-
-    var sparkCenter: CGPoint { point(672, 790) }
-
-    struct Segment { let rect: CGRect; let color: Color }
-
-    /// The range bar under the letter: green, yellow, red, like every metric in the app.
-    var rangeSegments: [Segment] {
-        let y: CGFloat = 214, h: CGFloat = 26, gap: CGFloat = 12
-        let spans: [(CGFloat, CGFloat, Color)] = [(252, 500, Palette.good), (500, 664, Palette.warning), (664, 772, Palette.critical)]
-        return spans.enumerated().map { i, s in
-            let x0 = s.0 + (i == 0 ? 0 : gap / 2), x1 = s.1 - (i == spans.count - 1 ? 0 : gap / 2)
-            return Segment(rect: CGRect(origin: point(x0, y + h / 2), size: CGSize(width: scale(x1 - x0), height: scale(h))), color: s.2)
+    /// The flame, scaled about its base.
+    func flame(scale s: CGFloat = 1, shift: CGPoint = .zero) -> Path {
+        func p(_ x: CGFloat, _ y: CGFloat) -> CGPoint {
+            point(512 + shift.x + (x - 512) * s, 168 + shift.y + (y - 168) * s)
         }
+        var path = Path()
+        path.move(to: p(512, 168))
+        path.addCurve(to: p(756, 420), control1: p(650, 168), control2: p(756, 276))
+        path.addCurve(to: p(618, 720), control1: p(756, 556), control2: p(650, 620))
+        path.addCurve(to: p(556, 890), control1: p(600, 776), control2: p(592, 842))
+        path.addCurve(to: p(446, 640), control1: p(548, 800), control2: p(476, 730))
+        path.addCurve(to: p(436, 556), control1: p(436, 608), control2: p(432, 584))
+        path.addCurve(to: p(346, 704), control1: p(404, 590), control2: p(360, 640))
+        path.addCurve(to: p(268, 420), control1: p(296, 624), control2: p(268, 524))
+        path.addCurve(to: p(512, 168), control1: p(268, 276), control2: p(374, 168))
+        path.closeSubpath()
+        return path
     }
-
-    var marker: CGPoint { point(430, 227) }
 }
 
 /// Four-point spark with pinched sides.
@@ -110,14 +113,17 @@ struct SparkShape: Shape {
     }
 }
 
-/// "Medonom" in the brand type, its "M" in the theme gradient like the mark.
+/// "PROMETHEUS" in the display serif: wide-set capitals in the brand's fire.
 struct BrandWordmark: View {
     var size: CGFloat = 28
+    @Environment(\.colorScheme) private var scheme
 
     var body: some View {
-        (Text("M").foregroundStyle(Palette.gradient) + Text("edonom"))
-            .font(.system(size: size, weight: .heavy, design: .rounded))
-            .tracking(-size * 0.01)
+        Text(Brand.name.uppercased())
+            .font(Brand.display(size))
+            .tracking(size * 0.14)
+            .foregroundStyle(scheme == .dark ? Brand.fire : Brand.deepFire)
+            .fixedSize()
             .accessibilityLabel(Brand.name)
     }
 }

@@ -45,13 +45,13 @@ private struct WelcomeHero: View {
     var body: some View {
         VStack(spacing: 22) {
             VStack(spacing: 12) {
-                BrandMark(size: 84)
-                    .padding(.bottom, 4)
-                BrandWordmark(size: 44)
-                Text(Brand.tagline.uppercased())
-                    .font(.system(size: 11, weight: .semibold, design: .rounded))
-                    .tracking(2.4)
-                    .foregroundStyle(Palette.gradient)
+                BrandMark(size: 92)
+                    .padding(.bottom, 6)
+                BrandWordmark(size: 38)
+                Text(Brand.tagline)
+                    .font(Brand.display(17, weight: .regular))
+                    .italic()
+                    .foregroundStyle(.secondary)
                 if let model = backends.selectedModel {
                     Text("Running **\(model.displayName)** on your \(monitor.chipName) — nothing leaves this Mac.")
                         .foregroundStyle(.secondary)

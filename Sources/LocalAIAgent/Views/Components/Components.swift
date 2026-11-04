@@ -306,7 +306,7 @@ struct GlassGroup<Content: View>: View {
     }
 }
 
-/// Static ambient mesh in the theme colours behind the chat. Deliberately not animated,
+/// Static ambient mesh in the theme colours behind the chat, lit from below like a hearth. Deliberately not animated,
 /// so the background never adds GPU load to the numbers the app is measuring.
 struct AmbientBackground: View {
     @Environment(\.colorScheme) private var scheme
@@ -319,16 +319,15 @@ struct AmbientBackground: View {
                 MeshGradient(
                     width: 3, height: 3,
                     points: [[0, 0], [0.55, 0], [1, 0],
-                             [0, 0.5], [0.45, 0.55], [1, 0.45],
+                             [0, 0.72], [0.45, 0.78], [1, 0.7],
                              [0, 1], [0.5, 1], [1, 1]],
-                    colors: [Palette.accent, base, Palette.glow,
+                    colors: [base, base, base,
                              base, base, base,
-                             Palette.accent2.opacity(0.8), base, Palette.accent.opacity(0.7)]
+                             Palette.glow, Palette.accent, Palette.accent2.opacity(0.8)]
                 )
-                .opacity(scheme == .dark ? 0.20 : 0.12)
+                .opacity(scheme == .dark ? 0.2 : 0.12)
             } else {
-                RadialGradient(colors: [Palette.accent.opacity(0.15), .clear], center: .topLeading, startRadius: 0, endRadius: 600)
-                RadialGradient(colors: [Palette.accent2.opacity(0.12), .clear], center: .bottomTrailing, startRadius: 0, endRadius: 600)
+                RadialGradient(colors: [Palette.accent.opacity(0.18), .clear], center: .bottom, startRadius: 0, endRadius: 600)
             }
         }
         .ignoresSafeArea()
