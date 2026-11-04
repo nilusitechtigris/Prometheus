@@ -26,6 +26,8 @@ import SwiftUI
 ///   LOCALAI_HARNESS_SAMPLE=id,id    run these questions through the harness; LOCALAI_SAMPLE_OUT=/path gets the report
 ///   LOCALAI_CHAT_HARNESS=1          turn the harness on for chat
 ///   LOCALAI_SETTINGS_TAB=safety     open that section of the Settings page
+///   LOCALAI_PICK_CHATS=all|2        start in the chats' Select mode with these chats ticked
+///   LOCALAI_DELETE_PICKED=1         delete the ticked chats after 3 s
 ///   LOCALAI_WINDOW_SIZE=1380x2400   resize the main window after launch, to snapshot more of a page
 ///   LOCALAI_RENDER_DIR=/path        render both full dashboards (narrow and wide) after LOCALAI_RENDER_DELAY seconds
 @MainActor
@@ -43,6 +45,20 @@ enum DebugHooks {
             }
         }
         if let tab = SettingsTab(rawValue: env["LOCALAI_SETTINGS_TAB"] ?? "") { ui.settingsTab = tab }
+        if let pick = env["LOCALAI_PICK_CHATS"] {
+            let ids = chat.conversations.map(\.id)
+            ui.destination = .chat
+            ui.selectingChats = true
+            ui.pickedChats = Set(pick == "all" ? ids : Array(ids.prefix(Int(pick) ?? 0)))
+            if env["LOCALAI_DELETE_PICKED"] != nil {
+                Task {
+                    try? await Task.sleep(for: .seconds(3))
+                    chat.delete(ui.pickedChats)
+                    ui.pickedChats = []
+                    ui.selectingChats = false
+                }
+            }
+        }
         if env["LOCALAI_CHAT_HARNESS"] != nil { settings.harnessEnabled = true }
         if let size = env["LOCALAI_WINDOW_SIZE"]?.split(separator: "x").compactMap({ Double($0) }), size.count == 2 {
             Task {

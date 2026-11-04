@@ -75,10 +75,12 @@ final class ChatController {
         return conv.id
     }
 
-    func delete(_ id: UUID) {
-        if streamingConversationID == id { stop() }
-        conversations.removeAll { $0.id == id }
-        if selectedID == id { selectedID = conversations.first?.id }
+    func delete(_ id: UUID) { delete([id]) }
+
+    func delete(_ ids: Set<UUID>) {
+        if let streaming = streamingConversationID, ids.contains(streaming) { stop() }
+        conversations.removeAll { ids.contains($0.id) }
+        if let selectedID, ids.contains(selectedID) { self.selectedID = conversations.first?.id }
         scheduleSave()
     }
 

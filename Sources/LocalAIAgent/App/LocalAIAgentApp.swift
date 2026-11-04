@@ -18,6 +18,9 @@ final class UIState {
     var composerFocusRequest = 0
     var draft = ""
     var chatSearch = ""
+    /// Select mode in the chats column: ticking several chats to delete them together.
+    var selectingChats = false
+    var pickedChats: Set<UUID> = []
     /// Set to move the keyboard to the chat search, and cleared once it has.
     var wantsChatSearchFocus = false
 

@@ -1,6 +1,6 @@
 import SwiftUI
 
-/// The chats, docked beside the conversation: pick, search, rename and delete. It belongs to the Chat
+/// The chats, docked beside the conversation: pick, search, rename and delete, one or several. It belongs to the Chat
 /// page. The rail's Chat button, ⌥⌘2 and the button at its top open and collapse it.
 struct ChatsColumn: View {
     @Environment(ChatController.self) private var chat
@@ -9,6 +9,7 @@ struct ChatsColumn: View {
     @State private var renaming: Conversation?
     @State private var renameText = ""
     @State private var deleting: Conversation?
+    @State private var confirmDeletePicked = false
     @FocusState private var searchFocused: Bool
 
     static let width: CGFloat = 256
@@ -24,8 +25,10 @@ struct ChatsColumn: View {
         VStack(spacing: 0) {
             header
             searchField
+            if ui.selectingChats { selectionBar }
             Forge.rule()
             list
+            if ui.selectingChats { deleteBar }
         }
         .frame(width: Self.width)
         .background(Forge.panel)
@@ -46,6 +49,69 @@ struct ChatsColumn: View {
         } message: {
             Text("This conversation will be removed from this Mac.")
         }
+        .confirmationDialog("Delete \(chatCount(picked.count))?", isPresented: $confirmDeletePicked, titleVisibility: .visible) {
+            Button("Delete", role: .destructive) {
+                chat.delete(picked)
+                endSelecting()
+            }
+        } message: {
+            Text("These conversations will be removed from this Mac. This can't be undone.")
+        }
+    }
+
+    // MARK: Selecting
+
+    /// The chats showing right now, so a search narrows what Select All and Delete touch.
+    private var visible: Set<UUID> { Set(groups.flatMap(\.items).map(\.id)) }
+    private var picked: Set<UUID> { ui.pickedChats.intersection(visible) }
+
+    private func chatCount(_ count: Int) -> String { "\(count) chat\(count == 1 ? "" : "s")" }
+
+    private func endSelecting() {
+        ui.pickedChats = []
+        ui.selectingChats = false
+    }
+
+    private func toggle(_ id: UUID) {
+        if ui.pickedChats.contains(id) { ui.pickedChats.remove(id) } else { ui.pickedChats.insert(id) }
+    }
+
+    private var selectionBar: some View {
+        let visible = self.visible, picked = self.picked
+        return HStack(spacing: 14) {
+            barButton("Select All", enabled: !visible.isEmpty && picked.count < visible.count) { ui.pickedChats.formUnion(visible) }
+            barButton("Deselect All", enabled: !picked.isEmpty) { ui.pickedChats = [] }
+            Spacer()
+            barButton("Done", enabled: true, action: endSelecting)
+        }
+        .padding(.horizontal, 12)
+        .padding(.bottom, 10)
+    }
+
+    private func barButton(_ title: String, enabled: Bool, action: @escaping () -> Void) -> some View {
+        Button(title, action: action)
+            .buttonStyle(.plain)
+            .font(.uiCaption.weight(.medium))
+            .foregroundStyle(enabled ? Palette.accent : Forge.faint)
+            .disabled(!enabled)
+    }
+
+    private var deleteBar: some View {
+        let count = picked.count
+        return Button {
+            confirmDeletePicked = true
+        } label: {
+            Label(count == 0 ? "Select chats to delete" : "Delete \(chatCount(count))", systemImage: "trash")
+                .font(.uiCallout.weight(.medium))
+                .foregroundStyle(count == 0 ? Forge.faint : Palette.critical)
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 9)
+                .background(Palette.critical.opacity(count == 0 ? 0.05 : 0.15), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .disabled(count == 0)
+        .padding(10)
     }
 
     private var header: some View {
@@ -59,6 +125,13 @@ struct ChatsColumn: View {
                 Label("New Chat", systemImage: "square.and.pencil").labelStyle(.iconOnly)
             }
             .help("New chat (⌘N)")
+            Button {
+                if ui.selectingChats { endSelecting() } else { ui.selectingChats = true }
+            } label: {
+                Label("Select", systemImage: ui.selectingChats ? "checkmark.circle.fill" : "checkmark.circle").labelStyle(.iconOnly)
+            }
+            .help("Select several chats to delete them")
+            .disabled(chat.conversations.isEmpty)
             Button {
                 withAnimation(.snappy) { settings.chatsOpen = false }
             } label: {
@@ -102,8 +175,22 @@ struct ChatsColumn: View {
         .padding(.bottom, 10)
     }
 
+    @ViewBuilder
     private var list: some View {
-        List(selection: selection) {
+        // In Select mode a click ticks a chat instead of opening it.
+        if ui.selectingChats {
+            List { listContent }
+                .listStyle(.sidebar)
+                .scrollContentBackground(.hidden)
+        } else {
+            List(selection: selection) { listContent }
+                .listStyle(.sidebar)
+                .scrollContentBackground(.hidden)
+        }
+    }
+
+    @ViewBuilder
+    private var listContent: some View {
             if chat.conversations.isEmpty {
                 placeholder("No chats yet. Press ⌘N to start one.")
             } else if groups.isEmpty {
@@ -112,21 +199,43 @@ struct ChatsColumn: View {
             ForEach(groups, id: \.title) { group in
                 Section {
                     ForEach(group.items) { conv in
-                        ConversationRow(conversation: conv, isStreaming: isStreaming(conv))
-                            .tag(conv.id)
-                            .contextMenu {
-                                Button("Rename…") { renameText = conv.title; renaming = conv }
-                                Divider()
-                                Button("Delete Chat", role: .destructive) { deleting = conv }
-                            }
+                        if ui.selectingChats {
+                            selectableRow(conv)
+                        } else {
+                            ConversationRow(conversation: conv, isStreaming: isStreaming(conv), onDelete: { deleting = conv })
+                                .tag(conv.id)
+                                .contextMenu {
+                                    Button("Rename…") { renameText = conv.title; renaming = conv }
+                                    Button("Select…") {
+                                        ui.selectingChats = true
+                                        ui.pickedChats = [conv.id]
+                                    }
+                                    Divider()
+                                    Button("Delete Chat", role: .destructive) { deleting = conv }
+                                }
+                        }
                     }
                 } header: {
                     Forge.label(group.title, color: Forge.dim)
                 }
             }
+    }
+
+    private func selectableRow(_ conv: Conversation) -> some View {
+        let isPicked = ui.pickedChats.contains(conv.id)
+        return Button {
+            toggle(conv.id)
+        } label: {
+            HStack(spacing: 9) {
+                Image(systemName: isPicked ? "checkmark.circle.fill" : "circle")
+                    .font(.system(size: 15))
+                    .foregroundStyle(isPicked ? Palette.accent : Forge.faint)
+                ConversationRow(conversation: conv, isStreaming: isStreaming(conv))
+            }
+            .contentShape(Rectangle())
         }
-        .listStyle(.sidebar)
-        .scrollContentBackground(.hidden)
+        .buttonStyle(.plain)
+        .accessibilityLabel("\(conv.title), \(isPicked ? "selected" : "not selected")")
     }
 
     private func placeholder(_ text: String) -> some View {
@@ -166,24 +275,39 @@ struct ChatsColumn: View {
 private struct ConversationRow: View {
     let conversation: Conversation
     let isStreaming: Bool
+    /// Shows a trash button while the pointer is over the row.
+    var onDelete: (() -> Void)?
+    @State private var hovering = false
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 2) {
-            HStack(spacing: 6) {
-                Text(conversation.title)
-                    .lineLimit(1)
-                    .font(.uiCallout)
-                if isStreaming {
-                    ProgressView().controlSize(.mini)
+        HStack(spacing: 6) {
+            VStack(alignment: .leading, spacing: 2) {
+                HStack(spacing: 6) {
+                    Text(conversation.title)
+                        .lineLimit(1)
+                        .font(.uiCallout)
+                    if isStreaming {
+                        ProgressView().controlSize(.mini)
+                    }
+                }
+                if !conversation.preview.isEmpty {
+                    Text(conversation.preview)
+                        .lineLimit(1)
+                        .font(.uiCaption)
+                        .foregroundStyle(.secondary)
                 }
             }
-            if !conversation.preview.isEmpty {
-                Text(conversation.preview)
-                    .lineLimit(1)
-                    .font(.uiCaption)
-                    .foregroundStyle(.secondary)
+            Spacer(minLength: 0)
+            if hovering, let onDelete {
+                Button(action: onDelete) {
+                    Image(systemName: "trash").font(.system(size: 12)).foregroundStyle(Forge.dim)
+                }
+                .buttonStyle(.plain)
+                .help("Delete this chat")
             }
         }
         .padding(.vertical, 3)
+        .contentShape(Rectangle())
+        .onHover { hovering = $0 }
     }
 }
