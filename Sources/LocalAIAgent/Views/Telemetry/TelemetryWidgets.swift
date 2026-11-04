@@ -1,8 +1,8 @@
 import SwiftUI
 
-// The two telemetry widgets, each shown in its own floating window (FloatingWidgets.swift):
-// Generation (this chat's averages + context) and Hardware, ordered along the data path of a
-// reply — GPU (does the work) → memory (holds the model) → CPU.
+// The two groups in the telemetry panel (TelemetryPanel.swift): Generation (this chat's averages +
+// context) and Hardware, ordered along the data path of a reply — GPU (does the work) → memory
+// (holds the model) → CPU.
 
 /// A titled panel with its own tinted background, so each group reads as a separate widget.
 struct PanelWidget<Trailing: View, Content: View>: View {

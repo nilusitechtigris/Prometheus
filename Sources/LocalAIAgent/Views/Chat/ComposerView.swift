@@ -15,7 +15,7 @@ struct ComposerView: View {
         VStack(spacing: 10) {
             if let live = chat.live {
                 HStack {
-                    if let stage = live.stage { HarnessStageStrip(current: stage) }
+                    if let stage = live.stage { HarnessStageStrip(current: stage, round: live.round) }
                     Spacer()
                     LiveTicker(live: live)
                 }
@@ -230,13 +230,15 @@ private struct HarnessPill: View {
     }
 }
 
-/// The harness's four steps while it works on a reply.
+/// The harness's steps while it works on a reply, and the round once it's looping.
 private struct HarnessStageStrip: View {
     let current: HarnessStage
+    let round: Int
 
     var body: some View {
         HStack(spacing: 8) {
             Image(systemName: "shield.lefthalf.filled").foregroundStyle(Palette.accent)
+            if round > 1 { Text("Round \(round)").fontWeight(.semibold).foregroundStyle(Palette.accent) }
             ForEach(HarnessStage.allCases) { stage in
                 HStack(spacing: 3) {
                     if stage.rawValue < current.rawValue { Image(systemName: "checkmark").font(.system(size: 8, weight: .bold)) }

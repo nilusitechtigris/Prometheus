@@ -11,16 +11,27 @@ final class UIState {
     var destination: Destination = .chat
     /// Which results the Tests page shows.
     var testTab: TestTab = .model
-    /// Telemetry widget windows currently on screen.
-    var openWidgets: Set<TelemetryWidgetKind> = []
     var showModelPicker = false
     var showTestModelPicker = false
     var composerFocusRequest = 0
     var draft = ""
+    var chatSearch = ""
+    /// Set to move the keyboard to the chat search, and cleared once it has.
+    var wantsChatSearchFocus = false
 
     func openTests(_ tab: TestTab) {
         testTab = tab
         destination = .tests
+    }
+
+    /// Goes to the Chat page with the chats showing, or collapses them if they already are.
+    func toggleChats(in settings: AppSettings) {
+        if destination == .chat {
+            settings.chatsOpen.toggle()
+        } else {
+            destination = .chat
+            settings.chatsOpen = true
+        }
     }
 }
 
@@ -32,7 +43,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationDidFinishLaunching(_ notification: Notification) {
         // Also behave like a regular app when launched straight from `swift run`.
         NSApp.setActivationPolicy(.regular)
-        // The floating widgets count as windows, so closing the main window has to quit explicitly.
+        // Closing the main window quits, but only once any running test has finished.
         NotificationCenter.default.addObserver(forName: NSWindow.willCloseNotification, object: nil, queue: .main) { note in
             guard Self.isMainWindow(note.object as? NSWindow) else { return }
             MainActor.assumeIsolated { Self.quitWhenIdle() }
@@ -44,7 +55,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         NSApp.activate(ignoringOtherApps: true)
     }
 
-    func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { true }
+    /// False so AppKit can't quit in the middle of a test: quitWhenIdle does it instead.
+    func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { false }
 
     private static func isMainWindow(_ window: NSWindow?) -> Bool {
         window?.identifier?.rawValue.hasPrefix("main") == true
@@ -99,7 +111,9 @@ struct LocalAIAgentApp: App {
                 .environment(monitor)
                 .environment(ui)
                 .environment(lab)
-                .frame(minWidth: 980, minHeight: 640)
+                // With a panel open the window stays wide enough for the page beside it.
+                .frame(minWidth: (settings.telemetryOpen ? 860 + settings.telemetryWidth : 980) + (settings.chatsOpen ? ChatsColumn.width : 0),
+                       minHeight: 640)
                 .task {
                     backends.start()
                     monitor.start()
@@ -134,8 +148,6 @@ struct LocalAIAgentApp: App {
                                                    set: { ThemeStore.shared.theme = $0 })) {
                     ForEach(AppTheme.allCases) { Text($0.name).tag($0) }
                 }
-                Button(settings.draftLayout ? "Use Classic Layout" : "Try Forge Draft") { settings.draftLayout.toggle() }
-                    .keyboardShortcut("d", modifiers: [.command, .option])
                 Divider()
             }
             CommandMenu("Chat") {
@@ -151,7 +163,16 @@ struct LocalAIAgentApp: App {
                 Button("Model Library") { ui.destination = .library }
                     .keyboardShortcut("l", modifiers: [.command, .shift])
                 Divider()
-                WidgetMenuItems(ui: ui)
+                Button(settings.telemetryOpen ? "Hide Telemetry" : "Show Telemetry") { settings.telemetryOpen.toggle() }
+                    .keyboardShortcut("1", modifiers: [.command, .option])
+                Button(ui.destination == .chat && settings.chatsOpen ? "Hide Chats" : "Show Chats") { ui.toggleChats(in: settings) }
+                    .keyboardShortcut("2", modifiers: [.command, .option])
+                Button("Search Chats") {
+                    ui.destination = .chat
+                    settings.chatsOpen = true
+                    ui.wantsChatSearchFocus = true
+                }
+                .keyboardShortcut("f")
                 Divider()
                 Button("Model Test Results") { ui.openTests(.model) }
                     .keyboardShortcut("3", modifiers: [.command, .option])
@@ -162,45 +183,11 @@ struct LocalAIAgentApp: App {
             }
         }
 
-        widgetWindow(.generation)
-        widgetWindow(.hardware)
-
         Settings {
             SettingsView()
                 .environment(settings)
                 .environment(backends)
                 .environment(chat)
-        }
-    }
-
-    /// A floating telemetry widget in its own window.
-    private func widgetWindow(_ kind: TelemetryWidgetKind) -> some Scene {
-        Window(kind.title, id: kind.windowID) {
-            FloatingWidgetWindow(kind: kind)
-                .environment(settings)
-                .environment(backends)
-                .environment(chat)
-                .environment(monitor)
-                .environment(ui)
-                .tint(Palette.accent)
-        }
-        .windowStyle(.hiddenTitleBar)
-        .defaultSize(width: kind.baseWidth, height: kind == .generation ? 300 : 460)
-        .defaultPosition(.topTrailing)
-    }
-}
-
-/// Chat-menu toggles for the floating telemetry widgets (⌥⌘1, ⌥⌘2).
-private struct WidgetMenuItems: View {
-    let ui: UIState
-    @Environment(\.openWindow) private var openWindow
-    @Environment(\.dismissWindow) private var dismissWindow
-
-    var body: some View {
-        let toggle = TelemetryWidgetToggle(open: openWindow, dismiss: dismissWindow, ui: ui)
-        ForEach(Array(TelemetryWidgetKind.allCases.enumerated()), id: \.element) { index, kind in
-            Button("\(ui.openWidgets.contains(kind) ? "Hide" : "Show") \(kind.title) Widget") { toggle(kind) }
-                .keyboardShortcut(KeyEquivalent(Character("\(index + 1)")), modifiers: [.command, .option])
         }
     }
 }

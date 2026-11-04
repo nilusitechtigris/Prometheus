@@ -265,42 +265,20 @@ struct Chip: View {
     }
 }
 
-private struct PlainControlsKey: EnvironmentKey {
-    static let defaultValue = false
-}
-
-extension EnvironmentValues {
-    /// Swaps Liquid Glass for a flat fill, for layouts that sit on panels of their own.
-    var plainControls: Bool {
-        get { self[PlainControlsKey.self] }
-        set { self[PlainControlsKey.self] = newValue }
-    }
-}
-
-/// Liquid Glass on macOS 26+, frosted material before that.
-/// (Avoid tinted glass: it made the whole chat column drop out of window captures.)
+/// A flat fill with a hairline edge, for controls on the near-black.
 private struct GlassBackground<S: InsettableShape>: ViewModifier {
     let shape: S
-    var interactive = false
-    @Environment(\.plainControls) private var plain
 
     func body(content: Content) -> some View {
-        if plain {
-            content.background(Color.white.opacity(0.07), in: shape)
-                .overlay(shape.strokeBorder(Color.white.opacity(0.12), lineWidth: 0.5))
-        } else if #available(macOS 26.0, *) {
-            content.glassEffect(Glass.regular.interactive(interactive), in: shape)
-        } else {
-            content.background(.regularMaterial, in: shape)
-                .overlay(shape.strokeBorder(.separator.opacity(0.6), lineWidth: 0.5))
-        }
+        content.background(Color.white.opacity(0.07), in: shape)
+            .overlay(shape.strokeBorder(Color.white.opacity(0.12), lineWidth: 0.5))
     }
 }
 
 extension View {
     /// Use only for floating controls.
     func glassCapsule(interactive: Bool = false) -> some View {
-        modifier(GlassBackground(shape: Capsule(), interactive: interactive))
+        modifier(GlassBackground(shape: Capsule()))
     }
 
     func glassPanel(cornerRadius: CGFloat) -> some View {
@@ -308,29 +286,21 @@ extension View {
     }
 }
 
-/// Groups neighbouring glass controls so they blend and morph together on macOS 26+.
+/// A row of neighbouring controls.
 struct GlassGroup<Content: View>: View {
     var spacing: CGFloat = 8
     @ViewBuilder var content: Content
 
     var body: some View {
-        if #available(macOS 26.0, *) {
-            GlassEffectContainer(spacing: spacing) {
-                HStack(spacing: spacing) { content }
-            }
-        } else {
-            HStack(spacing: spacing) { content }
-        }
+        HStack(spacing: spacing) { content }
     }
 }
 
 /// Static ambient mesh in the theme colours behind the chat, lit from below like a hearth. Deliberately not animated,
 /// so the background never adds GPU load to the numbers the app is measuring.
 struct AmbientBackground: View {
-    @Environment(\.colorScheme) private var scheme
-
     var body: some View {
-        let base = (scheme == .dark ? ThemeStore.shared.active.darkSurface : nil) ?? Color(nsColor: .windowBackgroundColor)
+        let base = Forge.black
         ZStack {
             base
             if #available(macOS 15.0, *) {
@@ -343,7 +313,7 @@ struct AmbientBackground: View {
                              base, base, base,
                              Palette.glow, Palette.accent, Palette.accent2.opacity(0.8)]
                 )
-                .opacity(scheme == .dark ? 0.2 : 0.12)
+                .opacity(0.2)
             } else {
                 RadialGradient(colors: [Palette.accent.opacity(0.18), .clear], center: .bottom, startRadius: 0, endRadius: 600)
             }

@@ -113,6 +113,8 @@ struct ModelTestResult: Codable, Identifiable, Equatable {
     var baselineRunID: UUID?
     /// False when the model can't use tools, so only the injection guard applied.
     var toolsAvailable: Bool?
+    /// Rounds the harness's loop could take on each question. Nil for runs from before the loop.
+    var harnessRounds: Int?
     var injectionWithout: [InjectionResult]?
     var injectionWith: [InjectionResult]?
     var date = Date()

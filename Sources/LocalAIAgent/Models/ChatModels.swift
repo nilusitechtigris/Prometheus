@@ -107,7 +107,7 @@ struct Conversation: Identifiable, Codable, Equatable {
     var updatedAt = Date()
     var messages: [ChatMessage] = []
 
-    /// Plain-text snippet of the latest message for the sidebar (Markdown symbols stripped).
+    /// Plain-text snippet of the latest message for the chat list (Markdown symbols stripped).
     var preview: String {
         guard let text = messages.last(where: { $0.role != .system && !$0.content.isEmpty })?.content else { return "" }
         let lines = text.split(separator: "\n")

@@ -17,6 +17,7 @@ struct SettingsView: View {
         }
         .frame(width: 580, height: 460)
         .tint(Palette.accent)
+        .preferredColorScheme(.dark)
     }
 }
 
@@ -37,7 +38,7 @@ private struct AppearanceSettings: View {
             } header: {
                 Text("Color theme")
             } footer: {
-                Text("Themes change accents, the composer glow and the ambient background. Green, yellow and red always keep their health meaning. Light and dark mode follow macOS.")
+                Text("Themes change accents, the composer glow and the ambient background. Green, yellow and red always keep their health meaning.")
                     .font(.uiCaption)
                     .foregroundStyle(.secondary)
             }
@@ -191,6 +192,17 @@ private struct SafetySettings: View {
                 Toggle("Allow unverified models", isOn: $settings.allowUnverifiedModels)
             } footer: {
                 Text("Only enable this if you trust where a model came from. Unverified models show an orange shield.")
+                    .font(.uiCaption)
+                    .foregroundStyle(.secondary)
+            }
+            Section {
+                Picker("Rounds per task", selection: $settings.harnessMaxRounds) {
+                    ForEach(AppSettings.harnessRoundOptions, id: \.self) { Text("\($0)").tag($0) }
+                }
+            } header: {
+                Text("Harness")
+            } footer: {
+                Text("How many times the harness may go back and try again when a reply fails its checks, in chat and in the Harness Test. More rounds can fix more replies, and take longer.")
                     .font(.uiCaption)
                     .foregroundStyle(.secondary)
             }

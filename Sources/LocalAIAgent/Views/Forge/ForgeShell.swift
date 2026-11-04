@@ -1,35 +1,34 @@
 import AppKit
 import SwiftUI
 
-/// Draft "Forge" layout: near-black, one fire colour, Geist type, thin rules instead of boxes.
-/// Turned on from the sidebar or View › Try Forge Draft. The classic layout stays as it was.
-struct DraftShell: View {
+/// The app's layout: near-black, one accent colour, Geist type, thin rules instead of boxes, and a few
+/// line drawings from Greek pottery and temples.
+struct ForgeShell: View {
     var body: some View {
         HStack(spacing: 0) {
-            DraftRail()
+            ForgeRail()
             Forge.rule(vertical: true)
             VStack(spacing: 0) {
-                DraftTopBar()
-                Forge.rule()
+                ForgeTopBar()
+                MeanderFrieze()
                 MainPage()
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                 Forge.rule()
-                DraftStatusBar()
+                ForgeStatusBar()
             }
         }
         .background(Forge.black)
         .ignoresSafeArea()
         .preferredColorScheme(.dark)
-        .environment(\.plainControls, true)
         .toolbar(.hidden, for: .windowToolbar)
-        .background(DraftWindowStyle())
+        .background(ForgeWindowStyle())
     }
 }
 
-/// The draft's look: near-black, one fire colour, and white at a few strengths.
+/// The look: near-black, one accent colour that follows the theme, and white at a few strengths.
 enum Forge {
     static let black = Color(red: 0.039, green: 0.039, blue: 0.043)
-    static let flame = Color(red: 1, green: 0.353, blue: 0.122)
+    @MainActor static var flame: Color { Palette.accent }
     static let ink = Color.white.opacity(0.94)
     static let dim = Color.white.opacity(0.56)
     static let faint = Color.white.opacity(0.28)
@@ -50,64 +49,50 @@ enum Forge {
     }
 }
 
-/// Runs the draft's background up behind the window buttons, and restores the window on the way out.
-private struct DraftWindowStyle: NSViewRepresentable {
+/// Runs the background up behind the window buttons.
+private struct ForgeWindowStyle: NSViewRepresentable {
     final class StyledView: NSView {
-        weak var styledWindow: NSWindow?
-        var addedFullSizeContent = false
-        var originalBackground: NSColor?
-
         override func viewDidMoveToWindow() {
             super.viewDidMoveToWindow()
             guard let window else { return }
-            styledWindow = window
-            originalBackground = window.backgroundColor
             window.backgroundColor = NSColor(srgbRed: 0.039, green: 0.039, blue: 0.043, alpha: 1)
             window.titlebarAppearsTransparent = true
             window.titleVisibility = .hidden
-            if !window.styleMask.contains(.fullSizeContentView) {
-                window.styleMask.insert(.fullSizeContentView)
-                addedFullSizeContent = true
-            }
+            window.styleMask.insert(.fullSizeContentView)
         }
     }
 
     func makeNSView(context: Context) -> StyledView { StyledView() }
 
     func updateNSView(_ view: StyledView, context: Context) {}
-
-    static func dismantleNSView(_ view: StyledView, coordinator: ()) {
-        guard let window = view.styledWindow else { return }
-        window.titlebarAppearsTransparent = false
-        window.titleVisibility = .visible
-        if let background = view.originalBackground { window.backgroundColor = background }
-        if view.addedFullSizeContent { window.styleMask.remove(.fullSizeContentView) }
-    }
 }
 
 // MARK: - Rail
 
-private struct DraftRail: View {
+private struct ForgeRail: View {
     @Environment(AppSettings.self) private var settings
     @Environment(UIState.self) private var ui
-    @Environment(\.openWindow) private var openWindow
-    @Environment(\.dismissWindow) private var dismissWindow
 
     var body: some View {
         VStack(spacing: 4) {
             BrandMark(size: 34)
                 .padding(.top, 44)
                 .padding(.bottom, 16)
-            item("bubble.left", "Chat", .chat)
+            chats
             item("checklist", "Tests", .tests)
             item("square.stack.3d.up", "Library", .library)
             Forge.rule().padding(.horizontal, 18).padding(.vertical, 6)
-            widget(.generation, "Speed")
-            widget(.hardware, "Vitals")
-            Spacer()
+            telemetry
+            // A column stands in the empty stretch of the rail, clear of every label.
+            DoricColumn()
+                .stroke(Forge.faint.opacity(0.6), lineWidth: 1)
+                .frame(width: 26)
+                .frame(maxHeight: 260)
+                .padding(.vertical, 14)
+                .frame(maxHeight: .infinity, alignment: .bottom)
+                .accessibilityHidden(true)
             SettingsLink { rowLabel("gearshape", "Settings", selected: false) }
                 .buttonStyle(.plain)
-            action("arrow.uturn.backward", "Classic") { settings.draftLayout = false }
                 .padding(.bottom, 12)
         }
         .frame(width: 72)
@@ -118,20 +103,26 @@ private struct DraftRail: View {
             .buttonStyle(.plain)
     }
 
-    private func action(_ symbol: String, _ title: String, _ run: @escaping () -> Void) -> some View {
-        Button(action: run) { rowLabel(symbol, title, selected: false) }
-            .buttonStyle(.plain)
-    }
-
-    /// Opens or closes a floating telemetry widget, lit while it's on screen.
-    private func widget(_ kind: TelemetryWidgetKind, _ title: String) -> some View {
+    /// Opens the Chat page, then opens or collapses the chats beside it.
+    private var chats: some View {
         Button {
-            TelemetryWidgetToggle(open: openWindow, dismiss: dismissWindow, ui: ui)(kind)
+            withAnimation(.snappy) { ui.toggleChats(in: settings) }
         } label: {
-            rowLabel(kind.symbol, title, selected: ui.openWidgets.contains(kind))
+            rowLabel("bubble.left", "Chat", selected: ui.destination == .chat)
         }
         .buttonStyle(.plain)
-        .help("Show or hide the floating \(kind.title) widget")
+        .help("Show your chats, or collapse them if they're showing (⌥⌘2)")
+    }
+
+    /// Opens or collapses the telemetry panel, lit while it's open.
+    private var telemetry: some View {
+        Button {
+            withAnimation(.snappy) { settings.telemetryOpen.toggle() }
+        } label: {
+            rowLabel("gauge.with.dots.needle.67percent", "Telemetry", selected: settings.telemetryOpen)
+        }
+        .buttonStyle(.plain)
+        .help("\(settings.telemetryOpen ? "Collapse" : "Open") the telemetry panel (⌥⌘1)")
     }
 
     private func rowLabel(_ symbol: String, _ title: String, selected: Bool) -> some View {
@@ -150,14 +141,20 @@ private struct DraftRail: View {
 
 // MARK: - Top and status bars
 
-private struct DraftTopBar: View {
+private struct ForgeTopBar: View {
     @Environment(BackendController.self) private var backends
 
     var body: some View {
         HStack(spacing: 14) {
-            Text(Brand.name.uppercased())
-                .font(.geistPixel(24))
-                .foregroundStyle(Forge.ink)
+            HStack(alignment: .firstTextBaseline, spacing: 10) {
+                Text(Brand.name.uppercased())
+                    .font(.geistPixel(24))
+                    .foregroundStyle(Forge.ink)
+                Text(Brand.greekName)
+                    .font(.greek(14).italic())
+                    .foregroundStyle(Forge.dim)
+                    .accessibilityHidden(true)
+            }
             Spacer()
             if let model = backends.selectedModel {
                 Text(model.displayName).font(.geistMono(12, weight: .medium)).foregroundStyle(Forge.ink).lineLimit(1)
@@ -175,11 +172,13 @@ private struct DraftTopBar: View {
     }
 }
 
-private struct DraftStatusBar: View {
+private struct ForgeStatusBar: View {
     @Environment(SystemMonitor.self) private var monitor
     @Environment(TestLab.self) private var lab
     @Environment(BackendController.self) private var backends
     @Environment(AppSettings.self) private var settings
+
+    private var harnessOn: Bool { settings.harnessEnabled && backends.kind.supportsTools }
 
     private var harnessStatus: (text: String, color: Color) {
         guard backends.kind.supportsTools else { return ("Needs Ollama", Forge.ink) }
@@ -203,6 +202,8 @@ private struct DraftStatusBar: View {
     var body: some View {
         HStack(spacing: 22) {
             status("Harness", harnessStatus.text, harnessStatus.color)
+                .help(harnessOn ? "Harness on: search terms go to Wikipedia, Stack Overflow, arXiv and MDN"
+                                : "100% local — prompts and responses never leave this Mac")
             status("Load", load.text, load.color)
             status("Tests", runningTests > 0 ? "\(runningTests) running" : "Idle", runningTests > 0 ? Forge.flame : Forge.ink)
             Spacer()

@@ -17,14 +17,12 @@ import SwiftUI
 ///   LOCALAI_EXPAND_TESTS=id,id      open these questions in the model test dashboard
 ///   LOCALAI_DUMP_SUITE=/path.json   write the model test as JSON, to run it outside the app
 ///   LOCALAI_GRADE=/path.json        grade replies from {"id": "reply"}, writing /path.json.graded.json
-///   LOCALAI_OPEN_WIDGETS=1          open both floating telemetry widgets after launch (see ContentView)
-///   LOCALAI_WIDGET_CYCLE=1          close the open widgets after 3 s and reopen Generation after 6 s
-///   LOCALAI_WIDGET_ZOOM=1.5         resize open widget windows by this factor after 3 s
+///   LOCALAI_TELEMETRY=0|1           start with the telemetry panel closed or open; =cycle closes it after 3 s
 ///   LOCALAI_HARNESS_CHECK=/path.txt check the harness's allowlist, calculator, guard and web tools, writing a report
 ///   LOCALAI_WEB_VIA_CURL=1          make the harness's web requests with curl (see WebTools)
-///   LOCALAI_LIGHT_MODE=1            force the light appearance
 ///   LOCALAI_CLOSE_MAIN=3            close the main window after this many seconds, like its red button
-///   LOCALAI_DRAFT=1                 open the Forge draft after launch; =cycle leaves it again after 3 s
+///   LOCALAI_CHATS=0|1               start with the chats closed or open
+///   LOCALAI_CHAT_SEARCH=text        search the chats for this after launch
 ///   LOCALAI_HARNESS_SAMPLE=id,id    run these questions through the harness; LOCALAI_SAMPLE_OUT=/path gets the report
 ///   LOCALAI_CHAT_HARNESS=1          turn the harness on for chat
 ///   LOCALAI_WINDOW_SIZE=1380x2400   resize the main window after launch, to snapshot more of a page
@@ -34,7 +32,6 @@ enum DebugHooks {
     static func install(chat: ChatController, ui: UIState, lab: TestLab, backends: BackendController,
                         monitor: SystemMonitor, settings: AppSettings) {
         let env = ProcessInfo.processInfo.environment
-        if env["LOCALAI_LIGHT_MODE"] != nil { NSApp.appearance = NSAppearance(named: .aqua) }
         if env["LOCALAI_CLOSE_MAIN"] != nil {
             Task {
                 try? await Task.sleep(for: .seconds(Double(env["LOCALAI_CLOSE_MAIN"] ?? "") ?? 3))
@@ -53,15 +50,8 @@ enum DebugHooks {
                 }
             }
         }
-        if let draft = env["LOCALAI_DRAFT"] {
-            settings.draftLayout = true
-            if draft == "cycle" {
-                Task {
-                    try? await Task.sleep(for: .seconds(3))
-                    settings.draftLayout = false
-                }
-            }
-        }
+        if let chats = env["LOCALAI_CHATS"] { settings.chatsOpen = chats != "0" }
+        if let search = env["LOCALAI_CHAT_SEARCH"] { ui.chatSearch = search }
         switch env["LOCALAI_DESTINATION"] {
         case "model": ui.openTests(.model)
         case "hardware": ui.openTests(.hardware)
@@ -69,13 +59,12 @@ enum DebugHooks {
         case "library": ui.destination = .library
         default: break
         }
-        if let zoom = Double(env["LOCALAI_WIDGET_ZOOM"] ?? "") {
-            Task {
-                try? await Task.sleep(for: .seconds(3))
-                for window in NSApp.windows where window.identifier?.rawValue.contains("widget") == true {
-                    var frame = window.frame
-                    frame.size = NSSize(width: frame.width * zoom, height: frame.height * zoom)
-                    window.setFrame(frame, display: true)
+        if let telemetry = env["LOCALAI_TELEMETRY"] {
+            settings.telemetryOpen = telemetry != "0"
+            if telemetry == "cycle" {
+                Task {
+                    try? await Task.sleep(for: .seconds(3))
+                    settings.telemetryOpen = false
                 }
             }
         }
@@ -249,6 +238,52 @@ enum DebugHooks {
         } else {
             expect("untrusted page refused", false)
         }
+        // The loop's parts that need no model.
+        let suite = ModelTestSuite.questions(contextLength: 4_096)
+        func prompt(_ id: String) -> String { suite.first { $0.id == id }?.prompt ?? "" }
+        let kinds: [String: TestLab.TaskKind] = ["math": .calculation, "reason": .other, "know": .fact, "follow": .writing, "code": .code, "long": .document]
+        for question in suite {
+            let kind = TestLab.plainKind(of: HarnessTask(prompt: question.prompt))
+            expect("\(question.id) reads as \(kind?.rawValue ?? "unknown")", kind == kinds[String(question.id.prefix { $0 != "-" })])
+        }
+        let sea = TextRules(task: prompt("follow-3"))
+        expect("rules of follow-3", sea.unit == .sentence && sea.count == 3 && sea.wordsAt == [1: 5] && sea.startLetter == "s" && sea.bannedWords == ["water"])
+        expect("good text passes", sea.violations(of: "Seas sing to sailors. Sharks swim very far out. Salt stings all sailors.").isEmpty)
+        let broken = sea.violations(of: "Seas sing. Waves crash on the shore today now. Salt water stings.")
+        expect("bad text fails: \(broken)", broken.count == 3)
+        let poem = TextRules(task: prompt("follow-4"))
+        expect("rules of follow-4", poem.unit == .line && poem.count == 4 && poem.wordsAt == [0: 3, 1: 5, 2: 7, 3: 9] && poem.startLetter == "t" && poem.bannedLetters == ["e"])
+        let sky = TextRules(task: prompt("follow-1"))
+        expect("rules of follow-1", sky.totalWords == 3 && sky.lowercase && sky.noPunctuation)
+        expect("tidied words: \(sky.tidied("Blue, Vast, Endless."))", sky.tidied("Blue, Vast, Endless.") == "blue vast endless")
+        let json = TextRules(task: prompt("follow-2"))
+        expect("rules of follow-2", json.jsonOnly && json.jsonKeys == ["name", "age"])
+        expect("fences removed", json.violations(of: json.tidied("```json\n{\"name\": \"Al\", \"age\": 3}\n```")).isEmpty)
+        let form = TextRules(task: prompt("math-1"))
+        expect("last line form", form.finalLabel == "Answer" && !form.hasShape)
+        expect("placeholder cleared: \(form.tidied("Answer: <your answer>22"))", form.tidied("Answer: <your answer>22") == "Answer: 22")
+        expect("angle brackets cleared", form.tidied("Answer: <Lee> /think") == "Answer: Lee")
+        expect("empty last line fails", !form.violations(of: "Answer:").isEmpty && form.violations(of: "Answer: 12").isEmpty)
+        for (id, wanted, unwanted) in [("long-1", "MAPLE-7342", ""), ("long-2", "current access code", ""), ("long-3", "K-552", "K-525")] {
+            let task = HarnessTask(prompt: prompt(id))
+            let found = PassageFinder.chain(in: task.document ?? "", for: task.body, maxCharacters: 2_000).passages
+            lines.append("\(id) passages: \(found)")
+            expect("\(id) finds \(wanted)", found.contains { $0.contains(wanted) } && (unwanted.isEmpty || !found.contains { $0.contains(unwanted) }))
+        }
+        let audit = HarnessTask(prompt: prompt("long-4"))
+        let auditLines = PassageFinder.chain(in: audit.document ?? "", for: audit.body, maxCharacters: 2_400, closeness: 0.55).passages
+        lines.append("long-4 passages: \(auditLines)")
+        expect("long-4 counts and finds every notice", audit.needsCounting && auditLines.filter { $0.hasPrefix("Notice") }.count >= 3)
+        for (output, result) in [("54.0", "54"), ("1\n4\n6", "1 4 6"), ("The total is 12 crates", "12")] {
+            expect("result of \(output.debugDescription) is \(result)", HarnessText.keyResult(of: output) == result)
+        }
+        expect("result in one string", HarnessText.mentions("1 4 6 3 5 2", in: "Work.\nAnswer: 146352", label: "Answer"))
+        expect("result missing", !HarnessText.mentions("126", in: "Answer: 125", label: "Answer"))
+        expect("result written in", HarnessText.adding("126", to: "Hm.\nAnswer: 125", label: "Answer") == "Hm.\nAnswer: 126")
+        expect("query cleaned", HarnessText.cleanQuery("Answer: Ramesses II, Hittite, Kadesh, treaty") == "Ramesses II Hittite Kadesh treaty")
+        let ranked = HarnessText.ranked([SearchHit(title: "Hittites", url: "https://en.wikipedia.org/wiki/Hittites"),
+                                         SearchHit(title: "Egyptian–Hittite peace treaty", url: "https://en.wikipedia.org/wiki/Treaty")], for: "peace treaty Hittite")
+        expect("best title first", ranked.first?.title.contains("treaty") == true)
         // The code runner, against code trying to get out. Every attempt has to fail.
         let home = NSHomeDirectory()
         let attacks: [(String, String)] = [
@@ -293,11 +328,6 @@ enum DebugHooks {
         }
         for (i, popover) in NSApp.windows.filter({ $0.isVisible && $0.className.contains("Popover") }).enumerated() {
             write(popover, to: path.replacingOccurrences(of: ".png", with: "-popover\(i).png"))
-        }
-        for other in NSApp.windows where other.isVisible && other !== window {
-            if let id = other.identifier?.rawValue, id.contains("widget") {
-                write(other, to: path.replacingOccurrences(of: ".png", with: "-\(id.split(separator: "-").prefix(2).joined(separator: "-")).png"))
-            }
         }
     }
 

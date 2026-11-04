@@ -229,7 +229,9 @@ struct ModelRunChips: View {
     var body: some View {
         Chip(text: run.thinking ? "Thinking on" : "Thinking off", symbol: "brain", tint: run.thinking ? Palette.accent : .secondary)
         Chip(text: "\(Format.tokens(run.contextLength)) context", symbol: "text.word.spacing", tint: .secondary)
-        if run.usesHarness { Chip(text: "Harness", symbol: "shield.lefthalf.filled", tint: Palette.accent) }
+        if run.usesHarness {
+            Chip(text: run.harnessRounds.map { "Harness · \($0) rounds" } ?? "Harness", symbol: "shield.lefthalf.filled", tint: Palette.accent)
+        }
     }
 }
 

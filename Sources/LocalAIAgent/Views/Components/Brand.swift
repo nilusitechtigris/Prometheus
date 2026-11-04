@@ -3,19 +3,15 @@ import SwiftUI
 /// Name, voice and type in one place, so a rename is a one-line change.
 enum Brand {
     static let name = "Prometheus"
+    static let greekName = "Προμηθεύς"
     static let tagline = "The fire is yours."
 
-    /// Display type: a serif for the mythic name, used for the wordmark and page titles.
-    static func display(_ size: CGFloat, weight: Font.Weight = .semibold) -> Font {
-        Font.usesGeist ? .geistPixel(size) : .system(size: size, weight: weight, design: .serif)
-    }
+    /// Display type, used for the wordmark and page titles.
+    static func display(_ size: CGFloat) -> Font { .geistPixel(size) }
 
-    /// The brand's fire, the same in every theme.
-    static let fire = LinearGradient(colors: [Color(hex: 0xFFB13D), Color(hex: 0xF4631E), Color(hex: 0xD92D20)],
+    /// The brand's blue fire, the same in every theme.
+    static let fire = LinearGradient(colors: [Color(hex: 0xBDE3FF), Color(hex: 0x5AA9FF), Color(hex: 0x2F7BFF)],
                                      startPoint: .topLeading, endPoint: .bottomTrailing)
-    /// The same fire, deep enough to read on light backgrounds.
-    static let deepFire = LinearGradient(colors: [Color(hex: 0xE8590C), Color(hex: 0xD9401A), Color(hex: 0xB91C1C)],
-                                         startPoint: .topLeading, endPoint: .bottomTrailing)
 }
 
 private extension Color {
@@ -24,8 +20,9 @@ private extension Color {
     }
 }
 
-/// The Prometheus mark: a flame with the AI spark at its heart, on a dark ember tile. Same drawing as
-/// the app icon (scripts/make-icon.swift). Small sizes drop the finer layers so it stays a clear flame.
+/// The Prometheus mark: a blue flame with the AI spark at its heart, on a black tile over a Greek key.
+/// Same drawing as the app icon (scripts/make-icon.swift). Small sizes drop the finer layers so it stays
+/// a clear flame.
 struct BrandMark: View {
     var size: CGFloat = 28
 
@@ -33,26 +30,30 @@ struct BrandMark: View {
         let tile = RoundedRectangle(cornerRadius: size * 0.28, style: .continuous)
         let detailed = size >= 44
         tile
-            .fill(LinearGradient(colors: [Color(hex: 0x0C0705), Color(hex: 0x2A1710)], startPoint: .top, endPoint: .bottom))
+            .fill(LinearGradient(colors: [Color(hex: 0x05070D), Color(hex: 0x0F1A30)], startPoint: .top, endPoint: .bottom))
             .overlay {
-                RadialGradient(colors: [Color(hex: 0xFF6A00).opacity(0.5), .clear], center: UnitPoint(x: 0.5, y: 0.62),
+                RadialGradient(colors: [Color(hex: 0x1F6BFF).opacity(0.5), .clear], center: UnitPoint(x: 0.5, y: 0.62),
                                startRadius: 0, endRadius: size * 0.58)
             }
             .overlay {
                 Canvas { ctx, canvas in
                     let mark = FlameGeometry(side: canvas.width)
+                    if detailed {
+                        ctx.stroke(Meander(unit: mark.scale(11)).path(in: mark.keyBand), with: .color(Color(hex: 0x6CB6FF).opacity(0.6)),
+                                   lineWidth: mark.scale(7))
+                    }
                     var glow = ctx
-                    glow.addFilter(.shadow(color: Color(hex: 0xFF5A1F).opacity(0.8), radius: mark.scale(44)))
+                    glow.addFilter(.shadow(color: Color(hex: 0x2F7BFF).opacity(0.8), radius: mark.scale(44)))
                     glow.fill(mark.flame(), with: .linearGradient(
-                        Gradient(colors: [Color(hex: 0xFF8A1E), Color(hex: 0xF04A0C), Color(hex: 0xC81E1E)]),
+                        Gradient(colors: [Color(hex: 0x6CB6FF), Color(hex: 0x2F7BFF), Color(hex: 0x1238C8)]),
                         startPoint: mark.point(512, 890), endPoint: mark.point(512, 168)))
                     if detailed {
                         ctx.fill(mark.flame(scale: 0.70, shift: CGPoint(x: 6, y: 18)), with: .linearGradient(
-                            Gradient(colors: [Color(hex: 0xFFA928), Color(hex: 0xFF7A12)]),
+                            Gradient(colors: [Color(hex: 0x7FD4FF), Color(hex: 0x3FA2FF)]),
                             startPoint: mark.point(512, 700), endPoint: mark.point(512, 180)))
                     }
                     ctx.fill(mark.flame(scale: detailed ? 0.42 : 0.5, shift: CGPoint(x: 8, y: 34)), with: .linearGradient(
-                        Gradient(colors: [Color(hex: 0xFFF0B8), Color(hex: 0xFFC93C)]),
+                        Gradient(colors: [Color(hex: 0xEAF7FF), Color(hex: 0x8FDCFF)]),
                         startPoint: mark.point(512, 520), endPoint: mark.point(512, 200)))
                     if detailed {
                         var spark = ctx
@@ -64,7 +65,7 @@ struct BrandMark: View {
             .clipShape(tile)
             .overlay(tile.strokeBorder(.white.opacity(0.14), lineWidth: 0.5))
             .frame(width: size, height: size)
-            .shadow(color: Color(hex: 0xF4631E).opacity(0.35), radius: size * 0.12, y: size * 0.05)
+            .shadow(color: Color(hex: 0x2F7BFF).opacity(0.35), radius: size * 0.12, y: size * 0.05)
     }
 }
 
@@ -75,6 +76,8 @@ private struct FlameGeometry {
     func scale(_ v: CGFloat) -> CGFloat { v / 824 * side }
     func point(_ x: CGFloat, _ y: CGFloat) -> CGPoint { CGPoint(x: (x - 100) / 824 * side, y: (924 - y) / 824 * side) }
     func circle(_ c: CGPoint, radius r: CGFloat) -> CGRect { CGRect(x: c.x - r, y: c.y - r, width: r * 2, height: r * 2) }
+    /// The Greek key at the foot of the tile: eight turns, wholly inside the rounded corners.
+    var keyBand: CGRect { CGRect(origin: point(248, 156), size: CGSize(width: scale(528), height: scale(44))) }
 
     /// The flame, scaled about its base.
     func flame(scale s: CGFloat = 1, shift: CGPoint = .zero) -> Path {
@@ -113,16 +116,15 @@ struct SparkShape: Shape {
     }
 }
 
-/// "PROMETHEUS" in the display serif: wide-set capitals in the brand's fire.
+/// "PROMETHEUS" in the display type and the brand's blue fire.
 struct BrandWordmark: View {
     var size: CGFloat = 28
-    @Environment(\.colorScheme) private var scheme
 
     var body: some View {
         Text(Brand.name.uppercased())
             .font(Brand.display(size))
-            .tracking(Font.usesGeist ? size * 0.02 : size * 0.14)
-            .foregroundStyle(scheme == .dark ? Brand.fire : Brand.deepFire)
+            .tracking(size * 0.02)
+            .foregroundStyle(Brand.fire)
             .fixedSize()
             .accessibilityLabel(Brand.name)
     }

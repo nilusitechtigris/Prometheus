@@ -132,6 +132,8 @@ enum WebTools {
     #endif
 
     private static let maxPageCharacters = 7_000
+    /// How much of a page the harness searches for passages. The model only reads what it picks out.
+    static let maxSearchableCharacters = 60_000
     private static let maxDownloadBytes = 3_000_000
 
     /// Rejects redirects that leave the trusted sites.
@@ -152,7 +154,7 @@ enum WebTools {
 
     // MARK: Opening pages
 
-    static func open(_ address: String) async -> Result<String, Failure> {
+    static func open(_ address: String, limit: Int = maxPageCharacters) async -> Result<String, Failure> {
         guard var parts = URLComponents(string: address.trimmingCharacters(in: .whitespacesAndNewlines)) else {
             return .failure(Failure(message: "that isn't a valid address."))
         }
@@ -176,7 +178,7 @@ enum WebTools {
             }
             let html = String(decoding: data, as: UTF8.self)
             let text = type.contains("html") ? plainText(html) : html
-            return .success(String(text.prefix(maxPageCharacters)))
+            return .success(String(text.prefix(limit)))
         } catch {
             #if DEBUG
             lastError = "\(error)"

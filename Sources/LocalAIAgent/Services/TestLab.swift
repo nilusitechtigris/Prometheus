@@ -102,6 +102,8 @@ final class TestLab {
         let think: Bool?
         let supportsTools: Bool
         var temperature = 0.0
+        /// Rounds the harness gets on a task.
+        var maxRounds = 3
     }
 
     #if DEBUG
@@ -135,7 +137,7 @@ final class TestLab {
         }
         return TestSetup(model: model, backend: backend, context: context,
                          think: backend.kind == .ollama && supportsThinking ? settings.thinkingEnabled : nil,
-                         supportsTools: backend.kind.supportsTools && supportsTools)
+                         supportsTools: backend.kind.supportsTools && supportsTools, maxRounds: settings.harnessMaxRounds)
     }
 
     private static func finish(_ model: LocalModel, backends: BackendController, settings: AppSettings) {
@@ -245,6 +247,7 @@ final class TestLab {
                 if !Task.isCancelled {
                     run.baselineRunID = baseline.id
                     run.toolsAvailable = setup.supportsTools
+                    run.harnessRounds = setup.maxRounds
                     run.injectionWithout = without
                     run.injectionWith = with
                     run.duration = Date().timeIntervalSince(start) - (reused ? 0 : baseline.duration)
@@ -364,7 +367,10 @@ final class TestLab {
         var guardRemoved = 0
         /// Set by whoever wants to follow along as the harness works.
         var onLog: (([String]) -> Void)?
-        var onStage: ((HarnessStage) -> Void)?
+        /// The step under way, and which round of the loop it's in.
+        var onStage: ((HarnessStage, Int) -> Void)?
+        /// The best reply so far.
+        var onDraft: ((String) -> Void)?
     }
 
     /// Rounds of tool use a question gets. After that the model has to answer with what it has.

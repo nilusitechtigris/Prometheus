@@ -43,6 +43,7 @@ final class AppSettings {
         - The user's own instructions about format, length, tone or role always take priority over these defaults.
         """
     static let contextOptions = [2_048, 4_096, 8_192, 16_384, 32_768, 65_536, 131_072]
+    static let harnessRoundOptions = [1, 2, 3, 5]
 
     var backendKind: BackendKind { didSet { defaults.set(backendKind.rawValue, forKey: "backendKind") } }
     var baseURLs: [String: String] { didSet { defaults.set(baseURLs, forKey: "baseURLs") } }
@@ -59,13 +60,14 @@ final class AppSettings {
     var replyStatsExpanded: Bool { didSet { defaults.set(replyStatsExpanded, forKey: "replyStatsExpanded") } }
     /// Runs chat replies through the harness. Off by default because its web searches leave this Mac.
     var harnessEnabled: Bool { didSet { defaults.set(harnessEnabled, forKey: "harnessEnabled") } }
-    /// The draft Forge layout, with its near-black look and Geist type.
-    var draftLayout: Bool {
-        didSet {
-            defaults.set(draftLayout, forKey: "draftLayout")
-            applyDraftLook()
-        }
-    }
+    /// Times the harness's loop may go round on a task, in chat and in the Harness Test.
+    var harnessMaxRounds: Int { didSet { defaults.set(harnessMaxRounds, forKey: "harnessMaxRounds") } }
+    /// Whether the telemetry panel is open at the right of the window, and how wide it is.
+    var telemetryOpen: Bool { didSet { defaults.set(telemetryOpen, forKey: "telemetryOpen") } }
+    var telemetryWidth: Double { didSet { defaults.set(telemetryWidth, forKey: "telemetryWidth") } }
+    static let telemetryWidths = 290.0...460.0
+    /// Whether the chats show beside the conversation on the Chat page.
+    var chatsOpen: Bool { didSet { defaults.set(chatsOpen, forKey: "chatsOpen") } }
 
     init() {
         backendKind = BackendKind(rawValue: defaults.string(forKey: "backendKind") ?? "") ?? .ollama
@@ -81,13 +83,12 @@ final class AppSettings {
         unloadOnSwitch = defaults.object(forKey: "unloadOnSwitch") as? Bool ?? true
         replyStatsExpanded = defaults.object(forKey: "replyStatsExpanded") as? Bool ?? true
         harnessEnabled = defaults.bool(forKey: "harnessEnabled")
-        draftLayout = defaults.bool(forKey: "draftLayout")
-        applyDraftLook()
-    }
-
-    private func applyDraftLook() {
-        ThemeStore.shared.preview = draftLayout ? .forge : nil
-        Font.usesGeist = draftLayout
+        let rounds = defaults.integer(forKey: "harnessMaxRounds")
+        harnessMaxRounds = rounds > 0 ? rounds : 3
+        telemetryOpen = defaults.object(forKey: "telemetryOpen") as? Bool ?? true
+        let panelWidth = defaults.double(forKey: "telemetryWidth")
+        telemetryWidth = panelWidth > 0 ? min(max(panelWidth, Self.telemetryWidths.lowerBound), Self.telemetryWidths.upperBound) : 320
+        chatsOpen = defaults.object(forKey: "chatsOpen") as? Bool ?? true
     }
 
     func baseURL(for kind: BackendKind) -> String {

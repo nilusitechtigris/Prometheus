@@ -109,6 +109,15 @@ private struct HarnessStepsView: View {
     let isLive: Bool
     @State private var expanded: Bool?
 
+    /// Rounds after the first each start with a line of their own.
+    private var rounds: Int { 1 + steps.filter { $0.hasPrefix("Round ") }.count }
+
+    private var title: String {
+        let name = rounds > 1 ? "Harness · round \(rounds)" : "Harness"
+        if isLive { return "\(name) working…" }
+        return "\(name) · \(steps.count) step\(steps.count == 1 ? "" : "s")"
+    }
+
     var body: some View {
         let isOpen = expanded ?? isLive
         VStack(alignment: .leading, spacing: 6) {
@@ -118,7 +127,7 @@ private struct HarnessStepsView: View {
                 HStack(spacing: 6) {
                     Image(systemName: "shield.lefthalf.filled")
                         .symbolEffect(.pulse, isActive: isLive)
-                    Text(isLive ? "Harness working…" : "Harness · \(steps.count) step\(steps.count == 1 ? "" : "s")")
+                    Text(title)
                     Image(systemName: "chevron.right")
                         .rotationEffect(.degrees(isOpen ? 90 : 0))
                         .imageScale(.small)

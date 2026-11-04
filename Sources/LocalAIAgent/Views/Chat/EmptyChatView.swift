@@ -47,11 +47,17 @@ private struct WelcomeHero: View {
         VStack(spacing: 22) {
             VStack(spacing: 12) {
                 BrandMark(size: 92)
-                    .padding(.bottom, 6)
+                    .padding(36)
+                    .background(LaurelWreath().fill(Palette.accent2.opacity(0.7)).accessibilityHidden(true))
                 BrandWordmark(size: 38)
                 Text(Brand.tagline)
-                    .font(Font.usesGeist ? .geistMono(13) : Brand.display(17, weight: .regular).italic())
+                    .font(.geistMono(13))
                     .foregroundStyle(.secondary)
+                Meander()
+                    .stroke(Forge.faint, lineWidth: 1)
+                    .frame(width: 96, height: 9)
+                    .padding(.top, 2)
+                    .accessibilityHidden(true)
                 if let model = backends.selectedModel {
                     Text("Running **\(model.displayName)** on your \(monitor.chipName)\(settings.harnessEnabled && backends.kind.supportsTools ? "." : " — nothing leaves this Mac.")")
                         .foregroundStyle(.secondary)

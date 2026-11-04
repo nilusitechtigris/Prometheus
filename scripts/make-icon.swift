@@ -1,6 +1,6 @@
 // Renders the Prometheus app icon as a 1024×1024 PNG.  Usage: swift scripts/make-icon.swift out.png
-// A flame in three layers with the AI spark at its heart, on a dark ember tile: the fire, brought
-// down to your own machine. Mirrors BrandMark in Brand.swift.
+// A blue flame in three layers with the AI spark at its heart, on a black tile over a Greek key: the
+// fire, brought down to your own machine. Mirrors BrandMark in Brand.swift.
 import AppKit
 
 let output = CommandLine.arguments.count > 1 ? CommandLine.arguments[1] : "AppIcon.png"
@@ -73,37 +73,57 @@ ctx.saveGState()
 ctx.addPath(tile)
 ctx.clip()
 
-// Dark ember tile, lit from below
-ctx.drawLinearGradient(gradient([rgb(0x2A1710), rgb(0x0C0705)]),
+// Black tile, lit from below
+ctx.drawLinearGradient(gradient([rgb(0x0F1A30), rgb(0x05070D)]),
                        start: CGPoint(x: 512, y: 100), end: CGPoint(x: 512, y: 924), options: [])
 func glow(_ hex: UInt32, _ alpha: CGFloat, at p: CGPoint, radius: CGFloat) {
     ctx.drawRadialGradient(gradient([rgb(hex, alpha), rgb(hex, 0)]), startCenter: p, startRadius: 0,
                            endCenter: p, endRadius: radius, options: [])
 }
-glow(0xFF6A00, 0.55, at: CGPoint(x: 512, y: 400), radius: 470)
-glow(0xDC2626, 0.40, at: CGPoint(x: 512, y: 170), radius: 420)
+glow(0x1F6BFF, 0.55, at: CGPoint(x: 512, y: 400), radius: 470)
+glow(0x1238C8, 0.40, at: CGPoint(x: 512, y: 170), radius: 420)
 
-// Rising embers
+// A Greek key at the foot of the tile: eight turns, wholly inside the rounded corners. Same as Meander.
+let keyUnit: CGFloat = 11
+let keyBase: CGFloat = 112
+let key = CGMutablePath()
+key.move(to: CGPoint(x: 248, y: keyBase))
+for turn in 0..<8 {
+    let x = 248 + CGFloat(turn) * keyUnit * 6
+    key.addLine(to: CGPoint(x: x, y: keyBase + keyUnit * 4))
+    key.addLine(to: CGPoint(x: x + keyUnit * 4, y: keyBase + keyUnit * 4))
+    key.addLine(to: CGPoint(x: x + keyUnit * 4, y: keyBase + keyUnit * 2))
+    key.addLine(to: CGPoint(x: x + keyUnit * 2, y: keyBase + keyUnit * 2))
+    key.addLine(to: CGPoint(x: x + keyUnit * 2, y: keyBase))
+    key.addLine(to: CGPoint(x: x + keyUnit * 6, y: keyBase))
+}
+ctx.addPath(key)
+ctx.setStrokeColor(rgb(0x6CB6FF, 0.6))
+ctx.setLineWidth(7)
+ctx.setLineJoin(.miter)
+ctx.strokePath()
+
+// Rising sparks
 for (x, y, r, alpha): (CGFloat, CGFloat, CGFloat, CGFloat) in [
     (250, 800, 8, 0.55), (300, 862, 5, 0.4), (726, 842, 9, 0.6), (786, 748, 6, 0.45),
     (668, 874, 5, 0.35), (210, 660, 6, 0.4), (820, 610, 5, 0.3), (392, 846, 4, 0.35),
 ] {
-    ctx.setFillColor(rgb(0xFFB454, alpha))
+    ctx.setFillColor(rgb(0x9FD0FF, alpha))
     ctx.fillEllipse(in: circle(CGPoint(x: x, y: y), r))
 }
 
 // Outer flame with its glow
 ctx.saveGState()
-ctx.setShadow(offset: .zero, blur: 80, color: rgb(0xFF5A1F, 0.85))
+ctx.setShadow(offset: .zero, blur: 80, color: rgb(0x2F7BFF, 0.85))
 ctx.addPath(flame())
-ctx.setFillColor(rgb(0xE8450F))
+ctx.setFillColor(rgb(0x1F5FE8))
 ctx.fillPath()
 ctx.restoreGState()
 
 ctx.saveGState()
 ctx.addPath(flame())
 ctx.clip()
-ctx.drawLinearGradient(gradient([rgb(0xC81E1E), rgb(0xF04A0C), rgb(0xFF8A1E)], [0, 0.5, 1]),
+ctx.drawLinearGradient(gradient([rgb(0x1238C8), rgb(0x2F7BFF), rgb(0x6CB6FF)], [0, 0.5, 1]),
                        start: CGPoint(x: 512, y: 168), end: CGPoint(x: 512, y: 890), options: [])
 ctx.restoreGState()
 
@@ -111,7 +131,7 @@ ctx.restoreGState()
 ctx.saveGState()
 ctx.addPath(flame(scale: 0.70, shift: CGPoint(x: 6, y: 18)))
 ctx.clip()
-ctx.drawLinearGradient(gradient([rgb(0xFF7A12), rgb(0xFFA928)]),
+ctx.drawLinearGradient(gradient([rgb(0x3FA2FF), rgb(0x7FD4FF)]),
                        start: CGPoint(x: 512, y: 180), end: CGPoint(x: 512, y: 700), options: [])
 ctx.restoreGState()
 
@@ -119,7 +139,7 @@ ctx.restoreGState()
 ctx.saveGState()
 ctx.addPath(flame(scale: 0.42, shift: CGPoint(x: 8, y: 34)))
 ctx.clip()
-ctx.drawLinearGradient(gradient([rgb(0xFFC93C), rgb(0xFFF0B8)]),
+ctx.drawLinearGradient(gradient([rgb(0x8FDCFF), rgb(0xEAF7FF)]),
                        start: CGPoint(x: 512, y: 200), end: CGPoint(x: 512, y: 520), options: [])
 ctx.restoreGState()
 

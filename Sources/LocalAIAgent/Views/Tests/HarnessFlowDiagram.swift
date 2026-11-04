@@ -12,8 +12,8 @@ struct HarnessFlowDiagram: View {
 
     private static let routes = [
         Route(kind: "Math or code", symbol: "function", steps: ["Writes a program", "Runs in the sandbox"]),
-        Route(kind: "Fact", symbol: "magnifyingglass", steps: ["Searches 4 sources", "Reads the top page"]),
-        Route(kind: "Long text", symbol: "doc.text", steps: ["Writes a parser", "Runs in the sandbox"]),
+        Route(kind: "Fact", symbol: "magnifyingglass", steps: ["Searches 4 sources", "Picks passages"]),
+        Route(kind: "Long text", symbol: "doc.text", steps: ["Follows the notes", "Picks key lines"]),
         Route(kind: "Writing or other", symbol: "pencil.line", steps: ["No tools needed"]),
     ]
 
@@ -34,6 +34,7 @@ struct HarnessFlowDiagram: View {
                 wide
                 stacked
             }
+            loopNote
             guardrails
             Text("Off in chat until you turn it on with the Harness button under the message box. With it on, search terms go to Wikipedia, Stack Overflow, arXiv and MDN, pages come from the trusted sites, and every search and page is listed above the reply. Test questions are fixed, so a test sends nothing of yours. In a test the model can also call the web search, page reader, calculator and code runner itself. In chat only the harness uses them, so a web page can't steer a tool while your chat is in view. The guard is basic protection: it blocks common attacks like the ones in this test, not every possible one. Code runs on this Mac only.")
                 .font(.uiCaption)
@@ -45,6 +46,22 @@ struct HarnessFlowDiagram: View {
     // MARK: Layouts
 
     private var wide: some View {
+        VStack(spacing: 0) {
+            wideRow
+            ZStack {
+                LoopBackLine(leftInset: 310, rightInset: 147).stroke(Palette.accent.opacity(0.7), lineWidth: 1.5)
+                Text("Failed a check? Go round again")
+                    .font(.uiCaption.weight(.semibold))
+                    .foregroundStyle(Palette.accent)
+                    .padding(.horizontal, 8)
+                    .background(Color(nsColor: .windowBackgroundColor).opacity(0.9), in: Capsule())
+                    .offset(y: 11)
+            }
+            .frame(height: 26)
+        }
+    }
+
+    private var wideRow: some View {
         HStack(spacing: 0) {
             FlowEnd(title: "Your task", symbol: "text.bubble.fill")
             FlowArrow()
@@ -108,6 +125,26 @@ struct HarnessFlowDiagram: View {
             }
         }
         .frame(maxWidth: .infinity)
+    }
+
+    /// The way back from Check to Act.
+    private var loopNote: some View {
+        HStack(alignment: .top, spacing: 8) {
+            Image(systemName: "arrow.counterclockwise")
+                .font(.system(size: 13, weight: .bold))
+                .foregroundStyle(Palette.accent)
+                .frame(width: 20)
+            VStack(alignment: .leading, spacing: 2) {
+                Text("Check fails? Back to step 2").font(.uiCallout.weight(.semibold))
+                Text("Code checks every reply: was it cut off, does it state the tool's result, is the answer in the sources, does it break a rule such as a word count or a banned letter. If it fails, the harness goes round again with what it learned, up to the rounds set in Settings › Safety. Each round can read the next page, search again, fix the program or rewrite one sentence. It stops when a round changes nothing, and it always keeps the best attempt so far.")
+                    .font(.uiCaption)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+        .padding(10)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Palette.accent.opacity(0.10), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
     }
 
     private var guardrails: some View {
@@ -226,6 +263,27 @@ private struct FanLines: Shape {
             path.addCurve(to: CGPoint(x: opening ? rect.maxX : rect.minX, y: y),
                           control1: CGPoint(x: rect.midX, y: hub.y), control2: CGPoint(x: rect.midX, y: y))
         }
+        return path
+    }
+}
+
+/// The way back from Check to Act, along the bottom of the diagram.
+private struct LoopBackLine: Shape {
+    let leftInset: CGFloat
+    let rightInset: CGFloat
+
+    func path(in rect: CGRect) -> Path {
+        let start = rect.maxX - rightInset, end = rect.minX + leftInset, bottom = rect.maxY - 2, corner: CGFloat = 8
+        var path = Path()
+        path.move(to: CGPoint(x: start, y: rect.minY))
+        path.addLine(to: CGPoint(x: start, y: bottom - corner))
+        path.addQuadCurve(to: CGPoint(x: start - corner, y: bottom), control: CGPoint(x: start, y: bottom))
+        path.addLine(to: CGPoint(x: end + corner, y: bottom))
+        path.addQuadCurve(to: CGPoint(x: end, y: bottom - corner), control: CGPoint(x: end, y: bottom))
+        path.addLine(to: CGPoint(x: end, y: rect.minY))
+        path.move(to: CGPoint(x: end - 5, y: rect.minY + 7))
+        path.addLine(to: CGPoint(x: end, y: rect.minY))
+        path.addLine(to: CGPoint(x: end + 5, y: rect.minY + 7))
         return path
     }
 }

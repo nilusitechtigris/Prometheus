@@ -14,6 +14,15 @@ enum TestTab: String, CaseIterable, Identifiable {
         }
     }
 
+    /// Greek numeral shown on the tab.
+    var letter: String {
+        switch self {
+        case .model: return "α"
+        case .hardware: return "β"
+        case .harness: return "γ"
+        }
+    }
+
     var symbol: String {
         switch self {
         case .model: return "checkmark.seal.fill"
@@ -68,6 +77,10 @@ private struct TestTabBar: View {
                     .frame(width: 28, height: 28)
                     .background(selected ? AnyShapeStyle(Palette.gradient) : AnyShapeStyle(Color.primary.opacity(0.08)),
                                 in: RoundedRectangle(cornerRadius: 7, style: .continuous))
+                Text(tab.letter)
+                    .font(.greek(15))
+                    .foregroundStyle(selected ? Palette.accent : Color.secondary)
+                    .accessibilityHidden(true)
                 Text(tab.title)
                     .font(.uiCallout.weight(.semibold))
                     .foregroundStyle(selected ? .primary : .secondary)
