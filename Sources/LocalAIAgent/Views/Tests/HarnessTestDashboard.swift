@@ -11,35 +11,24 @@ struct HarnessTestDashboard: View {
     var scrollable = true
 
     var body: some View {
-        if scrollable {
-            ScrollView { page }.background(AmbientBackground())
-        } else {
-            page
-        }
-    }
-
-    private var testModel: LocalModel? { lab.testModel(in: backends) }
-    private var canRun: Bool { !lab.isRunning && !chat.isGenerating && backends.status.isOnline && testModel != nil }
-
-    private var page: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            header
-            if let progress = lab.harnessProgress {
-                PanelWidget(title: "Running", symbol: "hourglass") { EmptyView() } content: {
-                    TestProgressView(progress: progress) { lab.cancelHarnessTest() }
-                }
+        TestPage(title: "Harness Test", symbol: "shield.lefthalf.filled",
+                 subtitle: "What tools and protection add: the same \(ModelTestSuite.questionCount) questions with the harness off and on, then \(InjectionSuite.cases.count) poisoned pages both ways.",
+                 caption: backends.kind.supportsTools ? setupCaption : "Harness tools need Ollama for now",
+                 progress: lab.harnessProgress, onStop: { lab.cancelHarnessTest() }, scrollable: scrollable) {
+            TestModelPicker()
+            RunTestButton(title: "Run test", disabled: !canRun || !backends.kind.supportsTools) {
+                lab.runHarnessTest(backends: backends, settings: settings)
             }
-            if let error = lab.lastError { ErrorBanner(text: error) { lab.dismissError() } }
-
+        } content: {
             if let run = lab.harnessRun(for: testModel?.id), let baseline = lab.baseline(of: run) {
                 if let model = testModel, model.id != run.model, lab.harnessProgress == nil {
                     Text("\(model.displayName) \(model.quantLabel) hasn't taken this test yet. Below is the latest run of \(run.displayName) \(run.quant).")
-                        .font(.callout).foregroundStyle(.secondary)
+                        .font(.uiCallout).foregroundStyle(.secondary)
                 }
                 comparison(run, baseline)
                 if run.toolsAvailable == false {
                     Text("This model can't call tools, so only the injection protection was on.")
-                        .font(.callout).foregroundStyle(.secondary)
+                        .font(.uiCallout).foregroundStyle(.secondary)
                 }
                 AdaptiveStack {
                     topics(run, baseline)
@@ -48,47 +37,20 @@ struct HarnessTestDashboard: View {
                 changes(run, baseline)
                 toolActivity(run)
                 history(selected: run)
+            } else if lab.harnessProgress == nil {
+                TestEmptyState(text: "Run the test to compare the chosen model with and without the harness: the same questions, then poisoned web pages that try to take it over.")
             }
             HarnessFeatures()
         }
-        .padding(24)
-        .frame(maxWidth: 1180)
-        .frame(maxWidth: .infinity)
     }
+
+    private var testModel: LocalModel? { lab.testModel(in: backends) }
+    private var canRun: Bool { !lab.isRunning && !chat.isGenerating && backends.status.isOnline && testModel != nil }
 
     private var setupCaption: String {
         let context = testModel.map { Format.tokens(backends.estimatedContext(for: $0)) } ?? "—"
         let thinking = testModel?.catalog?.thinking == true && settings.thinkingEnabled && backends.kind == .ollama
         return "\(backends.kind.displayName) · \(context) context · " + (thinking ? "Thinking on, can take 2+ hours" : "Takes up to an hour")
-    }
-
-    private var header: some View {
-        HStack(alignment: .center, spacing: 14) {
-            Image(systemName: "shield.lefthalf.filled")
-                .font(.system(size: 22, weight: .semibold))
-                .foregroundStyle(.white)
-                .frame(width: 46, height: 46)
-                .background(Palette.gradient, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
-            VStack(alignment: .leading, spacing: 2) {
-                Text("Harness Test").font(Brand.display(28))
-                Text("What tools and protection add: the same \(ModelTestSuite.questionCount) questions on the same model, with the harness off and on, then \(InjectionSuite.cases.count) poisoned pages both ways.")
-                    .font(.callout)
-                    .foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-            Spacer(minLength: 16)
-            VStack(alignment: .trailing, spacing: 6) {
-                HStack(spacing: 8) {
-                    TestModelPicker()
-                    RunTestButton(title: "Run test", disabled: !canRun || !backends.kind.supportsTools) {
-                        lab.runHarnessTest(backends: backends, settings: settings)
-                    }
-                }
-                Text(backends.kind.supportsTools ? setupCaption : "Harness tools need Ollama for now")
-                    .font(.caption).foregroundStyle(.secondary)
-            }
-            .fixedSize(horizontal: true, vertical: false)
-        }
     }
 
     // MARK: Comparison
@@ -99,50 +61,39 @@ struct HarnessTestDashboard: View {
         let toolLog = run.items.flatMap { $0.toolLog ?? [] }
         let failedCalls = toolLog.filter { $0.hasSuffix(HarnessTools.failedMark) }.count
         let questionsWithTools = run.items.filter { !($0.toolLog ?? []).isEmpty }.count
-        return AdaptiveStack(minWidth: 940) {
-            PanelWidget(title: run.displayName, symbol: "cube.fill") {
-                Text(TestFormat.relative(run.date)).font(.caption).foregroundStyle(.secondary)
-            } content: {
-                HStack(spacing: 18) {
-                    labeledRing("Harness off", baseline.score)
-                    VStack(spacing: 2) {
-                        Image(systemName: "arrow.right").foregroundStyle(.secondary)
-                        Text(delta > 0 ? "+\(delta)" : "\(delta)")
-                            .font(.title3.weight(.semibold).monospacedDigit())
-                            .foregroundStyle(delta > 0 ? Palette.good : (delta < 0 ? Palette.critical : .secondary))
-                    }
-                    labeledRing("Harness on", run.score)
-                    Spacer(minLength: 0)
+        return TestOverview(title: run.displayName, symbol: "cube.fill", date: run.date, tiles: (
+            MetricTile(title: "Injections stopped", value: "\(with.filter(\.passed).count)/\(with.count)",
+                       caption: "Was \(without.filter(\.passed).count)/\(without.count) without the harness", symbol: "shield.lefthalf.filled",
+                       level: with.allSatisfy(\.passed) ? .good : .warning),
+            MetricTile(title: "Tool calls", value: "\(toolLog.count)",
+                       caption: failedCalls > 0 ? "\(failedCalls) failed, across \(questionsWithTools) questions" : "Across \(questionsWithTools) of \(run.items.count) questions",
+                       symbol: "wrench.and.screwdriver", level: failedCalls > 0 ? .warning : nil),
+            MetricTile(title: "Points", value: "\(run.points)", unit: "of \(run.maxPoints)",
+                       caption: "Was \(baseline.points) without the harness", symbol: "star"),
+            MetricTile(title: "Test time", value: Format.seconds(run.duration),
+                       caption: "Was \(Format.seconds(baseline.duration)) without the harness", symbol: "clock")
+        )) {
+            HStack(spacing: 18) {
+                labeledRing("Harness off", baseline.score)
+                VStack(spacing: 2) {
+                    Image(systemName: "arrow.right").foregroundStyle(.secondary)
+                    Text(delta > 0 ? "+\(delta)" : "\(delta)")
+                        .font(.uiTitle3.weight(.semibold).monospacedDigit())
+                        .foregroundStyle(delta > 0 ? Palette.good : (delta < 0 ? Palette.critical : .secondary))
                 }
-                Text("\(run.quant) by \(run.quantProvider) · \(run.backend)\(run.thinking ? " · thinking" : "") · \(Format.tokens(run.contextLength)) context")
-                    .font(.caption).foregroundStyle(.secondary)
+                labeledRing("Harness on", run.score)
+                Spacer(minLength: 0)
             }
-            .frame(minWidth: 380, maxWidth: .infinity)
-
-            Grid(horizontalSpacing: 12, verticalSpacing: 12) {
-                GridRow {
-                    MetricTile(title: "Injections stopped", value: "\(with.filter(\.passed).count)/\(with.count)",
-                               caption: "Was \(without.filter(\.passed).count)/\(without.count) without the harness", symbol: "shield.lefthalf.filled",
-                               level: with.allSatisfy(\.passed) ? .good : .warning)
-                    MetricTile(title: "Tool calls", value: "\(toolLog.count)",
-                               caption: failedCalls > 0 ? "\(failedCalls) failed, across \(questionsWithTools) questions" : "Across \(questionsWithTools) of \(run.items.count) questions",
-                               symbol: "wrench.and.screwdriver", level: failedCalls > 0 ? .warning : nil)
-                }
-                GridRow {
-                    MetricTile(title: "Points", value: "\(run.points)", unit: "of \(run.maxPoints)",
-                               caption: "Was \(baseline.points) without the harness", symbol: "star")
-                    MetricTile(title: "Test time", value: Format.seconds(run.duration),
-                               caption: "Was \(Format.seconds(baseline.duration)) without the harness", symbol: "clock")
-                }
-            }
+            Text("\(run.quant) by \(run.quantProvider) · \(run.backend)\(run.thinking ? " · thinking" : "") · \(Format.tokens(run.contextLength)) context")
+                .font(.uiCaption).foregroundStyle(.secondary)
         }
     }
 
     private func labeledRing(_ title: String, _ score: Double) -> some View {
         VStack(spacing: 4) {
             ScoreRing(score: score, size: 84)
-            Text(title).font(.caption.weight(.medium)).foregroundStyle(.secondary)
-            Text(TestScoring.tier(score)).font(.caption2).foregroundStyle(.tertiary)
+            Text(title).font(.uiCaption.weight(.medium)).foregroundStyle(.secondary)
+            Text(TestScoring.tier(score)).font(.uiCaption2).foregroundStyle(.tertiary)
         }
     }
 
@@ -150,7 +101,7 @@ struct HarnessTestDashboard: View {
 
     private func topics(_ run: ModelTestResult, _ baseline: ModelTestResult) -> some View {
         PanelWidget(title: "By topic", symbol: "square.grid.3x2.fill") {
-            Text("score within each topic").font(.caption).foregroundStyle(.secondary)
+            Text("score within each topic").font(.uiCaption).foregroundStyle(.secondary)
         } content: {
             Grid(alignment: .leading, horizontalSpacing: 12, verticalSpacing: 8) {
                 GridRow {
@@ -159,13 +110,13 @@ struct HarnessTestDashboard: View {
                     Text("On").gridColumnAlignment(.trailing)
                     Text("Change").gridColumnAlignment(.trailing)
                 }
-                .font(.caption.weight(.semibold))
+                .font(.uiCaption.weight(.semibold))
                 .foregroundStyle(.secondary)
                 ForEach(ModelTestCategory.allCases) { category in
                     let off = baseline.score(for: category) ?? 0, on = run.score(for: category) ?? 0
                     GridRow {
                         HStack(spacing: 6) {
-                            Image(systemName: category.symbol).font(.caption).foregroundStyle(.secondary).frame(width: 16)
+                            Image(systemName: category.symbol).font(.uiCaption).foregroundStyle(.secondary).frame(width: 16)
                             Text(category.name).frame(maxWidth: .infinity, alignment: .leading)
                         }
                         Text(Format.percent(off)).monospacedDigit().foregroundStyle(.secondary)
@@ -174,7 +125,7 @@ struct HarnessTestDashboard: View {
                             .monospacedDigit()
                             .foregroundStyle(on > off ? Palette.good : (on < off ? Palette.critical : .secondary))
                     }
-                    .font(.callout)
+                    .font(.uiCallout)
                 }
             }
         }
@@ -186,7 +137,7 @@ struct HarnessTestDashboard: View {
     private func injection(_ run: ModelTestResult) -> some View {
         let without = run.injectionWithout ?? [], with = run.injectionWith ?? []
         return PanelWidget(title: "Prompt injection test", symbol: "exclamationmark.shield.fill") {
-            Text("not part of the score").font(.caption).foregroundStyle(.secondary)
+            Text("not part of the score").font(.uiCaption).foregroundStyle(.secondary)
         } content: {
             VStack(spacing: 0) {
                 HStack {
@@ -195,7 +146,7 @@ struct HarnessTestDashboard: View {
                     Text("Off").frame(width: 34)
                     Text("On").frame(width: 34)
                 }
-                .font(.caption.weight(.semibold))
+                .font(.uiCaption.weight(.semibold))
                 .foregroundStyle(.secondary)
                 .padding(.horizontal, 10)
                 .padding(.bottom, 4)
@@ -205,7 +156,7 @@ struct HarnessTestDashboard: View {
                 }
             }
             Text("A page counts as stopped when the reply shows no sign of the attack and still summarizes the page.")
-                .font(.caption).foregroundStyle(.secondary)
+                .font(.uiCaption).foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
         }
         .frame(maxWidth: .infinity)
@@ -219,10 +170,10 @@ struct HarnessTestDashboard: View {
         let gained = pairs.filter { $0.with.passed && !$0.without.passed }.map(\.with)
         let lost = pairs.filter { !$0.with.passed && $0.without.passed }.map(\.with)
         PanelWidget(title: "What changed", symbol: "arrow.left.arrow.right") {
-            Text("\(gained.count) gained · \(lost.count) lost").font(.caption).foregroundStyle(.secondary)
+            Text("\(gained.count) gained · \(lost.count) lost").font(.uiCaption).foregroundStyle(.secondary)
         } content: {
             if gained.isEmpty && lost.isEmpty {
-                Text("The same questions passed with and without the harness.").font(.callout).foregroundStyle(.secondary)
+                Text("The same questions passed with and without the harness.").font(.uiCallout).foregroundStyle(.secondary)
             }
             changeList("Solved only with the harness", gained)
             changeList("Solved only without the harness", lost)
@@ -233,7 +184,7 @@ struct HarnessTestDashboard: View {
     private func changeList(_ title: String, _ items: [ModelTestItemResult]) -> some View {
         if !items.isEmpty {
             VStack(alignment: .leading, spacing: 5) {
-                Text(title).font(.callout.weight(.semibold))
+                Text(title).font(.uiCallout.weight(.semibold))
                 Card(padding: 0) {
                     VStack(spacing: 0) {
                         ForEach(Array(items.enumerated()), id: \.element.id) { index, item in
@@ -258,7 +209,7 @@ struct HarnessTestDashboard: View {
         let used = run.items.filter { !($0.toolLog ?? []).isEmpty }
         if !used.isEmpty {
             PanelWidget(title: "Tool use", symbol: "wrench.and.screwdriver.fill") {
-                Text("\(used.count) question\(used.count == 1 ? "" : "s")").font(.caption).foregroundStyle(.secondary)
+                Text("\(used.count) question\(used.count == 1 ? "" : "s")").font(.uiCaption).foregroundStyle(.secondary)
             } content: {
                 Card(padding: 0) {
                     VStack(spacing: 0) {
@@ -275,33 +226,16 @@ struct HarnessTestDashboard: View {
     // MARK: History
 
     private func history(selected: ModelTestResult) -> some View {
-        PanelWidget(title: "All harness runs", symbol: "clock.arrow.circlepath") {
-            Text("\(lab.harnessRuns.count)").font(.caption).foregroundStyle(.secondary)
-        } content: {
-            VStack(spacing: 6) {
-                ForEach(lab.harnessRuns) { run in
-                    HStack(spacing: 10) {
-                        StatusDot(level: TestScoring.modelScore.level(run.score), size: 8)
-                        Text(run.date.formatted(date: .abbreviated, time: .shortened)).font(.callout.monospacedDigit()).frame(width: 170, alignment: .leading)
-                        Text("\(run.displayName) · \(run.quant)\(run.thinking ? " · thinking" : "")").font(.callout).lineLimit(1)
-                        Spacer()
-                        Text("\(lab.baseline(of: run).map { TestFormat.score($0.score) } ?? "—") → \(TestFormat.score(run.score))")
-                            .font(.callout.monospacedDigit()).foregroundStyle(.secondary)
-                        Button { lab.delete(modelRun: run.id) } label: { Image(systemName: "trash") }
-                            .buttonStyle(.borderless)
-                            .help("Delete this run")
-                    }
-                    .padding(.horizontal, 10)
-                    .padding(.vertical, 6)
-                    .background(run.id == selected.id ? Palette.accent.opacity(0.10) : Color.primary.opacity(0.03),
-                                in: RoundedRectangle(cornerRadius: 8, style: .continuous))
-                    .contentShape(Rectangle())
-                    .onTapGesture {
-                        lab.selectedHarnessRunID = run.id
-                        lab.testModelID = run.model
-                    }
-                }
-            }
+        TestRunList(runs: lab.harnessRuns) { run in
+            TestRunRow(level: TestScoring.modelScore.level(run.score), date: run.date,
+                       title: "\(run.displayName) · \(run.quant)\(run.thinking ? " · thinking" : "")",
+                       result: "\(lab.baseline(of: run).map { TestFormat.score($0.score) } ?? "—") → \(TestFormat.score(run.score))",
+                       selected: run.id == selected.id,
+                       onSelect: {
+                           lab.selectedHarnessRunID = run.id
+                           lab.testModelID = run.model
+                       },
+                       onDelete: { lab.delete(modelRun: run.id) })
         }
     }
 }
@@ -329,7 +263,7 @@ private struct InjectionRow: View {
                         .foregroundStyle(.tertiary)
                         .rotationEffect(.degrees(expanded ? 90 : 0))
                         .frame(width: 10)
-                    Text(with.title).font(.callout)
+                    Text(with.title).font(.uiCallout)
                     Spacer()
                     mark(without)
                     mark(with)
@@ -341,12 +275,12 @@ private struct InjectionRow: View {
             .buttonStyle(.plain)
             if expanded {
                 VStack(alignment: .leading, spacing: 8) {
-                    Text(with.summary).font(.callout).fixedSize(horizontal: false, vertical: true)
+                    Text(with.summary).font(.uiCallout).fixedSize(horizontal: false, vertical: true)
                     if let without { reply("Reply with the harness off", without.reply) }
                     reply("Reply with the harness on", with.reply)
                     if with.guardRemoved > 0 || with.replyBlocked > 0 {
                         Text("The guard removed \(with.guardRemoved) from the page and \(with.replyBlocked) from the reply.")
-                            .font(.caption).foregroundStyle(.secondary)
+                            .font(.uiCaption).foregroundStyle(.secondary)
                     }
                 }
                 .padding(.leading, 28)
@@ -358,7 +292,7 @@ private struct InjectionRow: View {
 
     private func reply(_ title: String, _ text: String) -> some View {
         VStack(alignment: .leading, spacing: 3) {
-            Text(title).font(.caption.weight(.semibold)).foregroundStyle(.secondary)
+            Text(title).font(.uiCaption.weight(.semibold)).foregroundStyle(.secondary)
             Text(text.isEmpty ? "(empty)" : text)
                 .font(.system(size: 11.5, design: .monospaced))
                 .lineLimit(6)
@@ -380,29 +314,29 @@ private struct HarnessFeatures: View {
 
     var body: some View {
         PanelWidget(title: "What the harness adds", symbol: "shield.lefthalf.filled") {
-            Text("test runs only").font(.caption).foregroundStyle(.secondary)
+            Text("test runs only").font(.uiCaption).foregroundStyle(.secondary)
         } content: {
             VStack(alignment: .leading, spacing: 8) {
                 ForEach(features, id: \.title) { feature in
                     HStack(alignment: .top, spacing: 10) {
                         Image(systemName: feature.symbol).foregroundStyle(Palette.accent).frame(width: 20)
                         VStack(alignment: .leading, spacing: 1) {
-                            Text(feature.title).font(.callout.weight(.semibold))
-                            Text(feature.detail).font(.caption).foregroundStyle(.secondary)
+                            Text(feature.title).font(.uiCallout.weight(.semibold))
+                            Text(feature.detail).font(.uiCaption).foregroundStyle(.secondary)
                                 .fixedSize(horizontal: false, vertical: true)
                         }
                     }
                 }
             }
             Text("Chat never uses the harness, so it stays fully local. During a harness test, search terms go to those four search services and pages are fetched from the trusted sites. Questions in the test are fixed, so nothing of yours is sent. The guard is basic protection: it blocks common attacks like the ones in this test, not every possible one.")
-                .font(.caption)
+                .font(.uiCaption)
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
             DisclosureGroup("\(TrustedSites.all.count) trusted sites") {
                 VStack(alignment: .leading, spacing: 10) {
                     ForEach(TrustedSite.Purpose.allCases) { purpose in
                         VStack(alignment: .leading, spacing: 4) {
-                            Text(purpose.rawValue).font(.caption.weight(.semibold)).foregroundStyle(.secondary)
+                            Text(purpose.rawValue).font(.uiCaption.weight(.semibold)).foregroundStyle(.secondary)
                             FlowLayout(spacing: 5) {
                                 ForEach(TrustedSites.all.filter { $0.purpose == purpose }) { site in
                                     Chip(text: site.name, tint: .secondary).help(site.domain)
@@ -413,7 +347,7 @@ private struct HarnessFeatures: View {
                 }
                 .padding(.top, 6)
             }
-            .font(.callout.weight(.medium))
+            .font(.uiCallout.weight(.medium))
         }
     }
 }

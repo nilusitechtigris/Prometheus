@@ -33,22 +33,23 @@ enum Palette {
     static let critical = Color(red: 1.00, green: 0.27, blue: 0.23)
 
     // Brand colours follow the selected theme (reading them registers an Observation dependency).
-    @MainActor static var accent: Color { ThemeStore.shared.theme.accent }
-    @MainActor static var accent2: Color { ThemeStore.shared.theme.accent2 }
-    @MainActor static var glow: Color { ThemeStore.shared.theme.glow }
+    @MainActor static var accent: Color { ThemeStore.shared.active.accent }
+    @MainActor static var accent2: Color { ThemeStore.shared.active.accent2 }
+    @MainActor static var glow: Color { ThemeStore.shared.active.glow }
     @MainActor static var gradient: LinearGradient {
         LinearGradient(colors: [accent, accent2], startPoint: .topLeading, endPoint: .bottomTrailing)
     }
 }
 
 enum AppTheme: String, CaseIterable, Identifiable {
-    case prometheus, aurora, ocean, ember, orchid, mint, graphite
+    case prometheus, forge, aurora, ocean, ember, orchid, mint, graphite
 
     var id: String { rawValue }
 
     var name: String {
         switch self {
         case .prometheus: return "Prometheus"
+        case .forge: return "Forge"
         case .aurora: return "Aurora"
         case .ocean: return "Ocean"
         case .ember: return "Ember"
@@ -65,6 +66,7 @@ enum AppTheme: String, CaseIterable, Identifiable {
     var accent: Color {
         switch self {
         case .prometheus: return Self.hex(0xEA580C)
+        case .forge: return Self.hex(0xFF5A1F)
         case .aurora: return Self.hex(0x6366F1)
         case .ocean: return Self.hex(0x0A84FF)
         case .ember: return Self.hex(0xFF6B3D)
@@ -77,6 +79,7 @@ enum AppTheme: String, CaseIterable, Identifiable {
     var accent2: Color {
         switch self {
         case .prometheus: return Self.hex(0xFB9A2B)
+        case .forge: return Self.hex(0xFFC27A)
         case .aurora: return Self.hex(0x22D3EE)
         case .ocean: return Self.hex(0x5AC8FA)
         case .ember: return Self.hex(0xFF2D78)
@@ -86,10 +89,14 @@ enum AppTheme: String, CaseIterable, Identifiable {
         }
     }
 
+    /// Replaces the dark window colour behind the ambient background, for themes with their own.
+    var darkSurface: Color? { self == .forge ? Self.hex(0x0A0A0B) : nil }
+
     /// Third colour used only in the ambient background.
     var glow: Color {
         switch self {
         case .prometheus: return Self.hex(0xDC2626)
+        case .forge: return Self.hex(0x7A1E0A)
         case .aurora: return Self.hex(0xA855F7)
         case .ocean: return Self.hex(0x30D5C8)
         case .ember: return Self.hex(0xFFB340)
@@ -108,6 +115,9 @@ final class ThemeStore {
     var theme: AppTheme {
         didSet { UserDefaults.standard.set(theme.rawValue, forKey: "theme") }
     }
+    /// Shown instead of `theme` without changing the saved choice, while the draft layout is on.
+    var preview: AppTheme?
+    var active: AppTheme { preview ?? theme }
 
     private init() {
         let defaults = UserDefaults.standard

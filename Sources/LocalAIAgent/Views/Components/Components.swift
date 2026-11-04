@@ -65,7 +65,7 @@ struct LevelPill: View {
 
     var body: some View {
         Text(text ?? level.label)
-            .font(.caption2.weight(.semibold))
+            .font(.uiCaption2.weight(.semibold))
             .padding(.horizontal, 7)
             .padding(.vertical, 2.5)
             .background(level.color.opacity(0.18), in: Capsule())
@@ -170,7 +170,7 @@ struct Sparkline: View {
         .frame(height: height)
         .overlay {
             if points.count < 2 {
-                Text("Collecting…").font(.caption2).foregroundStyle(.tertiary)
+                Text("Collecting…").font(.uiCaption2).foregroundStyle(.tertiary)
             }
         }
     }
@@ -235,9 +235,9 @@ struct SectionHeader: View {
 
     var body: some View {
         HStack(spacing: 6) {
-            if let symbol { Image(systemName: symbol).foregroundStyle(.secondary).font(.caption) }
+            if let symbol { Image(systemName: symbol).foregroundStyle(.secondary).font(.uiCaption) }
             Text(title.uppercased())
-                .font(.caption.weight(.semibold))
+                .font(.uiCaption.weight(.semibold))
                 .foregroundStyle(.secondary)
                 .tracking(0.6)
             Spacer()
@@ -257,7 +257,7 @@ struct Chip: View {
             if let symbol { Image(systemName: symbol).imageScale(.small) }
             Text(text)
         }
-        .font(.caption.monospacedDigit())
+        .font(.uiCaption.monospacedDigit())
         .padding(.horizontal, 7)
         .padding(.vertical, 3)
         .background(tint.opacity(0.12), in: Capsule())
@@ -265,28 +265,46 @@ struct Chip: View {
     }
 }
 
-extension View {
-    /// Liquid Glass capsule on macOS 26+, frosted material before that. Use only for floating controls.
-    /// (Avoid tinted glass: it made the whole chat column drop out of window captures.)
-    @ViewBuilder
-    func glassCapsule(interactive: Bool = false) -> some View {
-        if #available(macOS 26.0, *) {
-            self.glassEffect(Glass.regular.interactive(interactive), in: Capsule())
-        } else {
-            self.background(.regularMaterial, in: Capsule())
-                .overlay(Capsule().strokeBorder(.separator.opacity(0.6), lineWidth: 0.5))
-        }
-    }
+private struct PlainControlsKey: EnvironmentKey {
+    static let defaultValue = false
+}
 
-    @ViewBuilder
-    func glassPanel(cornerRadius: CGFloat) -> some View {
-        let shape = RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
-        if #available(macOS 26.0, *) {
-            self.glassEffect(.regular, in: shape)
+extension EnvironmentValues {
+    /// Swaps Liquid Glass for a flat fill, for layouts that sit on panels of their own.
+    var plainControls: Bool {
+        get { self[PlainControlsKey.self] }
+        set { self[PlainControlsKey.self] = newValue }
+    }
+}
+
+/// Liquid Glass on macOS 26+, frosted material before that.
+/// (Avoid tinted glass: it made the whole chat column drop out of window captures.)
+private struct GlassBackground<S: InsettableShape>: ViewModifier {
+    let shape: S
+    var interactive = false
+    @Environment(\.plainControls) private var plain
+
+    func body(content: Content) -> some View {
+        if plain {
+            content.background(Color.white.opacity(0.07), in: shape)
+                .overlay(shape.strokeBorder(Color.white.opacity(0.12), lineWidth: 0.5))
+        } else if #available(macOS 26.0, *) {
+            content.glassEffect(Glass.regular.interactive(interactive), in: shape)
         } else {
-            self.background(.regularMaterial, in: shape)
+            content.background(.regularMaterial, in: shape)
                 .overlay(shape.strokeBorder(.separator.opacity(0.6), lineWidth: 0.5))
         }
+    }
+}
+
+extension View {
+    /// Use only for floating controls.
+    func glassCapsule(interactive: Bool = false) -> some View {
+        modifier(GlassBackground(shape: Capsule(), interactive: interactive))
+    }
+
+    func glassPanel(cornerRadius: CGFloat) -> some View {
+        modifier(GlassBackground(shape: RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)))
     }
 }
 
@@ -312,7 +330,7 @@ struct AmbientBackground: View {
     @Environment(\.colorScheme) private var scheme
 
     var body: some View {
-        let base = Color(nsColor: .windowBackgroundColor)
+        let base = (scheme == .dark ? ThemeStore.shared.active.darkSurface : nil) ?? Color(nsColor: .windowBackgroundColor)
         ZStack {
             base
             if #available(macOS 15.0, *) {

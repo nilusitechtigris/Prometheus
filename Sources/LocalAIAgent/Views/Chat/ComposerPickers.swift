@@ -8,10 +8,10 @@ struct PickerPill<Label: View>: View {
         HStack(spacing: 6) {
             label
             Image(systemName: "chevron.up.chevron.down")
-                .font(.caption2.weight(.semibold))
+                .font(.uiCaption2.weight(.semibold))
                 .foregroundStyle(.secondary)
         }
-        .font(.callout)
+        .font(.uiCallout)
         .padding(.horizontal, 11)
         .padding(.vertical, 5)
         .contentShape(Capsule())
@@ -66,7 +66,7 @@ private struct FrameworkPopover: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
-            Text("Framework").font(.headline).padding(.horizontal, 8).padding(.bottom, 4)
+            Text("Framework").font(.uiHeadline).padding(.horizontal, 8).padding(.bottom, 4)
             ForEach(BackendKind.allCases) { kind in
                 PopoverRow(selected: kind == backends.kind) {
                     backends.switchBackend(to: kind)
@@ -76,8 +76,8 @@ private struct FrameworkPopover: View {
                         .frame(width: 22)
                         .foregroundStyle(Palette.accent)
                     VStack(alignment: .leading, spacing: 1) {
-                        Text(kind.displayName).font(.callout.weight(.semibold))
-                        Text(kind.tagline).font(.caption).foregroundStyle(.secondary)
+                        Text(kind.displayName).font(.uiCallout.weight(.semibold))
+                        Text(kind.tagline).font(.uiCaption).foregroundStyle(.secondary)
                     }
                     Spacer()
                     let running = backends.availability[kind] == true
@@ -85,7 +85,7 @@ private struct FrameworkPopover: View {
                         StatusDot(level: running ? .good : .unknown, size: 6)
                         Text(running ? "Running" : "Not detected")
                     }
-                    .font(.caption)
+                    .font(.uiCaption)
                     .foregroundStyle(.secondary)
                 }
             }
@@ -136,14 +136,14 @@ private struct ContextPopover: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
-            Text("Context window").font(.headline).padding(.horizontal, 8).padding(.bottom, 4)
+            Text("Context window").font(.uiHeadline).padding(.horizontal, 8).padding(.bottom, 4)
             if backends.kind.supportsPerRequestContext {
                 ForEach(backends.contextOptions, id: \.self) { option in
                     PopoverRow(selected: option == backends.effectiveContext) {
                         settings.contextLength = option
                         dismiss()
                     } content: {
-                        Text("\(Format.tokens(option)) tokens").font(.callout.monospacedDigit())
+                        Text("\(Format.tokens(option)) tokens").font(.uiCallout.monospacedDigit())
                         Spacer()
                         if let model = backends.selectedModel,
                            let bytes = backends.memoryEstimate(for: model, context: option) {
@@ -153,19 +153,19 @@ private struct ContextPopover: View {
                                 Text("≈ \(Format.gigabytes(bytes))").monospacedDigit()
                                 Text(verdict.label).foregroundStyle(.secondary)
                             }
-                            .font(.caption)
+                            .font(.uiCaption)
                         }
                     }
                 }
                 Text("\(backends.maxContext.map { "Model maximum: \(Format.tokens($0)) tokens. " } ?? "")Larger windows remember more but use more memory. Changing it reloads the model.")
-                    .font(.caption2)
+                    .font(.uiCaption2)
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
                     .padding(.horizontal, 8)
                     .padding(.top, 6)
             } else {
                 Text("\(backends.kind.displayName) sets the context window when the model is loaded\(backends.details?.maxContext.map { " — currently \(Format.tokens($0)) tokens" } ?? "").")
-                    .font(.callout)
+                    .font(.uiCallout)
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
                     .padding(.horizontal, 8)

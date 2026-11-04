@@ -5,6 +5,7 @@ struct SidebarView: View {
     @Environment(BackendController.self) private var backends
     @Environment(UIState.self) private var ui
     @Environment(TestLab.self) private var lab
+    @Environment(AppSettings.self) private var settings
     @State private var search = ""
     @State private var renaming: Conversation?
     @State private var renameText = ""
@@ -36,6 +37,19 @@ struct SidebarView: View {
 
     var body: some View {
         List(selection: selection) {
+            Button {
+                settings.draftLayout = true
+            } label: {
+                HStack(spacing: 8) {
+                    SidebarIcon(symbol: "square.grid.2x2.fill")
+                    Text("Forge")
+                    Spacer()
+                    Text("Draft").font(.uiCaption2.weight(.semibold)).foregroundStyle(.secondary)
+                }
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .help("Try the draft layout (⌥⌘D). You can switch back at any time.")
             Section("Telemetry") {
                 ForEach(TelemetryWidgetKind.allCases) { WidgetRow(kind: $0) }
             }
@@ -52,11 +66,11 @@ struct SidebarView: View {
             }
             if chat.conversations.isEmpty {
                 Section("Chats") {
-                    Text("No chats yet. Press ⌘N to start one.").font(.callout).foregroundStyle(.secondary)
+                    Text("No chats yet. Press ⌘N to start one.").font(.uiCallout).foregroundStyle(.secondary)
                 }
             } else if groups.isEmpty {
                 Section("Chats") {
-                    Text("No chats match “\(search)”.").font(.callout).foregroundStyle(.secondary)
+                    Text("No chats match “\(search)”.").font(.uiCallout).foregroundStyle(.secondary)
                 }
             }
             ForEach(groups, id: \.title) { group in
@@ -161,7 +175,7 @@ private struct WidgetRow: View {
                 Text(kind.title)
                 Spacer()
                 Text(open ? "On" : "Off")
-                    .font(.caption.weight(.semibold))
+                    .font(.uiCaption.weight(.semibold))
                     .foregroundStyle(open ? AnyShapeStyle(.white) : AnyShapeStyle(.secondary))
                     .padding(.horizontal, 7)
                     .padding(.vertical, 2)
@@ -201,7 +215,7 @@ private struct TestRow: View {
             if isRunning {
                 ProgressView().controlSize(.mini)
             } else if let status {
-                Text(status).font(.caption.monospacedDigit()).foregroundStyle(.secondary)
+                Text(status).font(.uiCaption.monospacedDigit()).foregroundStyle(.secondary)
             }
         }
     }
@@ -216,7 +230,7 @@ private struct ConversationRow: View {
             HStack(spacing: 6) {
                 Text(conversation.title)
                     .lineLimit(1)
-                    .font(.body)
+                    .font(.uiBody)
                 if isStreaming {
                     ProgressView().controlSize(.mini)
                 }
@@ -224,7 +238,7 @@ private struct ConversationRow: View {
             if !conversation.preview.isEmpty {
                 Text(conversation.preview)
                     .lineLimit(1)
-                    .font(.caption)
+                    .font(.uiCaption)
                     .foregroundStyle(.secondary)
             }
         }
@@ -242,8 +256,8 @@ private struct BackendStatusFooter: View {
             HStack(spacing: 8) {
                 StatusDot(level: level, size: 8)
                 VStack(alignment: .leading, spacing: 1) {
-                    Text(title).font(.caption.weight(.medium))
-                    Text(subtitle).font(.caption2).foregroundStyle(.secondary).lineLimit(1)
+                    Text(title).font(.uiCaption.weight(.medium))
+                    Text(subtitle).font(.uiCaption2).foregroundStyle(.secondary).lineLimit(1)
                 }
                 Spacer()
                 Image(systemName: "lock.shield")

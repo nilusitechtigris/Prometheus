@@ -4,6 +4,8 @@ import SwiftUI
 struct ModelPickerButton: View {
     @Environment(BackendController.self) private var backends
     @Environment(UIState.self) private var ui
+    /// Drops the provider and gives up width first, for tight panels.
+    var narrow = false
 
     var body: some View {
         @Bindable var ui = ui
@@ -18,24 +20,27 @@ struct ModelPickerButton: View {
                         .fontWeight(.medium)
                         .lineLimit(1)
                     QuantBadge(text: model.quantLabel)
-                    Text("by \(model.quantProvider)")
-                        .foregroundStyle(.secondary)
-                        .lineLimit(1)
+                    if !narrow {
+                        Text("by \(model.quantProvider)")
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
+                    }
                 } else {
                     Image(systemName: "cube.transparent")
                     Text("Choose a model")
                 }
                 Image(systemName: "chevron.up.chevron.down")
-                    .font(.caption2.weight(.semibold))
+                    .font(.uiCaption2.weight(.semibold))
                     .foregroundStyle(.secondary)
             }
-            .font(.callout)
+            .font(.uiCallout)
             .padding(.horizontal, 11)
             .padding(.vertical, 5)
             .contentShape(Capsule())
         }
         .buttonStyle(.plain)
         .glassCapsule(interactive: true)
+        .layoutPriority(narrow ? -1 : 0)
         .help("Choose the model and its quantization (⇧⌘M)")
         .popover(isPresented: $ui.showModelPicker, arrowEdge: .top) {
             ModelPickerPopover { ui.showModelPicker = false }
@@ -67,10 +72,10 @@ private struct ModelPickerPopover: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             HStack {
-                Text("Model").font(.headline)
+                Text("Model").font(.uiHeadline)
                 Spacer()
                 Label(backends.kind.displayName, systemImage: backends.kind.symbol)
-                    .font(.caption)
+                    .font(.uiCaption)
                     .foregroundStyle(.secondary)
             }
             .padding(.horizontal, 16)
@@ -98,7 +103,7 @@ private struct ModelPickerPopover: View {
                             Image(systemName: "exclamationmark.shield")
                             Text(settings.allowUnverifiedModels ? "Unverified" : "Unverified — enable in Settings › Safety")
                         }
-                        .font(.caption.weight(.semibold))
+                        .font(.uiCaption.weight(.semibold))
                         .foregroundStyle(.secondary)
                         .padding(.top, 6)
                         .padding(.horizontal, 4)
@@ -115,7 +120,7 @@ private struct ModelPickerPopover: View {
             Divider()
             HStack {
                 Text("Quant chips with ↓ download that variant.")
-                    .font(.caption2)
+                    .font(.uiCaption2)
                     .foregroundStyle(.tertiary)
                 Spacer()
                 Button("Model Library…") {
@@ -132,7 +137,7 @@ private struct ModelPickerPopover: View {
 
     private var emptyState: some View {
         Text("No verified models installed yet. Open the Model Library to download one.")
-            .font(.callout)
+            .font(.uiCallout)
             .foregroundStyle(.secondary)
             .padding(12)
     }
@@ -158,18 +163,18 @@ private struct CatalogGroupRow: View {
         VStack(alignment: .leading, spacing: 8) {
             HStack(spacing: 10) {
                 Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
-                    .font(.title3)
+                    .font(.uiTitle3)
                     .foregroundStyle(isSelected ? Palette.accent : Color.secondary.opacity(0.5))
                 VStack(alignment: .leading, spacing: 1) {
                     HStack(spacing: 6) {
-                        Text(catalog.displayName).font(.callout.weight(.semibold))
+                        Text(catalog.displayName).font(.uiCallout.weight(.semibold))
                         if catalog.thinking {
-                            Image(systemName: "brain.head.profile").font(.caption).foregroundStyle(.secondary)
+                            Image(systemName: "brain.head.profile").font(.uiCaption).foregroundStyle(.secondary)
                                 .help("Supports thinking")
                         }
                     }
                     Text("\(catalog.publisher) · \(catalog.parameters) · quantized by \(shown.quantizedBy)")
-                        .font(.caption)
+                        .font(.uiCaption)
                         .foregroundStyle(.secondary)
                 }
                 Spacer()
@@ -256,19 +261,19 @@ private struct PlainModelRow: View {
         let isSelected = backends.selectedModel?.id == model.id
         HStack(spacing: 10) {
             Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
-                .font(.title3)
+                .font(.uiTitle3)
                 .foregroundStyle(isSelected ? Palette.accent : Color.secondary.opacity(0.5))
             VStack(alignment: .leading, spacing: 3) {
-                Text(model.displayName).font(.callout.weight(.semibold)).lineLimit(1)
+                Text(model.displayName).font(.uiCallout.weight(.semibold)).lineLimit(1)
                 HStack(spacing: 6) {
                     QuantBadge(text: model.quantLabel)
-                    Text("by \(model.quantProvider)").font(.caption).foregroundStyle(.secondary)
+                    Text("by \(model.quantProvider)").font(.uiCaption).foregroundStyle(.secondary)
                     if let size = model.sizeBytes {
-                        Text(Format.bytes(size)).font(.caption.monospacedDigit()).foregroundStyle(.tertiary)
+                        Text(Format.bytes(size)).font(.uiCaption.monospacedDigit()).foregroundStyle(.tertiary)
                     }
                 }
                 if model.displayName != model.id {
-                    Text(model.id).font(.caption2.monospaced()).foregroundStyle(.tertiary).lineLimit(1)
+                    Text(model.id).font(.uiCaption2.monospaced()).foregroundStyle(.tertiary).lineLimit(1)
                 }
             }
             Spacer()

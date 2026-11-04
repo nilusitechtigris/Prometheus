@@ -1,5 +1,6 @@
 import Foundation
 import Observation
+import SwiftUI
 
 /// User preferences, persisted to UserDefaults.
 @MainActor
@@ -56,6 +57,13 @@ final class AppSettings {
     var unloadOnSwitch: Bool { didSet { defaults.set(unloadOnSwitch, forKey: "unloadOnSwitch") } }
     /// Whether the stats card under each reply is expanded (applies to every reply).
     var replyStatsExpanded: Bool { didSet { defaults.set(replyStatsExpanded, forKey: "replyStatsExpanded") } }
+    /// The draft Forge layout, with its near-black look and Geist type.
+    var draftLayout: Bool {
+        didSet {
+            defaults.set(draftLayout, forKey: "draftLayout")
+            applyDraftLook()
+        }
+    }
 
     init() {
         backendKind = BackendKind(rawValue: defaults.string(forKey: "backendKind") ?? "") ?? .ollama
@@ -70,6 +78,13 @@ final class AppSettings {
         maxResponseTokens = defaults.integer(forKey: "maxResponseTokens")
         unloadOnSwitch = defaults.object(forKey: "unloadOnSwitch") as? Bool ?? true
         replyStatsExpanded = defaults.object(forKey: "replyStatsExpanded") as? Bool ?? true
+        draftLayout = defaults.bool(forKey: "draftLayout")
+        applyDraftLook()
+    }
+
+    private func applyDraftLook() {
+        ThemeStore.shared.preview = draftLayout ? .forge : nil
+        Font.usesGeist = draftLayout
     }
 
     func baseURL(for kind: BackendKind) -> String {

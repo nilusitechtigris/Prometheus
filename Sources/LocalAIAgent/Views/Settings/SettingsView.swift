@@ -38,7 +38,7 @@ private struct AppearanceSettings: View {
                 Text("Color theme")
             } footer: {
                 Text("Themes change accents, the composer glow and the ambient background. Green, yellow and red always keep their health meaning. Light and dark mode follow macOS.")
-                    .font(.caption)
+                    .font(.uiCaption)
                     .foregroundStyle(.secondary)
             }
         }
@@ -59,7 +59,7 @@ private struct ThemeSwatch: View {
                     RoundedRectangle(cornerRadius: 12, style: .continuous)
                         .fill(LinearGradient(colors: [theme.accent, theme.glow, theme.accent2],
                                              startPoint: .topLeading, endPoint: .bottomTrailing))
-                    Image(systemName: "sparkles").font(.title2.weight(.semibold)).foregroundStyle(.white)
+                    Image(systemName: "sparkles").font(.uiTitle2.weight(.semibold)).foregroundStyle(.white)
                 }
                 .frame(height: 58)
                 .overlay(
@@ -71,7 +71,7 @@ private struct ThemeSwatch: View {
                 .shadow(color: theme.accent.opacity(hovering || selected ? 0.4 : 0), radius: 8, y: 3)
                 HStack(spacing: 4) {
                     if selected { Image(systemName: "checkmark.circle.fill").foregroundStyle(theme.accent) }
-                    Text(theme.name).font(.callout.weight(selected ? .semibold : .regular))
+                    Text(theme.name).font(.uiCallout.weight(selected ? .semibold : .regular))
                 }
             }
         }
@@ -105,7 +105,7 @@ private struct GeneralSettings: View {
             }
             Section("System instructions") {
                 TextEditor(text: $settings.systemPrompt)
-                    .font(.callout)
+                    .font(.uiCallout)
                     .frame(minHeight: 240)
                 Button("Reset to Default") { settings.systemPrompt = AppSettings.defaultSystemPrompt }
             }
@@ -126,7 +126,7 @@ private struct FrameworkSettings: View {
                 }
             } footer: {
                 Text("All frameworks run on this Mac. Ollama supports one-click downloads and per-chat context windows; LM Studio, llama.cpp and MLX use their OpenAI-compatible server.")
-                    .font(.caption)
+                    .font(.uiCaption)
                     .foregroundStyle(.secondary)
             }
         }
@@ -145,8 +145,8 @@ private struct FrameworkRow: View {
             StatusDot(level: backends.availability[kind] == true ? .good : .critical)
             Image(systemName: kind.symbol).frame(width: 18)
             VStack(alignment: .leading, spacing: 2) {
-                Text(kind.displayName).font(.body.weight(.medium))
-                Text(kind.tagline).font(.caption).foregroundStyle(.secondary)
+                Text(kind.displayName).font(.uiBody.weight(.medium))
+                Text(kind.tagline).font(.uiCaption).foregroundStyle(.secondary)
             }
             Spacer()
             TextField("URL", text: $url, prompt: Text(kind.defaultBaseURL))
@@ -178,25 +178,25 @@ private struct SafetySettings: View {
             Section {
                 Label {
                     VStack(alignment: .leading, spacing: 4) {
-                        Text("Verified models only").font(.headline)
+                        Text("Verified models only").font(.uiHeadline)
                         Text("By default you can only chat with models from the curated catalog: official open weights from well-known publishers, used by millions, distributed as GGUF tensors with no executable code.")
-                            .font(.callout)
+                            .font(.uiCallout)
                             .foregroundStyle(.secondary)
                     }
                 } icon: {
-                    Image(systemName: "checkmark.shield.fill").foregroundStyle(Palette.good).font(.title2)
+                    Image(systemName: "checkmark.shield.fill").foregroundStyle(Palette.good).font(.uiTitle2)
                 }
             }
             Section {
                 Toggle("Allow unverified models", isOn: $settings.allowUnverifiedModels)
             } footer: {
                 Text("Only enable this if you trust where a model came from. Unverified models show an orange shield.")
-                    .font(.caption)
+                    .font(.uiCaption)
                     .foregroundStyle(.secondary)
             }
             Section("Privacy") {
                 Label("Prompts and responses never leave this Mac. The only internet access is downloading models you choose, through your framework.", systemImage: "lock.shield")
-                    .font(.callout)
+                    .font(.uiCallout)
             }
         }
         .formStyle(.grouped)

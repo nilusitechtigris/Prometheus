@@ -75,6 +75,7 @@ struct ComposerView: View {
             ViewThatFits(in: .horizontal) {
                 controlRow(compact: false)
                 controlRow(compact: true)
+                controlRow(compact: true, narrow: true)
             }
             .padding(.horizontal, 4)
         }
@@ -88,16 +89,21 @@ struct ComposerView: View {
         .onChange(of: ui.composerFocusRequest) { focused = true }
     }
 
-    private func controlRow(compact: Bool) -> some View {
+    /// `narrow` lets the row shrink to fit, shortening the model name, for tight panels.
+    private func controlRow(compact: Bool, narrow: Bool = false) -> some View {
         HStack(spacing: 0) {
-            GlassGroup(spacing: 6) {
+            let controls = GlassGroup(spacing: 6) {
                 FrameworkPickerButton(compact: compact)
-                ModelPickerButton()
+                ModelPickerButton(narrow: narrow)
                 ContextPickerButton(compact: compact)
                 if backends.supportsThinking { ThinkPill(compact: compact) }
                 temperaturePill(compact: compact)
             }
-            .fixedSize()
+            if narrow {
+                controls
+            } else {
+                controls.fixedSize()
+            }
             Spacer(minLength: 0)
         }
     }
@@ -111,7 +117,7 @@ struct ComposerView: View {
                 Text(compact ? Format.samplingTemperature(settings.temperature)
                              : "Temp \(Format.samplingTemperature(settings.temperature))").monospacedDigit()
             }
-            .font(.callout)
+            .font(.uiCallout)
             .padding(.horizontal, 11)
             .padding(.vertical, 5)
             .contentShape(Capsule())
@@ -158,7 +164,7 @@ private struct ThinkPill: View {
                     .symbolEffect(.bounce, value: on)
                 if !compact { Text("Think") }
             }
-            .font(.callout.weight(on ? .semibold : .regular))
+            .font(.uiCallout.weight(on ? .semibold : .regular))
             .foregroundStyle(on ? Palette.accent : .secondary)
             .padding(.horizontal, 11)
             .padding(.vertical, 5)
@@ -207,7 +213,7 @@ private struct LiveTicker: View {
                     Text("\(live.thinkingTokens) thinking · \(live.tokens - live.thinkingTokens) output")
                 }
             }
-            .font(.caption.monospacedDigit())
+            .font(.uiCaption.monospacedDigit())
             .foregroundStyle(.secondary)
         }
     }
@@ -221,7 +227,7 @@ struct GenerationOptionsView: View {
         VStack(alignment: .leading, spacing: 14) {
             VStack(alignment: .leading, spacing: 6) {
                 HStack {
-                    Text("Temperature").font(.headline)
+                    Text("Temperature").font(.uiHeadline)
                     Spacer()
                     Text(String(format: "%.2f", settings.temperature)).monospacedDigit().foregroundStyle(.secondary)
                 }
@@ -229,7 +235,7 @@ struct GenerationOptionsView: View {
                 HStack {
                     Text("Precise"); Spacer(); Text("Balanced"); Spacer(); Text("Creative")
                 }
-                .font(.caption2)
+                .font(.uiCaption2)
                 .foregroundStyle(.secondary)
             }
 
@@ -240,14 +246,14 @@ struct GenerationOptionsView: View {
 
             VStack(alignment: .leading, spacing: 6) {
                 HStack {
-                    Text("System instructions").font(.headline)
+                    Text("System instructions").font(.uiHeadline)
                     Spacer()
                     Button("Reset") { settings.systemPrompt = AppSettings.defaultSystemPrompt }
                         .controlSize(.small)
                         .disabled(settings.systemPrompt == AppSettings.defaultSystemPrompt)
                 }
                 TextEditor(text: $settings.systemPrompt)
-                    .font(.callout)
+                    .font(.uiCallout)
                     .frame(height: 170)
                     .scrollContentBackground(.hidden)
                     .padding(6)

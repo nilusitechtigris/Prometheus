@@ -58,6 +58,8 @@ if [[ ! -f build/AppIcon.icns || scripts/make-icon.swift -nt build/AppIcon.icns 
     rm -rf "$TMP"
 fi
 cp build/AppIcon.icns "$APP/Contents/Resources/AppIcon.icns"
+mkdir -p "$APP/Contents/Resources/Fonts"
+cp assets/fonts/*.ttf assets/fonts/OFL.txt "$APP/Contents/Resources/Fonts/"
 
 cat > "$APP/Contents/Info.plist" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>

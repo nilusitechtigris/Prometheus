@@ -22,6 +22,8 @@ import SwiftUI
 ///   LOCALAI_HARNESS_CHECK=/path.txt check the harness's allowlist, calculator, guard and web tools, writing a report
 ///   LOCALAI_WEB_VIA_CURL=1          make the harness's web requests with curl (see WebTools)
 ///   LOCALAI_LIGHT_MODE=1            force the light appearance
+///   LOCALAI_CLOSE_MAIN=3            close the main window after this many seconds, like its red button
+///   LOCALAI_DRAFT=1                 open the Forge draft after launch; =cycle leaves it again after 3 s
 ///   LOCALAI_RENDER_DIR=/path        render both full dashboards (narrow and wide) after LOCALAI_RENDER_DELAY seconds
 @MainActor
 enum DebugHooks {
@@ -29,6 +31,24 @@ enum DebugHooks {
                         monitor: SystemMonitor, settings: AppSettings) {
         let env = ProcessInfo.processInfo.environment
         if env["LOCALAI_LIGHT_MODE"] != nil { NSApp.appearance = NSAppearance(named: .aqua) }
+        if env["LOCALAI_CLOSE_MAIN"] != nil {
+            Task {
+                try? await Task.sleep(for: .seconds(Double(env["LOCALAI_CLOSE_MAIN"] ?? "") ?? 3))
+                let main = NSApp.windows.first { $0.identifier?.rawValue.hasPrefix("main") == true }
+                print("closing:", main?.identifier?.rawValue ?? "no main window", "of", NSApp.windows.map { $0.identifier?.rawValue ?? "?" })
+                main?.performClose(nil)
+                main?.close()
+            }
+        }
+        if let draft = env["LOCALAI_DRAFT"] {
+            settings.draftLayout = true
+            if draft == "cycle" {
+                Task {
+                    try? await Task.sleep(for: .seconds(3))
+                    settings.draftLayout = false
+                }
+            }
+        }
         switch env["LOCALAI_DESTINATION"] {
         case "model": ui.destination = .modelTest
         case "hardware": ui.destination = .hardwareTest

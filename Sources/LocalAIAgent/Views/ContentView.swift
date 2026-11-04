@@ -11,6 +11,25 @@ struct ContentView: View {
     var body: some View {
         @Bindable var ui = ui
 
+        Group {
+            if settings.draftLayout {
+                DraftShell()
+            } else {
+                classicLayout
+            }
+        }
+        .sheet(isPresented: $ui.showLibrary) {
+            ModelLibraryView()
+                .frame(minWidth: 860, idealWidth: 980, minHeight: 620, idealHeight: 760)
+                .tint(Palette.accent)
+        }
+        .tint(Palette.accent)
+        #if DEBUG
+        .task { await debugWidgetHooks() }
+        #endif
+    }
+
+    private var classicLayout: some View {
         NavigationSplitView {
             SidebarView()
                 .navigationSplitViewColumnWidth(min: 220, ideal: 260, max: 340)
@@ -32,30 +51,25 @@ struct ContentView: View {
                 ToolbarItem(placement: .primaryAction) { VitalsStrip() }
             }
         }
-        .sheet(isPresented: $ui.showLibrary) {
-            ModelLibraryView()
-                .frame(minWidth: 860, idealWidth: 980, minHeight: 620, idealHeight: 760)
-                .tint(Palette.accent)
-        }
-        .tint(Palette.accent)
-        #if DEBUG
-        .task {
-            if ProcessInfo.processInfo.environment["LOCALAI_OPEN_WIDGETS"] != nil {
-                for kind in TelemetryWidgetKind.allCases { openWindow(id: kind.windowID) }
-            }
-            // Closes both widgets after 3 s, then reopens Generation after 6 s.
-            if ProcessInfo.processInfo.environment["LOCALAI_WIDGET_CYCLE"] != nil {
-                try? await Task.sleep(for: .seconds(3))
-                for window in NSApp.windows where window.identifier?.rawValue.contains("widget") == true {
-                    window.performClose(nil)
-                    window.close()
-                }
-                try? await Task.sleep(for: .seconds(3))
-                TelemetryWidgetToggle(open: openWindow, dismiss: dismissWindow, ui: ui)(.generation)
-            }
-        }
-        #endif
     }
+
+    #if DEBUG
+    private func debugWidgetHooks() async {
+        if ProcessInfo.processInfo.environment["LOCALAI_OPEN_WIDGETS"] != nil {
+            for kind in TelemetryWidgetKind.allCases { openWindow(id: kind.windowID) }
+        }
+        // Closes both widgets after 3 s, then reopens Generation after 6 s.
+        if ProcessInfo.processInfo.environment["LOCALAI_WIDGET_CYCLE"] != nil {
+            try? await Task.sleep(for: .seconds(3))
+            for window in NSApp.windows where window.identifier?.rawValue.contains("widget") == true {
+                window.performClose(nil)
+                window.close()
+            }
+            try? await Task.sleep(for: .seconds(3))
+            TelemetryWidgetToggle(open: openWindow, dismiss: dismissWindow, ui: ui)(.generation)
+        }
+    }
+    #endif
 
     private var title: String {
         switch ui.destination {

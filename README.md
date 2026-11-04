@@ -26,8 +26,9 @@ Prometheus is a native macOS app (SwiftUI, Apple Silicon) for chatting with loca
   - **Hardware Test** (⌥⌘4, about 30 s): CPU single and multi-core, CPU and GPU memory bandwidth, GPU FP16 matrix math (Metal Performance Shaders), disk read/write with the cache bypassed, and 15 s of sustained GPU load to check for throttling. The dashboard shows temperatures and load through the run, and estimates each catalog model's generation speed on this Mac from the measured bandwidth (tokens/sec ≈ bandwidth ÷ model size), next to the speeds the model test measured.
   - **Harness Test** (⌥⌘5): the same 24 questions on the same model with the harness off and on, reusing a matching run without it if there is one, then 7 poisoned web pages both ways. The harness gives the model web search (Wikipedia, Stack Overflow, arXiv and MDN through their official APIs), a page reader limited to 100 trusted sites, and an exact calculator, plus basic prompt injection protection: invisible text, hidden comments, images, encoded blobs and text aimed at the assistant are removed before the model reads a page, and links to untrusted sites and known secrets are removed from its replies. The allowlist is enforced in code, and query strings and redirects off the list are refused. Tools need Ollama and a model that supports them. The harness only runs in this test, so chat stays fully local; during a harness test, the test's fixed search terms go to those search services.
   - Chat waits while a test runs, so the numbers stay clean. Results are saved in `tests.json` next to the conversations.
+- **Forge (draft)**: a trial layout in near-black with one fire color and Geist type, built around chat with a slim icon rail and a status bar. The rail also opens the floating Generation and Hardware widgets. Open it from the top of the sidebar or with ⌥⌘D, and use **Classic** on the rail to switch back.
 - **Look and feel**:
-  - Seven colour themes (View › Theme, or Settings › Appearance) and a static ambient mesh background
+  - Eight colour themes (View › Theme, or Settings › Appearance) and a static ambient mesh background
   - Liquid Glass for the composer and controls on macOS 26+
   - Green, yellow and red always keep their health meaning, whatever the theme
   - The Prometheus brand: a flame with the AI spark at its heart, a serif wordmark, and a Prometheus theme with a background lit from below. The mark and wordmark stay the same in every theme. The icon is drawn by `scripts/make-icon.swift`.
@@ -56,6 +57,7 @@ The catalog (`Sources/LocalAIAgent/Models/ModelCatalog.swift`) only lists offici
 ## Project layout
 
 ```
+assets/fonts/               Geist fonts (SIL Open Font License)
 Sources/SensorsC/           C bridge: Apple SMC + HID temperature sensors
 Sources/LocalAIAgent/
   App/                      App entry, settings, debug hooks

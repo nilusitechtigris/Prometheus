@@ -7,7 +7,7 @@ enum Brand {
 
     /// Display type: a serif for the mythic name, used for the wordmark and page titles.
     static func display(_ size: CGFloat, weight: Font.Weight = .semibold) -> Font {
-        .system(size: size, weight: weight, design: .serif)
+        Font.usesGeist ? .geistPixel(size) : .system(size: size, weight: weight, design: .serif)
     }
 
     /// The brand's fire, the same in every theme.
@@ -121,7 +121,7 @@ struct BrandWordmark: View {
     var body: some View {
         Text(Brand.name.uppercased())
             .font(Brand.display(size))
-            .tracking(size * 0.14)
+            .tracking(Font.usesGeist ? size * 0.02 : size * 0.14)
             .foregroundStyle(scheme == .dark ? Brand.fire : Brand.deepFire)
             .fixedSize()
             .accessibilityLabel(Brand.name)

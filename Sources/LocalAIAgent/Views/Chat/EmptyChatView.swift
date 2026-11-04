@@ -49,8 +49,7 @@ private struct WelcomeHero: View {
                     .padding(.bottom, 6)
                 BrandWordmark(size: 38)
                 Text(Brand.tagline)
-                    .font(Brand.display(17, weight: .regular))
-                    .italic()
+                    .font(Font.usesGeist ? .geistMono(13) : Brand.display(17, weight: .regular).italic())
                     .foregroundStyle(.secondary)
                 if let model = backends.selectedModel {
                     Text("Running **\(model.displayName)** on your \(monitor.chipName) — nothing leaves this Mac.")
@@ -69,8 +68,8 @@ private struct WelcomeHero: View {
                                 .foregroundStyle(Palette.accent)
                                 .frame(width: 20)
                             VStack(alignment: .leading, spacing: 3) {
-                                Text(title).font(.callout.weight(.semibold))
-                                Text(prompt).font(.caption).foregroundStyle(.secondary).lineLimit(2).multilineTextAlignment(.leading)
+                                Text(title).font(.uiCallout.weight(.semibold))
+                                Text(prompt).font(.uiCaption).foregroundStyle(.secondary).lineLimit(2).multilineTextAlignment(.leading)
                             }
                             Spacer(minLength: 0)
                         }
@@ -98,7 +97,7 @@ private struct FrameworkSetupCard: View {
                 .foregroundStyle(Palette.accent)
             VStack(spacing: 6) {
                 Text("\(backends.kind.displayName) isn't running")
-                    .font(.title2.weight(.semibold))
+                    .font(.uiTitle2.weight(.semibold))
                 Text("The app talks to a local inference framework on this Mac. Start it, or pick another framework from the toolbar.")
                     .foregroundStyle(.secondary)
                     .multilineTextAlignment(.center)
@@ -121,10 +120,10 @@ private struct FrameworkSetupCard: View {
 
             Card {
                 VStack(alignment: .leading, spacing: 10) {
-                    Text("Set up \(backends.kind.displayName)").font(.headline)
+                    Text("Set up \(backends.kind.displayName)").font(.uiHeadline)
                     ForEach(Array(backends.kind.setupSteps.enumerated()), id: \.offset) { i, step in
                         HStack(alignment: .firstTextBaseline, spacing: 10) {
-                            Text("\(i + 1)").font(.caption.bold()).frame(width: 18, height: 18).background(Circle().fill(.quaternary))
+                            Text("\(i + 1)").font(.uiCaption.bold()).frame(width: 18, height: 18).background(Circle().fill(.quaternary))
                             Text(step).font(.system(.callout, design: step.contains(" ") && !step.contains("→") && step.first?.isLowercase == true ? .monospaced : .default))
                                 .textSelection(.enabled)
                             Spacer()
@@ -139,7 +138,7 @@ private struct FrameworkSetupCard: View {
                         }
                     }
                     Text("Expected at \(backends.settings.baseURL(for: backends.kind)) — change it in Settings.")
-                        .font(.caption)
+                        .font(.uiCaption)
                         .foregroundStyle(.secondary)
                 }
             }
@@ -160,7 +159,7 @@ private struct FirstModelCard: View {
                 .foregroundStyle(Palette.accent)
             VStack(spacing: 6) {
                 Text("Download your first model")
-                    .font(.title2.weight(.semibold))
+                    .font(.uiTitle2.weight(.semibold))
                 Text("These verified models are picked for your \(monitor.chipName) with \(Int((Double(ProcessInfo.processInfo.physicalMemory) / 1_073_741_824).rounded())) GB of memory.")
                     .foregroundStyle(.secondary)
                     .multilineTextAlignment(.center)

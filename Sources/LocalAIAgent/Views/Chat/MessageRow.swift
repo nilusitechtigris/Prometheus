@@ -52,9 +52,9 @@ private struct AssistantMessage: View {
             VStack(alignment: .leading, spacing: 8) {
                 HStack(spacing: 6) {
                     Text(message.modelName.map { ModelCatalog.entry(matchingID: $0)?.displayName ?? $0 } ?? "Assistant")
-                        .font(.callout.weight(.semibold))
+                        .font(.uiCallout.weight(.semibold))
                     Text(message.createdAt, style: .time)
-                        .font(.caption)
+                        .font(.uiCaption)
                         .foregroundStyle(.tertiary)
                     Spacer(minLength: 8)
                     // Up here so the stats card below can use the full width.
@@ -119,7 +119,7 @@ private struct ThinkingView: View {
                         .rotationEffect(.degrees(isOpen ? 90 : 0))
                         .imageScale(.small)
                 }
-                .font(.callout)
+                .font(.uiCallout)
                 .foregroundStyle(.secondary)
             }
             .buttonStyle(.plain)
@@ -127,7 +127,7 @@ private struct ThinkingView: View {
             if isOpen {
                 ScrollView {
                     Text(text.trimmingCharacters(in: .whitespacesAndNewlines))
-                        .font(.callout)
+                        .font(.uiCallout)
                         .foregroundStyle(.secondary)
                         .textSelection(.enabled)
                         .frame(maxWidth: .infinity, alignment: .leading)
@@ -150,7 +150,7 @@ private struct WaitingIndicator: View {
         TimelineView(.periodic(from: .now, by: 0.5)) { _ in
             HStack(spacing: 8) {
                 ProgressView().controlSize(.small)
-                Text(label).font(.callout).foregroundStyle(.secondary)
+                Text(label).font(.uiCallout).foregroundStyle(.secondary)
             }
             .padding(.vertical, 4)
         }
@@ -171,7 +171,7 @@ private struct ErrorCard: View {
     var body: some View {
         HStack(alignment: .top, spacing: 10) {
             Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(Palette.critical)
-            Text(text).font(.callout).textSelection(.enabled)
+            Text(text).font(.uiCallout).textSelection(.enabled)
             Spacer(minLength: 0)
             if canRetry {
                 Button("Retry", action: retry).controlSize(.small)
@@ -389,7 +389,7 @@ private struct StatSegment<Value: View>: View {
             HStack(alignment: .firstTextBaseline, spacing: 5) {
                 value
             }
-            .font(.system(size: 13, weight: .semibold, design: .rounded))
+            .font(.uiDisplay(size: 13, weight: .semibold))
             .monospacedDigit()
         }
         .help(help)

@@ -30,6 +30,6 @@ struct VitalsStrip: View {
             Text(label).foregroundStyle(.secondary)
             Text(value).monospacedDigit()
         }
-        .font(.caption)
+        .font(.uiCaption)
     }
 }

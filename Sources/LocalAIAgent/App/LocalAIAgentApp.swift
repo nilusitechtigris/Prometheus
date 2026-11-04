@@ -20,10 +20,17 @@ final class UIState {
 
 final class AppDelegate: NSObject, NSApplicationDelegate {
     static var onTerminate: (() -> Void)?
+    /// True while something is running that quitting would throw away.
+    static var isBusy: (() -> Bool)?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         // Also behave like a regular app when launched straight from `swift run`.
         NSApp.setActivationPolicy(.regular)
+        // The floating widgets count as windows, so closing the main window has to quit explicitly.
+        NotificationCenter.default.addObserver(forName: NSWindow.willCloseNotification, object: nil, queue: .main) { note in
+            guard Self.isMainWindow(note.object as? NSWindow) else { return }
+            MainActor.assumeIsolated { Self.quitWhenIdle() }
+        }
         #if DEBUG
         // Automated snapshot runs shouldn't steal focus from whatever the user is doing.
         if ProcessInfo.processInfo.environment["LOCALAI_NO_ACTIVATE"] != nil { return }
@@ -32,6 +39,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { true }
+
+    private static func isMainWindow(_ window: NSWindow?) -> Bool {
+        window?.identifier?.rawValue.hasPrefix("main") == true
+    }
+
+    /// Quits once any running test has finished, unless the main window has been reopened by then.
+    @MainActor private static func quitWhenIdle() {
+        Task {
+            repeat {
+                try? await Task.sleep(for: .milliseconds(200))
+            } while isBusy?() == true
+            guard !NSApp.windows.contains(where: { isMainWindow($0) && $0.isVisible }) else { return }
+            NSApp.terminate(nil)
+        }
+    }
 
     func applicationWillTerminate(_ notification: Notification) {
         Self.onTerminate?()
@@ -46,15 +68,19 @@ struct LocalAIAgentApp: App {
     @State private var chat: ChatController
     @State private var monitor = SystemMonitor()
     @State private var ui = UIState()
-    @State private var lab = TestLab()
+    @State private var lab: TestLab
 
     init() {
+        AppFonts.register()
         let settings = AppSettings()
         let backends = BackendController(settings: settings)
         let chat = ChatController(settings: settings, backends: backends)
+        let lab = TestLab()
         _settings = State(initialValue: settings)
         _backends = State(initialValue: backends)
         _chat = State(initialValue: chat)
+        _lab = State(initialValue: lab)
+        AppDelegate.isBusy = { MainActor.assumeIsolated { lab.isRunning } }
         AppDelegate.onTerminate = { MainActor.assumeIsolated { chat.saveNow() } }
     }
 
@@ -102,6 +128,8 @@ struct LocalAIAgentApp: App {
                                                    set: { ThemeStore.shared.theme = $0 })) {
                     ForEach(AppTheme.allCases) { Text($0.name).tag($0) }
                 }
+                Button(settings.draftLayout ? "Use Classic Layout" : "Try Forge Draft") { settings.draftLayout.toggle() }
+                    .keyboardShortcut("d", modifiers: [.command, .option])
                 Divider()
             }
             CommandMenu("Chat") {

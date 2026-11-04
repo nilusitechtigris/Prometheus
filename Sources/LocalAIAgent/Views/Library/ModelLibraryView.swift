@@ -44,9 +44,9 @@ struct ModelLibraryView: View {
         HStack(spacing: 14) {
             BrandMark(size: 34)
             VStack(alignment: .leading, spacing: 2) {
-                Text("Model Library").font(.title2.weight(.semibold))
+                Text("Model Library").font(.uiTitle2.weight(.semibold))
                 Text("\(monitor.chipName) · \(Format.gigabytes(Int64(ProcessInfo.processInfo.physicalMemory))) unified memory · ≈ \(Format.gigabytes(monitor.gpuBudgetBytes)) usable by the GPU · estimates at \(Format.tokens(settings.contextLength)) context")
-                    .font(.callout)
+                    .font(.uiCallout)
                     .foregroundStyle(.secondary)
             }
             Spacer()
@@ -73,7 +73,7 @@ struct ModelLibraryView: View {
             withAnimation(.snappy) { category = c }
         } label: {
             Label(title, systemImage: symbol)
-                .font(.callout)
+                .font(.uiCallout)
                 .padding(.horizontal, 10)
                 .padding(.vertical, 5)
                 .background(active ? AnyShapeStyle(Palette.accent.opacity(0.18)) : AnyShapeStyle(.quaternary.opacity(0.5)), in: Capsule())
@@ -91,14 +91,14 @@ struct ModelLibraryView: View {
         VStack(alignment: .leading, spacing: 8) {
             SectionHeader(title: "Other installed models (unverified)", symbol: "exclamationmark.shield")
             Text("These aren't in the curated list, so they're disabled unless you allow unverified models in Settings › Safety.")
-                .font(.caption)
+                .font(.uiCaption)
                 .foregroundStyle(.secondary)
             ForEach(backends.unverifiedModels) { model in
                 Card(padding: 10) {
                     HStack {
                         Image(systemName: "exclamationmark.shield").foregroundStyle(Palette.warning)
-                        Text(model.id).font(.callout.monospaced())
-                        Text(Format.bytes(model.sizeBytes)).font(.caption).foregroundStyle(.secondary)
+                        Text(model.id).font(.uiCallout.monospaced())
+                        Text(Format.bytes(model.sizeBytes)).font(.uiCaption).foregroundStyle(.secondary)
                         Spacer()
                         Button("Remove…", role: .destructive) { removing = model.id }.controlSize(.small)
                     }
@@ -112,12 +112,12 @@ private struct SafetyCallout: View {
     var body: some View {
         HStack(alignment: .top, spacing: 12) {
             Image(systemName: "checkmark.shield.fill")
-                .font(.title2)
+                .font(.uiTitle2)
                 .foregroundStyle(Palette.good)
             VStack(alignment: .leading, spacing: 4) {
-                Text("Every model here is verified").font(.headline)
+                Text("Every model here is verified").font(.uiHeadline)
                 Text("Curated open-weight models published by Meta, Google, Microsoft, Alibaba Qwen, Mistral AI, IBM, DeepSeek and OpenAI — each one used and evaluated by a very large community. They download as GGUF weight files (tensors only, no executable code), are checksum-verified by Ollama, and run fully offline.")
-                    .font(.callout)
+                    .font(.uiCallout)
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
             }
@@ -160,14 +160,14 @@ struct ModelCard: View {
                 HStack(alignment: .firstTextBaseline) {
                     VStack(alignment: .leading, spacing: 2) {
                         HStack(spacing: 6) {
-                            Text(model.displayName).font(.headline)
+                            Text(model.displayName).font(.uiHeadline)
                             if model.featured {
-                                Image(systemName: "star.fill").font(.caption).foregroundStyle(.yellow)
+                                Image(systemName: "star.fill").font(.uiCaption).foregroundStyle(.yellow)
                                     .help("Staff pick")
                             }
                         }
                         Text("\(model.publisher) · \(model.parameters) · \(model.license)")
-                            .font(.caption)
+                            .font(.uiCaption)
                             .foregroundStyle(.secondary)
                     }
                     Spacer()
@@ -178,7 +178,7 @@ struct ModelCard: View {
 
                 if !compact {
                     Text(model.summary)
-                        .font(.callout)
+                        .font(.uiCallout)
                         .foregroundStyle(.secondary)
                         .fixedSize(horizontal: false, vertical: true)
                         .frame(maxWidth: .infinity, minHeight: 34, alignment: .topLeading)
@@ -192,7 +192,7 @@ struct ModelCard: View {
                             }
                         }
                         Text("\(variant.quality) · \(variant.size) · quantized by \(variant.quantizedBy)")
-                            .font(.caption2)
+                            .font(.uiCaption2)
                             .foregroundStyle(.secondary)
                     }
                 }
@@ -204,9 +204,9 @@ struct ModelCard: View {
 
                 HStack(spacing: 6) {
                     StatusDot(level: verdict.level, size: 7)
-                    Text(verdict.label).font(.caption.weight(.semibold))
+                    Text(verdict.label).font(.uiCaption.weight(.semibold))
                     Text("≈ \(Format.gigabytes(estimate))")
-                        .font(.caption.monospacedDigit())
+                        .font(.uiCaption.monospacedDigit())
                         .foregroundStyle(.secondary)
                         .lineLimit(1)
                         .help("Estimated memory for weights + \(Format.tokens(settings.contextLength)) context, out of ≈ \(Format.gigabytes(monitor.gpuBudgetBytes)) the GPU can use")
@@ -257,7 +257,7 @@ struct ModelCard: View {
                     VStack(alignment: .trailing, spacing: 2) {
                         ProgressView(value: pull.fraction).frame(width: 90)
                         Text(pull.total > 0 ? "\(pull.status) \(Int(pull.fraction * 100))%" : pull.status)
-                            .font(.caption2.monospacedDigit())
+                            .font(.uiCaption2.monospacedDigit())
                             .foregroundStyle(.secondary)
                     }
                     Button { backends.cancelPull(variant.tag) } label: { Image(systemName: "xmark.circle.fill") }

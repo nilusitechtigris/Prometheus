@@ -20,7 +20,7 @@ struct PanelWidget<Trailing: View, Content: View>: View {
                     .foregroundStyle(.white)
                     .frame(width: 22, height: 22)
                     .background(Palette.gradient, in: RoundedRectangle(cornerRadius: 6, style: .continuous))
-                Text(title).font(.headline)
+                Text(title).font(.uiHeadline)
                 Spacer()
                 trailing
             }
@@ -48,7 +48,7 @@ struct GenerationWidget: View {
 
         PanelWidget(title: "Generation", symbol: "bolt.fill") {
             Text("\(replies) repl\(replies == 1 ? "y" : "ies") · avg")
-                .font(.caption)
+                .font(.uiCaption)
                 .foregroundStyle(.secondary)
                 .monospacedDigit()
         } content: {
@@ -87,16 +87,16 @@ private struct AvgTile: View {
         Card(padding: 10) {
             VStack(alignment: .leading, spacing: 5) {
                 HStack(spacing: 5) {
-                    Text(title).font(.caption2).foregroundStyle(.secondary).lineLimit(1)
+                    Text(title).font(.uiCaption2).foregroundStyle(.secondary).lineLimit(1)
                     Spacer(minLength: 0)
                     if threshold != nil { StatusDot(level: level, size: 6) }
                 }
                 HStack(alignment: .firstTextBaseline, spacing: 3) {
                     Text(value)
-                        .font(.system(size: 19, weight: .semibold, design: .rounded))
+                        .font(.uiDisplay(size: 19, weight: .semibold))
                         .monospacedDigit()
                         .contentTransition(.numericText())
-                    if let unit { Text(unit).font(.caption2).foregroundStyle(.secondary).lineLimit(1) }
+                    if let unit { Text(unit).font(.uiCaption2).foregroundStyle(.secondary).lineLimit(1) }
                 }
                 if let threshold {
                     RangeBar(value: raw, threshold: threshold, height: 4)
@@ -122,17 +122,17 @@ private struct ContextStrip: View {
         Card(padding: 10) {
             VStack(alignment: .leading, spacing: 6) {
                 HStack(spacing: 6) {
-                    Image(systemName: "text.word.spacing").font(.caption).foregroundStyle(.secondary)
-                    Text("Context").font(.callout.weight(.semibold))
+                    Image(systemName: "text.word.spacing").font(.uiCaption).foregroundStyle(.secondary)
+                    Text("Context").font(.uiCallout.weight(.semibold))
                     Spacer()
                     Text("\(Format.tokens(used)) / \(Format.tokens(ctx))")
-                        .font(.callout.monospacedDigit())
+                        .font(.uiCallout.monospacedDigit())
                     LevelPill(level: level, text: Format.percent(pct))
                 }
                 RangeBar(value: pct, threshold: Thresholds.contextUsage, height: 4)
                 if chat.trimmedMessageCount > 0 {
                     Text("\(chat.trimmedMessageCount) older messages trimmed to fit")
-                        .font(.caption2).foregroundStyle(.secondary)
+                        .font(.uiCaption2).foregroundStyle(.secondary)
                 }
             }
         }
@@ -162,7 +162,7 @@ struct HardwareWidget: View {
                 FooterRow(items: [("GPU memory", Format.bytes(s.gpuMemoryInUse), nil)])
                 if chat.isGenerating, (s.gpuUsage ?? 0) >= Thresholds.gpuUsage.warning {
                     Text("High GPU load is expected while generating.")
-                        .font(.caption2).foregroundStyle(.tertiary)
+                        .font(.uiCaption2).foregroundStyle(.tertiary)
                 }
             }
 
@@ -227,9 +227,9 @@ private struct ComponentCard<Stats: View, Footer: View>: View {
         Card(padding: 10) {
             VStack(alignment: .leading, spacing: 8) {
                 HStack(spacing: 6) {
-                    Image(systemName: symbol).font(.caption).foregroundStyle(Palette.accent)
-                    Text(title).font(.callout.weight(.semibold))
-                    if let subtitle { Text(subtitle).font(.caption).foregroundStyle(.secondary).monospacedDigit() }
+                    Image(systemName: symbol).font(.uiCaption).foregroundStyle(Palette.accent)
+                    Text(title).font(.uiCallout.weight(.semibold))
+                    if let subtitle { Text(subtitle).font(.uiCaption).foregroundStyle(.secondary).monospacedDigit() }
                     Spacer()
                 }
                 HStack(alignment: .top, spacing: 10) {
@@ -256,13 +256,13 @@ private struct MiniStat: View {
         VStack(alignment: .leading, spacing: 4) {
             HStack(spacing: 4) {
                 StatusDot(level: level, size: 6)
-                Text(label).font(.caption2).foregroundStyle(.secondary)
+                Text(label).font(.uiCaption2).foregroundStyle(.secondary)
                 Spacer(minLength: 0)
-                if let detail { Text(detail).font(.caption2.monospacedDigit()).foregroundStyle(.tertiary) }
+                if let detail { Text(detail).font(.uiCaption2.monospacedDigit()).foregroundStyle(.tertiary) }
             }
             HStack(alignment: .bottom, spacing: 6) {
                 Text(value)
-                    .font(.system(size: 17, weight: .semibold, design: .rounded))
+                    .font(.uiDisplay(size: 17, weight: .semibold))
                     .monospacedDigit()
                     .contentTransition(.numericText())
                     .fixedSize()
@@ -290,7 +290,7 @@ private struct FooterRow: View {
             }
             Spacer(minLength: 0)
         }
-        .font(.caption2)
+        .font(.uiCaption2)
         .lineLimit(1)
     }
 }
