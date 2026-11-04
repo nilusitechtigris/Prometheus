@@ -110,12 +110,7 @@ private struct ForgeSidebar: View {
                 .help("Show your chats, or collapse them if they're showing (⌥⌘2)")
                 item("checklist", "Tests", selected: ui.destination == .tests, busy: lab.isRunning) { ui.destination = .tests }
                 item("cube", "Models", selected: ui.destination == .library) { ui.destination = .library }
-                item("gauge.with.dots.needle.67percent", "Telemetry", selected: false, lit: settings.telemetryOpen) {
-                    withAnimation(.snappy) { settings.telemetryOpen.toggle() }
-                }
-                .help("\(settings.telemetryOpen ? "Collapse" : "Open") the telemetry panel (⌥⌘1)")
-                SettingsLink { row("gearshape.fill", "Settings", selected: false) }
-                    .buttonStyle(.plain)
+                item("gearshape.fill", "Settings", selected: ui.destination == .settings) { ui.destination = .settings }
             }
             .padding(.horizontal, 14)
 

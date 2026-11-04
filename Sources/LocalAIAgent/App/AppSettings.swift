@@ -62,10 +62,10 @@ final class AppSettings {
     var harnessEnabled: Bool { didSet { defaults.set(harnessEnabled, forKey: "harnessEnabled") } }
     /// Times the harness's loop may go round on a task, in chat and in the Harness Test.
     var harnessMaxRounds: Int { didSet { defaults.set(harnessMaxRounds, forKey: "harnessMaxRounds") } }
-    /// Whether the telemetry panel is open at the right of the window, and how wide it is.
+    /// Whether the telemetry panel is open along the bottom of the window, and how tall it is.
     var telemetryOpen: Bool { didSet { defaults.set(telemetryOpen, forKey: "telemetryOpen") } }
-    var telemetryWidth: Double { didSet { defaults.set(telemetryWidth, forKey: "telemetryWidth") } }
-    static let telemetryWidths = 290.0...460.0
+    var telemetryHeight: Double { didSet { defaults.set(telemetryHeight, forKey: "telemetryHeight") } }
+    static let telemetryHeights = 150.0...420.0
     /// Whether the chats show beside the conversation on the Chat page.
     var chatsOpen: Bool { didSet { defaults.set(chatsOpen, forKey: "chatsOpen") } }
 
@@ -86,8 +86,8 @@ final class AppSettings {
         let rounds = defaults.integer(forKey: "harnessMaxRounds")
         harnessMaxRounds = rounds > 0 ? rounds : 3
         telemetryOpen = defaults.object(forKey: "telemetryOpen") as? Bool ?? true
-        let panelWidth = defaults.double(forKey: "telemetryWidth")
-        telemetryWidth = panelWidth > 0 ? min(max(panelWidth, Self.telemetryWidths.lowerBound), Self.telemetryWidths.upperBound) : 320
+        let panelHeight = defaults.double(forKey: "telemetryHeight")
+        telemetryHeight = panelHeight > 0 ? min(max(panelHeight, Self.telemetryHeights.lowerBound), Self.telemetryHeights.upperBound) : 216
         chatsOpen = defaults.object(forKey: "chatsOpen") as? Bool ?? true
     }
 

@@ -111,6 +111,7 @@ struct ComposerView: View {
                 if backends.supportsThinking { ThinkPill(compact: compact) }
                 HarnessPill(compact: compact)
                 temperaturePill(compact: compact)
+                TelemetryPill(compact: compact)
             }
             if narrow {
                 controls
@@ -227,6 +228,34 @@ private struct HarnessPill: View {
                     : "Harness off: everything stays on this Mac. Click to give the model web search and a code sandbox.")
               : "The harness needs Ollama for now")
         .accessibilityLabel("Harness, \(on ? "on" : "off")")
+    }
+}
+
+/// Opens or collapses the hardware telemetry under the chat.
+private struct TelemetryPill: View {
+    @Environment(AppSettings.self) private var settings
+    var compact = false
+
+    var body: some View {
+        let on = settings.telemetryOpen
+        Button {
+            withAnimation(.snappy) { settings.telemetryOpen.toggle() }
+        } label: {
+            HStack(spacing: 5) {
+                Image(systemName: "gauge.with.dots.needle.67percent")
+                if !compact { Text("Telemetry") }
+            }
+            .font(.uiCallout.weight(on ? .semibold : .regular))
+            .foregroundStyle(on ? Palette.accent : .secondary)
+            .padding(.horizontal, 11)
+            .padding(.vertical, 5)
+            .contentShape(Capsule())
+        }
+        .buttonStyle(.plain)
+        .glassCapsule(interactive: true)
+        .overlay(Capsule().strokeBorder(on ? Palette.accent.opacity(0.6) : .clear, lineWidth: 1))
+        .help("\(on ? "Collapse" : "Open") the hardware telemetry (⌥⌘1)")
+        .accessibilityLabel("Telemetry, \(on ? "on" : "off")")
     }
 }
 

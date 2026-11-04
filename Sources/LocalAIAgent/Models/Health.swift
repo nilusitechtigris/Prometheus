@@ -150,7 +150,6 @@ enum Thresholds {
     static let cpuUsage = Threshold(warning: 60, critical: 85, displayMax: 100)
     static let gpuUsage = Threshold(warning: 60, critical: 85, displayMax: 100)
     static let memoryUsage = Threshold(warning: 70, critical: 85, displayMax: 100)
-    static let contextUsage = Threshold(warning: 70, critical: 90, displayMax: 100)
 
     // Temperatures, °C — Apple Silicon throttles around 100–105 °C junction temperature.
     static let cpuTemp = Threshold(warning: 70, critical: 90, displayMax: 110, displayMin: 20)

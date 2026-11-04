@@ -62,6 +62,7 @@ struct FrameworkPickerButton: View {
 
 private struct FrameworkPopover: View {
     @Environment(BackendController.self) private var backends
+    @Environment(UIState.self) private var ui
     let dismiss: () -> Void
 
     var body: some View {
@@ -90,8 +91,12 @@ private struct FrameworkPopover: View {
                 }
             }
             Divider().padding(.vertical, 4)
-            SettingsLink {
-                Label("Framework Settings…", systemImage: "gearshape")
+            Button {
+                dismiss()
+                ui.settingsTab = .frameworks
+                ui.destination = .settings
+            } label: {
+                Label("Framework Settings", systemImage: "gearshape")
             }
             .buttonStyle(.borderless)
             .controlSize(.small)

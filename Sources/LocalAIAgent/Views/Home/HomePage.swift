@@ -44,7 +44,7 @@ private struct HomeHero: View {
                 .offset(x: 20, y: -10)
             ModePicker()
             VStack(alignment: .leading, spacing: 8) {
-                (Text("Small models.\n").foregroundStyle(Forge.ink) + Text("Directed intelligence.").foregroundStyle(Palette.accent))
+                (Text("Small models.\n").foregroundStyle(Forge.ink) + Text("Serious work.").foregroundStyle(Palette.accent))
                     .font(.geist(46, weight: .semibold))
                     .lineSpacing(0)
                 Text("Turn lightweight LLMs into focused, reliable task executors.")

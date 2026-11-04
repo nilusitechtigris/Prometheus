@@ -52,11 +52,6 @@ final class ChatController {
         return conversations.first { $0.id == id }
     }
 
-    /// Metrics of the most recent finished response in the selected conversation.
-    var lastMetrics: GenerationMetrics? {
-        selected?.messages.last(where: { $0.role == .assistant && $0.metrics != nil })?.metrics
-    }
-
     /// Average generation numbers for the selected chat, counting only replies from this exact
     /// model + quantization — so a new chat, model or quant starts from zero.
     func averages(for modelID: String?) -> GenerationAverages? {

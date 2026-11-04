@@ -16,9 +16,7 @@ Prometheus is a native macOS app (SwiftUI, Apple Silicon) for chatting with loca
   - Verified models only by default. The Model Library lets you download, use and remove models with one click (Ollama), and shows a memory-fit badge for your Mac.
 - **Framework selection**: Ollama (recommended), LM Studio, llama.cpp `llama-server`, and MLX LM. A green dot shows which ones are running.
 - **Context window**: pick 2K–128K tokens, limited to what the model supports, with a memory estimate for each size. Older messages are trimmed automatically when they don't fit.
-- **Telemetry** (sidebar › Telemetry, or ⌥⌘1): a panel docked at the right of the window on every page except Home, with **Generation** and **Hardware** stacked. It's open by default and takes its width from the page beside it, so nothing covers the chat. Collapse it with the button at its top, and drag its left edge to resize it.
-  - **Generation**: averages for this chat with the exact model + quant selected. A new chat, model or quant starts at zero; reopening an old chat restores its numbers. Shows first-token time (cold starts left out), tokens/sec, prompt speed and reply length, plus context-window usage.
-  - **Hardware**: compact cards with each part's load next to its temperature, in data-path order: GPU, then memory (with pressure and swap), then CPU. Includes the macOS thermal state.
+- **Telemetry** (Telemetry button under the message box, or ⌥⌘1): live hardware numbers in a panel docked along the bottom of the Chat page, with compact cards for each part's load next to its temperature, in data-path order: GPU, then memory (with pressure and swap), then CPU, plus the macOS thermal state. It takes its height from the chat above it, so nothing covers the conversation. Collapse it with the arrow at its right, and drag its top edge to resize it.
   - Temperatures come from the SMC. No admin rights needed.
   - Every metric uses green / yellow / red ranges
 - **Home**: the start page. Start a task straight from the Task Builder or a template, see the active model and its real numbers, reopen recent tasks, and switch between Local Mode and the harness.

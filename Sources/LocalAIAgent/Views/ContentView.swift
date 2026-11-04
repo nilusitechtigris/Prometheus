@@ -8,32 +8,37 @@ struct ContentView: View {
 }
 
 /// What the main area shows: the page, the chats at its left on the Chat page, and the telemetry
-/// panel at its right.
+/// panel along the bottom.
 struct MainPage: View {
     @Environment(UIState.self) private var ui
     @Environment(AppSettings.self) private var settings
 
+    /// Telemetry belongs to the Chat page, where the model is working.
+    private var showsTelemetry: Bool { settings.telemetryOpen && ui.destination == .chat }
+
     var body: some View {
-        HStack(spacing: 0) {
-            if ui.destination == .chat && settings.chatsOpen {
-                HStack(spacing: 0) {
-                    ChatsColumn()
-                    Forge.rule(vertical: true)
+        VStack(spacing: 0) {
+            HStack(spacing: 0) {
+                if ui.destination == .chat && settings.chatsOpen {
+                    HStack(spacing: 0) {
+                        ChatsColumn()
+                        Forge.rule(vertical: true)
+                    }
+                    .transition(.move(edge: .leading))
                 }
-                .transition(.move(edge: .leading))
-            }
-            Group {
-                switch ui.destination {
-                case .home: HomePage()
-                case .chat: ChatView()
-                case .tests: TestsPage()
-                case .library: ModelLibraryView()
+                Group {
+                    switch ui.destination {
+                    case .home: HomePage()
+                    case .chat: ChatView()
+                    case .tests: TestsPage()
+                    case .library: ModelLibraryView()
+                    case .settings: SettingsView()
+                    }
                 }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
-            // Home has its own Active Model card.
-            if settings.telemetryOpen && ui.destination != .home {
-                TelemetryPanel().transition(.move(edge: .trailing))
+            if showsTelemetry {
+                TelemetryPanel().transition(.move(edge: .bottom))
             }
         }
     }

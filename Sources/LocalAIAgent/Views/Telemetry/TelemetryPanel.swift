@@ -1,80 +1,66 @@
 import AppKit
 import SwiftUI
 
-/// Live telemetry, docked at the right of the main area on every page. It takes its width from the
-/// page beside it, so nothing ever sits on top of the chat. Drag its left edge to resize it.
+/// Live hardware telemetry, docked along the bottom of the Chat page. It takes its height from the page
+/// above it, so nothing ever sits on top of the chat. Drag its top edge to resize it.
 struct TelemetryPanel: View {
     @Environment(AppSettings.self) private var settings
 
     var body: some View {
         @Bindable var settings = settings
-        HStack(spacing: 0) {
-            PanelResizeHandle(width: $settings.telemetryWidth)
-            VStack(spacing: 0) {
-                header
-                ScrollView {
-                    VStack(spacing: 10) {
-                        GenerationWidget()
-                        HardwareWidget()
-                    }
-                    .padding(.horizontal, 10)
-                    .padding(.bottom, 10)
-                }
+        VStack(spacing: 0) {
+            PanelResizeHandle(height: $settings.telemetryHeight)
+            ScrollView {
+                HardwareWidget().padding(10)
             }
-            .frame(width: settings.telemetryWidth)
-            .background(Forge.panel)
         }
-    }
-
-    private var header: some View {
-        HStack {
-            Text("Telemetry").font(.uiCallout.weight(.semibold)).foregroundStyle(.secondary)
-            Spacer()
-            TelemetryPanelToggle()
-                .buttonStyle(.borderless)
-        }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 8)
+        .frame(height: settings.telemetryHeight)
+        .background(Forge.panel)
     }
 }
 
-/// Collapses or opens the telemetry panel.
+/// Collapses the telemetry panel.
 struct TelemetryPanelToggle: View {
     @Environment(AppSettings.self) private var settings
 
     var body: some View {
         Button {
-            withAnimation(.snappy) { settings.telemetryOpen.toggle() }
+            withAnimation(.snappy) { settings.telemetryOpen = false }
         } label: {
-            Label("Telemetry", systemImage: "sidebar.trailing").labelStyle(.iconOnly)
+            Image(systemName: "chevron.down")
+                .font(.system(size: 11, weight: .semibold))
+                .foregroundStyle(Forge.dim)
+                .frame(width: 22, height: 22)
+                .contentShape(Rectangle())
         }
-        .help("\(settings.telemetryOpen ? "Collapse" : "Open") the telemetry panel (⌥⌘1)")
+        .buttonStyle(.plain)
+        .help("Collapse the telemetry panel (⌥⌘1)")
     }
 }
 
-/// The panel's left edge. A thin line, with a wider area around it to grab.
+/// The panel's top edge. A thin line, with a wider area around it to grab.
 private struct PanelResizeHandle: View {
-    @Binding var width: Double
-    @State private var startWidth: Double?
+    @Binding var height: Double
+    @State private var startHeight: Double?
 
     var body: some View {
-        Color.primary.opacity(0.12)
-            .frame(width: 1)
+        Forge.line
+            .frame(height: 1)
             .overlay {
                 Color.clear
-                    .frame(width: 9)
+                    .frame(height: 9)
                     .contentShape(Rectangle())
                     .onHover { inside in
-                        if inside { NSCursor.resizeLeftRight.push() } else { NSCursor.pop() }
+                        if inside { NSCursor.resizeUpDown.push() } else { NSCursor.pop() }
                     }
                     .gesture(DragGesture(minimumDistance: 1, coordinateSpace: .global)
                         .onChanged { drag in
-                            let start = startWidth ?? width
-                            startWidth = start
-                            width = min(max(start - drag.translation.width, AppSettings.telemetryWidths.lowerBound),
-                                        AppSettings.telemetryWidths.upperBound)
+                            let start = startHeight ?? height
+                            startHeight = start
+                            height = min(max(start - drag.translation.height, AppSettings.telemetryHeights.lowerBound),
+                                         AppSettings.telemetryHeights.upperBound)
                         }
-                        .onEnded { _ in startWidth = nil })
+                        .onEnded { _ in startHeight = nil })
             }
             .help("Drag to resize the telemetry panel")
     }

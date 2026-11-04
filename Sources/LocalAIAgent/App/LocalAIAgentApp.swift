@@ -6,11 +6,13 @@ import SwiftUI
 @Observable
 final class UIState {
     /// What the main area shows.
-    enum Destination: Hashable { case home, chat, tests, library }
+    enum Destination: Hashable { case home, chat, tests, library, settings }
 
     var destination: Destination = .home
     /// Which results the Tests page shows.
     var testTab: TestTab = .model
+    /// Which section the Settings page shows.
+    var settingsTab: SettingsTab = .general
     var showModelPicker = false
     var showTestModelPicker = false
     var composerFocusRequest = 0
@@ -111,8 +113,8 @@ struct LocalAIAgentApp: App {
                 .environment(monitor)
                 .environment(ui)
                 .environment(lab)
-                // With a panel open the window stays wide enough for the page beside it.
-                .frame(minWidth: 1100 + (settings.telemetryOpen ? settings.telemetryWidth - 200 : 0), minHeight: 680)
+                // With the telemetry panel open the window stays tall enough for the page above it.
+                .frame(minWidth: 1100, minHeight: settings.telemetryOpen ? max(640, 400 + settings.telemetryHeight) : 640)
                 .task {
                     backends.start()
                     monitor.start()
@@ -133,6 +135,10 @@ struct LocalAIAgentApp: App {
                                      .paragraphStyle: centered])
                     NSApp.orderFrontStandardAboutPanel(options: [.applicationName: Brand.name, .credits: credits])
                 }
+            }
+            CommandGroup(replacing: .appSettings) {
+                Button("Settings…") { ui.destination = .settings }
+                    .keyboardShortcut(",")
             }
             CommandGroup(replacing: .newItem) {
                 Button("New Chat") {
@@ -164,6 +170,7 @@ struct LocalAIAgentApp: App {
                 Divider()
                 Button(settings.telemetryOpen ? "Hide Telemetry" : "Show Telemetry") { settings.telemetryOpen.toggle() }
                     .keyboardShortcut("1", modifiers: [.command, .option])
+                    .disabled(ui.destination != .chat)
                 Button(ui.destination == .chat && settings.chatsOpen ? "Hide Chats" : "Show Chats") { ui.toggleChats(in: settings) }
                     .keyboardShortcut("2", modifiers: [.command, .option])
                 Button("Search Chats") {
@@ -180,13 +187,6 @@ struct LocalAIAgentApp: App {
                 Button("Harness Test Results") { ui.openTests(.harness) }
                     .keyboardShortcut("5", modifiers: [.command, .option])
             }
-        }
-
-        Settings {
-            SettingsView()
-                .environment(settings)
-                .environment(backends)
-                .environment(chat)
         }
     }
 }

@@ -1,8 +1,7 @@
 import SwiftUI
 
-// The two groups in the telemetry panel (TelemetryPanel.swift): Generation (this chat's averages +
-// context) and Hardware, ordered along the data path of a reply — GPU (does the work) → memory
-// (holds the model) → CPU.
+// The live hardware readout in the telemetry panel (TelemetryPanel.swift), ordered along the data path
+// of a reply: GPU (does the work) → memory (holds the model) → CPU.
 
 /// A titled panel with its own tinted background, so each group reads as a separate widget.
 struct PanelWidget<Trailing: View, Content: View>: View {
@@ -33,110 +32,6 @@ struct PanelWidget<Trailing: View, Content: View>: View {
     }
 }
 
-// MARK: - Generation
-
-struct GenerationWidget: View {
-    @Environment(ChatController.self) private var chat
-    @Environment(BackendController.self) private var backends
-
-    var body: some View {
-        // Scoped to this chat + this exact model and quant: a new chat, model or quant starts at zero.
-        let avg = chat.averages(for: backends.selectedModel?.id)
-        let replies = avg?.responses ?? 0
-
-        PanelWidget(title: "Generation", symbol: "bolt.fill") {
-            Text("\(replies) repl\(replies == 1 ? "y" : "ies") · avg")
-                .font(.uiCaption)
-                .foregroundStyle(.secondary)
-                .monospacedDigit()
-        } content: {
-            Grid(horizontalSpacing: 8, verticalSpacing: 8) {
-                GridRow {
-                    AvgTile(title: "First token", value: Format.seconds(avg?.timeToFirstToken),
-                            threshold: Thresholds.timeToFirstToken, raw: avg?.timeToFirstToken,
-                            help: "Average time to the first token. Replies that waited for the model to load are left out\(avg.map { $0.coldStarts > 0 ? " (\($0.coldStarts) here)" : "" } ?? "").")
-                    AvgTile(title: "Speed", value: Format.rate(avg?.tokensPerSecond), unit: "tok/s",
-                            threshold: Thresholds.tokensPerSecond, raw: avg?.tokensPerSecond,
-                            help: "Average generation speed")
-                }
-                GridRow {
-                    AvgTile(title: "Prompt speed", value: Format.rate(avg?.promptTokensPerSecond), unit: "tok/s",
-                            help: "Average speed of reading the prompt")
-                    AvgTile(title: "Reply", value: avg?.completionTokens.map { "\(Int($0.rounded()))" } ?? "—",
-                            unit: avg?.totalDuration.map { "tok · \(Format.seconds($0))" } ?? "tok",
-                            help: "Average reply length and total time")
-                }
-            }
-            ContextStrip()
-        }
-    }
-}
-
-private struct AvgTile: View {
-    let title: String
-    let value: String
-    var unit: String?
-    var threshold: Threshold?
-    var raw: Double?
-    var help: String
-
-    var body: some View {
-        let level = threshold?.level(raw) ?? .unknown
-        Card(padding: 10) {
-            VStack(alignment: .leading, spacing: 5) {
-                HStack(spacing: 5) {
-                    Text(title).font(.uiCaption2).foregroundStyle(.secondary).lineLimit(1)
-                    Spacer(minLength: 0)
-                    if threshold != nil { StatusDot(level: level, size: 6) }
-                }
-                HStack(alignment: .firstTextBaseline, spacing: 3) {
-                    Text(value)
-                        .font(.uiDisplay(size: 19, weight: .semibold))
-                        .monospacedDigit()
-                        .contentTransition(.numericText())
-                    if let unit { Text(unit).font(.uiCaption2).foregroundStyle(.secondary).lineLimit(1) }
-                }
-                if let threshold {
-                    RangeBar(value: raw, threshold: threshold, height: 4)
-                }
-            }
-        }
-        .help(help)
-    }
-}
-
-// MARK: - Context
-
-private struct ContextStrip: View {
-    @Environment(ChatController.self) private var chat
-    @Environment(BackendController.self) private var backends
-
-    var body: some View {
-        let ctx = backends.effectiveContext
-        let used = chat.lastMetrics?.contextUsed ?? 0
-        let pct = Double(used) / Double(max(ctx, 1)) * 100
-        let level = Thresholds.contextUsage.level(pct)
-
-        Card(padding: 10) {
-            VStack(alignment: .leading, spacing: 6) {
-                HStack(spacing: 6) {
-                    Image(systemName: "text.word.spacing").font(.uiCaption).foregroundStyle(.secondary)
-                    Text("Context").font(.uiCallout.weight(.semibold))
-                    Spacer()
-                    Text("\(Format.tokens(used)) / \(Format.tokens(ctx))")
-                        .font(.uiCallout.monospacedDigit())
-                    LevelPill(level: level, text: Format.percent(pct))
-                }
-                RangeBar(value: pct, threshold: Thresholds.contextUsage, height: 4)
-                if chat.trimmedMessageCount > 0 {
-                    Text("\(chat.trimmedMessageCount) older messages trimmed to fit")
-                        .font(.uiCaption2).foregroundStyle(.secondary)
-                }
-            }
-        }
-    }
-}
-
 // MARK: - Hardware
 
 struct HardwareWidget: View {
@@ -147,8 +42,9 @@ struct HardwareWidget: View {
         let s = monitor.snapshot
         PanelWidget(title: "Hardware", symbol: "cpu.fill") {
             LevelPill(level: thermalLevel(s.thermalState), text: "Thermal: \(thermalText(s.thermalState))")
+            TelemetryPanelToggle()
         } content: {
-
+            HStack(alignment: .top, spacing: 8) {
             // GPU — runs the model.
             ComponentCard(title: "GPU", symbol: "square.stack.3d.up.fill",
                           subtitle: monitor.gpuCoreCount.map { "\($0)-core" }) {
@@ -187,6 +83,8 @@ struct HardwareWidget: View {
             } footer: {
                 CoreBars(values: s.perCoreUsage)
             }
+            }
+            .fixedSize(horizontal: false, vertical: true)
         }
     }
 
@@ -227,7 +125,7 @@ private struct ComponentCard<Stats: View, Footer: View>: View {
                 HStack(spacing: 6) {
                     Image(systemName: symbol).font(.uiCaption).foregroundStyle(Palette.accent)
                     Text(title).font(.uiCallout.weight(.semibold))
-                    if let subtitle { Text(subtitle).font(.uiCaption).foregroundStyle(.secondary).monospacedDigit() }
+                    if let subtitle { Text(subtitle).font(.uiCaption).foregroundStyle(.secondary).monospacedDigit().lineLimit(1).minimumScaleFactor(0.8) }
                     Spacer()
                 }
                 HStack(alignment: .top, spacing: 10) {
@@ -235,6 +133,7 @@ private struct ComponentCard<Stats: View, Footer: View>: View {
                 }
                 footer
             }
+            .frame(maxHeight: .infinity, alignment: .topLeading)
         }
     }
 }
@@ -256,7 +155,7 @@ private struct MiniStat: View {
                 StatusDot(level: level, size: 6)
                 Text(label).font(.uiCaption2).foregroundStyle(.secondary)
                 Spacer(minLength: 0)
-                if let detail { Text(detail).font(.uiCaption2.monospacedDigit()).foregroundStyle(.tertiary) }
+                if let detail { Text(detail).font(.uiCaption2.monospacedDigit()).foregroundStyle(.tertiary).lineLimit(1).fixedSize() }
             }
             HStack(alignment: .bottom, spacing: 6) {
                 Text(value)

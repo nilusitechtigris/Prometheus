@@ -3,7 +3,7 @@ import SwiftUI
 /// Name, voice and type in one place, so a rename is a one-line change.
 enum Brand {
     static let name = "Prometheus"
-    static let tagline = "Intelligence, directed."
+    static let tagline = "Bring the fire home."
 
     /// Display type, used for the wordmark and page titles.
     static func display(_ size: CGFloat) -> Font { .geist(size, weight: .semibold) }

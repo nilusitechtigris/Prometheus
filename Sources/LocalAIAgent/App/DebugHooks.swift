@@ -25,6 +25,7 @@ import SwiftUI
 ///   LOCALAI_CHAT_SEARCH=text        search the chats for this after launch
 ///   LOCALAI_HARNESS_SAMPLE=id,id    run these questions through the harness; LOCALAI_SAMPLE_OUT=/path gets the report
 ///   LOCALAI_CHAT_HARNESS=1          turn the harness on for chat
+///   LOCALAI_SETTINGS_TAB=safety     open that section of the Settings page
 ///   LOCALAI_WINDOW_SIZE=1380x2400   resize the main window after launch, to snapshot more of a page
 ///   LOCALAI_RENDER_DIR=/path        render both full dashboards (narrow and wide) after LOCALAI_RENDER_DELAY seconds
 @MainActor
@@ -41,6 +42,7 @@ enum DebugHooks {
                 main?.close()
             }
         }
+        if let tab = SettingsTab(rawValue: env["LOCALAI_SETTINGS_TAB"] ?? "") { ui.settingsTab = tab }
         if env["LOCALAI_CHAT_HARNESS"] != nil { settings.harnessEnabled = true }
         if let size = env["LOCALAI_WINDOW_SIZE"]?.split(separator: "x").compactMap({ Double($0) }), size.count == 2 {
             Task {
@@ -58,6 +60,7 @@ enum DebugHooks {
         case "harness": ui.openTests(.harness)
         case "library": ui.destination = .library
         case "chat": ui.destination = .chat
+        case "settings": ui.destination = .settings
         default: break
         }
         if let telemetry = env["LOCALAI_TELEMETRY"] {

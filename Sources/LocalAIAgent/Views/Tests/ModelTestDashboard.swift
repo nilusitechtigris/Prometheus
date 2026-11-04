@@ -98,32 +98,34 @@ struct ModelTestDashboard: View {
 
     private func skillMap(_ run: ModelTestResult) -> some View {
         TestPanel(title: "Skill map", symbol: "square.grid.3x2.fill", note: "each level is worth double") {
-            Grid(alignment: .leading, horizontalSpacing: 6, verticalSpacing: 6) {
-                GridRow {
-                    Color.clear.gridCellUnsizedAxes([.horizontal, .vertical])
+            VStack(spacing: 6) {
+                HStack(spacing: 6) {
+                    Color.clear.frame(width: 112, height: 1)
                     ForEach(ModelTestLevel.allCases) { level in
                         VStack(spacing: 0) {
-                            Text(level.name).lineLimit(1).minimumScaleFactor(0.8)
+                            Text(level.name).lineLimit(1).minimumScaleFactor(0.7)
                             Text("×\(level.weight)").foregroundStyle(.tertiary)
                         }
                         .font(.uiCaption2.weight(.medium))
                         .foregroundStyle(.secondary)
-                        .frame(maxWidth: .infinity)
+                        .frame(minWidth: 0, maxWidth: .infinity)
                     }
-                    Text("Score").font(.uiCaption2.weight(.medium)).foregroundStyle(.secondary).gridColumnAlignment(.trailing)
+                    Text("Score").font(.uiCaption2.weight(.medium)).foregroundStyle(.secondary).frame(width: 40, alignment: .trailing)
                 }
                 ForEach(ModelTestCategory.allCases) { category in
-                    GridRow(alignment: .center) {
+                    HStack(spacing: 6) {
                         HStack(spacing: 6) {
                             Image(systemName: category.symbol).font(.uiCaption).foregroundStyle(.secondary).frame(width: 16)
-                            Text(category.name).font(.uiCallout).lineLimit(1).fixedSize()
+                            Text(category.name).font(.uiCallout).lineLimit(1)
                         }
+                        .frame(width: 112, alignment: .leading)
                         ForEach(ModelTestLevel.allCases) { level in
                             skillCell(run.items.first { $0.category == category && $0.level == level })
                         }
                         Text(Format.percent(run.score(for: category)))
                             .font(.uiCallout.monospacedDigit())
                             .foregroundStyle(TestScoring.modelScore.level(run.score(for: category)).color)
+                            .frame(width: 40, alignment: .trailing)
                     }
                 }
             }
@@ -143,7 +145,7 @@ struct ModelTestDashboard: View {
             RoundedRectangle(cornerRadius: 6, style: .continuous)
                 .fill((item?.passed == true ? Palette.good : Palette.critical).opacity(item == nil ? 0.1 : 0.75))
                 .frame(height: 26)
-                .frame(maxWidth: .infinity)
+                .frame(minWidth: 0, maxWidth: .infinity)
                 .overlay {
                     if let item {
                         Image(systemName: item.passed ? "checkmark" : "xmark")

@@ -1,23 +1,56 @@
 import AppKit
 import SwiftUI
 
+/// The sections of the Settings page.
+enum SettingsTab: String, CaseIterable, Identifiable {
+    case general, appearance, frameworks, safety, data
+
+    var id: String { rawValue }
+    var title: String { rawValue.capitalized }
+}
+
+/// Settings, as a page in the main window like Tests and Models.
 struct SettingsView: View {
+    @Environment(UIState.self) private var ui
+
     var body: some View {
-        TabView {
-            GeneralSettings()
-                .tabItem { Label("General", systemImage: "gearshape") }
-            AppearanceSettings()
-                .tabItem { Label("Appearance", systemImage: "paintpalette") }
-            FrameworkSettings()
-                .tabItem { Label("Frameworks", systemImage: "shippingbox") }
-            SafetySettings()
-                .tabItem { Label("Safety", systemImage: "checkmark.shield") }
-            DataSettings()
-                .tabItem { Label("Data", systemImage: "externaldrive") }
+        VStack(alignment: .leading, spacing: 0) {
+            VStack(alignment: .leading, spacing: 12) {
+                PageHeader(title: "Settings", subtitle: "How replies are generated, how the app looks, which framework it uses, and what it's allowed to do.") { EmptyView() }
+                HStack(spacing: 22) {
+                    ForEach(SettingsTab.allCases) { tab in
+                        Button {
+                            ui.settingsTab = tab
+                        } label: {
+                            UnderlineTab(title: tab.title, selected: ui.settingsTab == tab)
+                        }
+                        .buttonStyle(.plain)
+                    }
+                    Spacer()
+                }
+            }
+            .padding(.horizontal, 24)
+            .padding(.top, 18)
+            .frame(maxWidth: 1180)
+            .frame(maxWidth: .infinity)
+
+            Group {
+                switch ui.settingsTab {
+                case .general: GeneralSettings()
+                case .appearance: AppearanceSettings()
+                case .frameworks: FrameworkSettings()
+                case .safety: SafetySettings()
+                case .data: DataSettings()
+                }
+            }
+            .scrollContentBackground(.hidden)
+            // The form keeps a comfortable width and lines up with the header.
+            .frame(maxWidth: 760, maxHeight: .infinity)
+            .padding(.leading, 4)
+            .frame(maxWidth: 1180, alignment: .leading)
+            .frame(maxWidth: .infinity)
         }
-        .frame(width: 580, height: 460)
-        .tint(Palette.accent)
-        .preferredColorScheme(.dark)
+        .background(AmbientBackground())
     }
 }
 
