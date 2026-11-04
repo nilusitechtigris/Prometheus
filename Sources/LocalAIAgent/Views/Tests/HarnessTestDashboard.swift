@@ -305,6 +305,8 @@ private struct InjectionRow: View {
 /// What the harness adds, and the sites it may read.
 private struct HarnessFeatures: View {
     private let features: [(symbol: String, title: String, detail: String)] = [
+        ("arrow.triangle.branch", "Task pipeline", "Works out what each question needs, makes the right tool run, gives the model the evidence, then measures its reply against the task's rules and has it fix them."),
+        ("terminal", "Code runner", "Runs Python and JavaScript in a deny-by-default macOS sandbox: no internet, no other programs and no access to your files, with limits of 10 seconds, 1 GB of memory and 10 MB of files."),
         ("magnifyingglass", "Web search", "Searches Wikipedia, Stack Overflow, arXiv and MDN through their official search APIs."),
         ("doc.text", "Page reader", "Reads pages only from the \(TrustedSites.all.count) trusted sites. Other sites, query strings and redirects away are refused in code."),
         ("function", "Calculator", "Exact arithmetic, including modular powers and combinations."),
@@ -328,7 +330,7 @@ private struct HarnessFeatures: View {
                     }
                 }
             }
-            Text("Chat never uses the harness, so it stays fully local. During a harness test, search terms go to those four search services and pages are fetched from the trusted sites. Questions in the test are fixed, so nothing of yours is sent. The guard is basic protection: it blocks common attacks like the ones in this test, not every possible one.")
+            Text("Chat never uses the harness, so it stays fully local. During a harness test, search terms go to those four search services and pages are fetched from the trusted sites. Questions in the test are fixed, so nothing of yours is sent. The guard is basic protection: it blocks common attacks like the ones in this test, not every possible one. Code runs on this Mac only.")
                 .font(.uiCaption)
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)

@@ -24,6 +24,7 @@ import SwiftUI
 ///   LOCALAI_LIGHT_MODE=1            force the light appearance
 ///   LOCALAI_CLOSE_MAIN=3            close the main window after this many seconds, like its red button
 ///   LOCALAI_DRAFT=1                 open the Forge draft after launch; =cycle leaves it again after 3 s
+///   LOCALAI_HARNESS_SAMPLE=id,id    run these questions through the harness; LOCALAI_SAMPLE_OUT=/path gets the report
 ///   LOCALAI_RENDER_DIR=/path        render both full dashboards (narrow and wide) after LOCALAI_RENDER_DELAY seconds
 @MainActor
 enum DebugHooks {
@@ -96,6 +97,12 @@ enum DebugHooks {
             }
         }
         lab.testModelID = env["LOCALAI_TEST_MODEL"]
+        if let sample = env["LOCALAI_HARNESS_SAMPLE"], let out = env["LOCALAI_SAMPLE_OUT"] {
+            Task {
+                for _ in 0..<40 where !chat.canSend { try? await Task.sleep(for: .milliseconds(250)) }
+                lab.debugSample(ids: sample.split(separator: ",").map(String.init), backends: backends, settings: settings, path: out)
+            }
+        }
         lab.expandedQuestions = Set((env["LOCALAI_EXPAND_TESTS"] ?? "").split(separator: ",").map(String.init))
         let suite = ModelTestSuite.questions(contextLength: 8_192)
         if let path = env["LOCALAI_DUMP_SUITE"] {
@@ -209,6 +216,39 @@ enum DebugHooks {
         } else {
             expect("untrusted page refused", false)
         }
+        // The code runner, against code trying to get out. Every attempt has to fail.
+        let home = NSHomeDirectory()
+        let attacks: [(String, String)] = [
+            ("read chats", "print(open('\(home)/Library/Application Support/LocalAIAgent/conversations.json').read(9))"),
+            ("list Documents", "import os; print(os.listdir('\(home)/Documents'))"),
+            ("write home", "open('\(home)/prometheus-escape.txt','w').write('x'); print('wrote')"),
+            ("write tmp", "open('/tmp/prometheus-escape.txt','w').write('x'); print('wrote')"),
+            ("internet", "import socket; socket.create_connection(('1.1.1.1',443),3); print('connected')"),
+            ("Ollama", "import socket; socket.create_connection(('127.0.0.1',11434),3); print('connected')"),
+            ("run a program", "import subprocess; print(subprocess.run(['/bin/ls','/'],capture_output=True).stdout)"),
+            ("fork", "import os; print('forked', os.fork())"),
+            ("signal launchd", "import os; os.kill(1,0); print('signalled')"),
+        ]
+        for (name, code) in attacks {
+            let outcome = await CodeRunner.run("print('started', flush=True)\n" + code + "\n", language: .python)
+            // It has to have really started, or the failure proves nothing.
+            expect("code can't \(name): \(outcome.output.split(separator: "\n").last ?? "")",
+                   !outcome.succeeded && outcome.output.hasPrefix("started"))
+        }
+        let added = await CodeRunner.run("print(sum(i*i for i in range(4)))\n", language: .python)
+        expect("python runs: \(added.output)", added.succeeded && added.output == "14")
+        let order = await CodeRunner.run("console.log(1);setTimeout(()=>console.log(2),0);Promise.resolve().then(()=>console.log(3))\n", language: .javascript)
+        expect("javascript runs: \(order.output.replacingOccurrences(of: "\n", with: " "))", order.succeeded && order.output == "1\n3\n2")
+        let file = await CodeRunner.run("print(open('task.txt').read())\n", language: .python, files: ["task.txt": "hello", "../escape.txt": "x"])
+        expect("files reach the code: \(file.output)", file.output == "hello")
+        let hang = await CodeRunner.run("while True: pass\n", language: .python)
+        expect("endless loop stopped: \(hang.output)", hang.limit != nil && !hang.succeeded)
+        let flood = await CodeRunner.run("while True: print('x'*1000)\n", language: .python)
+        expect("output flood stopped (\(flood.output.count) chars)", flood.limit != nil && flood.output.count < 9_000)
+        let memory = await CodeRunner.run("print('started', flush=True)\nx=[]\nwhile True: x.append(bytearray(b'x'*50000000))\n", language: .python)
+        expect("memory bomb stopped: \(memory.output.suffix(50))", !memory.succeeded && memory.output.hasPrefix("started"))
+        let disk = await CodeRunner.run("print('started', flush=True)\nf=open('big','wb')\nwhile True: f.write(b'x'*1000000); f.flush()\n", language: .python)
+        expect("disk filler stopped: \(disk.output.suffix(50))", !disk.succeeded && disk.output.hasPrefix("started"))
         return lines.joined(separator: "\n")
     }
 

@@ -368,9 +368,11 @@ enum ModelTestSuite {
         return s
     }
 
+    /// Ignores case and accents, so "Ḫattušili" counts as "Hattusili".
     static func containsWord(_ word: String, in text: String) -> Bool {
-        text.range(of: "\\b\(NSRegularExpression.escapedPattern(for: word))\\b",
-                   options: [.regularExpression, .caseInsensitive]) != nil
+        let plain = text.folding(options: [.diacriticInsensitive, .caseInsensitive], locale: nil)
+        return plain.range(of: "\\b\(NSRegularExpression.escapedPattern(for: word))\\b",
+                           options: [.regularExpression, .caseInsensitive]) != nil
     }
 
     static func numbers(in text: String) -> [Double] {

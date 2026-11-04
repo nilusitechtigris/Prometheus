@@ -95,13 +95,33 @@ final class TestLab {
     // MARK: - Model test
 
     /// What a run needs to know about the model it's testing.
-    private struct TestSetup {
+    struct TestSetup {
         let model: LocalModel
         let backend: LLMBackend
         let context: Int
         let think: Bool?
         let supportsTools: Bool
     }
+
+    #if DEBUG
+    /// Runs a few questions through the harness, for checking changes without a full test.
+    func debugSample(ids: [String], backends: BackendController, settings: AppSettings, path: String) {
+        guard let model = testModel(in: backends) else { return }
+        Task {
+            let setup = await Self.prepare(model, backends: backends, settings: settings)
+            var lines: [String] = ["model \(model.id) tools \(setup.supportsTools)"]
+            for question in ModelTestSuite.questions(contextLength: setup.context) where ids.contains(question.id) {
+                let (item, _) = await Self.ask(question, setup: setup, harness: true)
+                lines.append("\(item.passed ? "PASS" : "FAIL") \(item.id) (\(item.weight) pts, \(Int(item.seconds)) s) expected \(item.expected)")
+                if !item.passed { lines.append("   full: \(item.answer.suffix(260))") }
+                lines.append("   answer: \(ModelTestSuite.finalAnswer(item.answer).prefix(90))")
+                for step in item.toolLog ?? [] { lines.append("   \(step.prefix(100))") }
+                try? lines.joined(separator: "\n").write(toFile: path, atomically: true, encoding: .utf8)
+            }
+            try? (lines + ["done"]).joined(separator: "\n").write(toFile: path, atomically: true, encoding: .utf8)
+        }
+    }
+    #endif
 
     private static func prepare(_ model: LocalModel, backends: BackendController, settings: AppSettings) async -> TestSetup {
         let backend = backends.backend
@@ -303,12 +323,13 @@ final class TestLab {
 
     private static func ask(_ question: ModelTestQuestion, setup: TestSetup, harness: Bool) async -> (ModelTestItemResult, BackendStats?) {
         let useTools = harness && setup.supportsTools
-        var system = ModelTestSuite.systemPrompt
-        if harness { system += "\n\n" + PromptGuard.systemRules }
-        if useTools { system += "\n\n" + HarnessTools.systemRules }
+        let system = ModelTestSuite.systemPrompt
         let start = Date()
-        let reply = await converse([ChatTurn(role: "system", content: system), ChatTurn(role: "user", content: question.prompt)],
-                                   setup: setup, maxTokens: tokenLimit(question, context: setup.context), useTools: useTools)
+        let limit = tokenLimit(question, context: setup.context)
+        let reply = harness
+            ? await pipelineReply(prompt: question.prompt, setup: setup, maxTokens: limit, useTools: useTools)
+            : await converse([ChatTurn(role: "system", content: system), ChatTurn(role: "user", content: question.prompt)],
+                             setup: setup, maxTokens: limit, useTools: false)
         let stats = reply.stats
         var item = ModelTestItemResult(
             id: question.id, category: question.category, title: question.title, expected: question.expected,
@@ -325,14 +346,14 @@ final class TestLab {
         item.summary = question.summary
         item.prompt = question.shortPrompt ?? question.prompt
         item.stopReason = stats?.stopReason
-        if useTools {
+        if harness {
             item.toolLog = reply.toolLog
             item.guardRemoved = reply.guardRemoved
         }
         return (item, stats)
     }
 
-    private struct Reply {
+    struct Reply {
         var answer = ""
         var thinkingTokens = 0
         var firstToken: Date?
@@ -346,12 +367,13 @@ final class TestLab {
     private static let maxToolRounds = 4
 
     /// Gets a reply from the model, running any tools it asks for along the way.
-    private static func converse(_ startingTurns: [ChatTurn], setup: TestSetup, maxTokens: Int, useTools: Bool) async -> Reply {
+    static func converse(_ startingTurns: [ChatTurn], setup: TestSetup, maxTokens: Int, useTools: Bool,
+                         think: Bool?? = .none) async -> Reply {
         var turns = startingTurns
         var reply = Reply()
         for round in 0...maxToolRounds {
             let request = ChatRequest(model: setup.model.id, messages: turns, temperature: 0, contextLength: setup.context,
-                                      maxTokens: maxTokens, think: setup.think,
+                                      maxTokens: maxTokens, think: think ?? setup.think,
                                       tools: useTools && round < maxToolRounds ? HarnessTools.definitions : [])
             var text = "", calls: [ToolCall] = []
             var parser = ThinkTagParser()
@@ -392,7 +414,7 @@ final class TestLab {
     }
 
     /// Adds up one question's rounds of tool use.
-    private static func merge(_ total: BackendStats?, _ next: BackendStats) -> BackendStats {
+    static func merge(_ total: BackendStats?, _ next: BackendStats) -> BackendStats {
         guard var total else { return next }
         total.completionTokens = (total.completionTokens ?? 0) + (next.completionTokens ?? 0)
         total.evalSeconds = (total.evalSeconds ?? 0) + (next.evalSeconds ?? 0)

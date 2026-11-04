@@ -13,12 +13,16 @@ enum HarnessTools {
         ToolDefinition(name: "calculate",
                        description: "Evaluate arithmetic exactly. Supports + - * / % ^, parentheses, powmod(a,b,m), gcd(a,b), lcm(a,b), comb(n,k), factorial(n) and sqrt(x).",
                        parameters: [.init(name: "expression", description: "The expression, such as powmod(3,200,1000)")]),
+        ToolDefinition(name: "run_code",
+                       description: "Run a short Python or JavaScript program and get what it prints. It runs in a sandbox with no internet and no access to files.",
+                       parameters: [.init(name: "language", description: "python or javascript"),
+                                    .init(name: "code", description: "The program, which should print its result")]),
     ]
 
     static let systemRules = """
-    You have tools: web_search, open_page and calculate. Don't rely on memory or mental arithmetic when a tool can check it: \
-    use calculate for any arithmetic, and web_search for any fact you aren't certain of. Then give your final reply in the \
-    format the question asks for.
+    You have tools: web_search, open_page, calculate and run_code. Don't rely on memory or mental arithmetic when a tool can \
+    check it: use run_code or calculate for anything computed, and web_search for any fact you aren't certain of. Then give \
+    your final reply in the format the question asks for.
     """
 
     /// Runs one tool call. Returns what the model should read, how much the guard removed from it,
@@ -36,6 +40,11 @@ enum HarnessTools {
                 return (safe.text, safe.removed, false)
             case .failure(let error): return ("The search failed: \(error.message)", 0, true)
             }
+        case "run_code":
+            let language = CodeRunner.Language(rawValue: call.arguments["language"]?.lowercased() ?? "") ?? .python
+            let outcome = await CodeRunner.run(call.arguments["code"] ?? "", language: language)
+            let safe = PromptGuard.wrap(outcome.output.isEmpty ? "The program printed nothing." : outcome.output, source: "your program")
+            return (safe.text, safe.removed, !outcome.succeeded)
         case "open_page":
             let address = call.arguments["url"] ?? ""
             switch await WebTools.open(address) {
@@ -58,6 +67,7 @@ enum HarnessTools {
         case "web_search": return "Searched: \(call.arguments["query"] ?? "")"
         case "open_page": return "Opened: \(call.arguments["url"] ?? "")"
         case "calculate": return "Calculated: \(call.arguments["expression"] ?? "")"
+        case "run_code": return "Ran \(call.arguments["language"] ?? "code")"
         default: return "Tried unknown tool: \(call.name)"
         }
     }
