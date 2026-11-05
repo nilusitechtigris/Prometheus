@@ -147,8 +147,10 @@ struct TextRules {
         }
     }
 
+    /// A sentence with nothing to end it would run into the next one when the reply is read back.
     func joined(_ units: [String]) -> String {
-        units.joined(separator: unit == .line ? "\n" : " ")
+        if unit == .line { return units.joined(separator: "\n") }
+        return units.map { noPunctuation || ".!?".contains($0.last ?? ".") ? $0 : $0 + "." }.joined(separator: " ")
     }
 
     private func wordsNeeded(at index: Int) -> Int? { wordsAt[index] ?? wordsEach }

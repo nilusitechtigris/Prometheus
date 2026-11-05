@@ -239,7 +239,7 @@ private struct SafetySettings: View {
             } header: {
                 Text("Harness")
             } footer: {
-                Text("Rounds are for \(HarnessVersion.loop.title): how many times it may go back and try again when a reply fails its checks, in chat and in the Harness Test. More rounds can fix more replies, and take longer.")
+                Text("Rounds are for \(HarnessVersion.loop.short) and \(HarnessVersion.thinking.short): how many times it may go back and try again when a reply fails its checks, in chat and in the Harness Test. More rounds can fix more replies, and take longer.")
                     .font(.uiCaption)
                     .foregroundStyle(.secondary)
             }

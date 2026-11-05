@@ -106,6 +106,11 @@ final class TestLab {
         var temperature = 0.0
         /// Rounds the harness gets on a task.
         var maxRounds = 3
+        /// In v4, when the model stops thinking at each step. Nil in every other case.
+        var thinkingUntil: Date?
+
+        /// Whether the step about to run should think, rather than use as few tokens as it can.
+        var thinksAtSteps: Bool { thinkingUntil.map { Date() < $0 } ?? false }
     }
 
     #if DEBUG
@@ -283,7 +288,7 @@ final class TestLab {
                     }) else { break }
                     run.baselineRunID = baseline.id
                     run.toolsAvailable = setup.supportsTools
-                    run.harnessRounds = version == .loop ? setup.maxRounds : nil
+                    run.harnessRounds = version.usesRounds ? setup.maxRounds : nil
                     run.injectionWithout = without
                     run.injectionWith = with
                     run.duration = Date().timeIntervalSince(began)
@@ -412,6 +417,8 @@ final class TestLab {
         var onStage: ((HarnessStage, Int) -> Void)?
         /// The best reply so far.
         var onDraft: ((String) -> Void)?
+        /// More of what the model thought at a step that doesn't stream into the chat by itself.
+        var onThought: ((String) -> Void)?
     }
 
     /// Rounds of tool use a question gets. After that the model has to answer with what it has.
@@ -419,7 +426,7 @@ final class TestLab {
 
     /// Gets a reply from the model, running any tools it asks for along the way.
     static func converse(_ startingTurns: [ChatTurn], setup: TestSetup, maxTokens: Int, useTools: Bool,
-                         think: Bool?? = .none) async -> Reply {
+                         think: Bool?? = .none, onThought: (String) -> Void = { _ in }) async -> Reply {
         var turns = startingTurns
         var reply = Reply()
         var gate = ToolGate()
@@ -433,14 +440,18 @@ final class TestLab {
                 for try await event in setup.backend.chat(request) {
                     if Task.isCancelled { break }
                     switch event {
-                    case .thinking:
+                    case .thinking(let thought):
                         if reply.firstToken == nil { reply.firstToken = Date() }
                         reply.thinkingTokens += 1
+                        onThought(thought)
                     case .content(let chunk):
                         if reply.firstToken == nil { reply.firstToken = Date() }
                         let parts = parser.feed(chunk)
                         text += parts.answer
-                        if !parts.thinking.isEmpty { reply.thinkingTokens += 1 }
+                        if !parts.thinking.isEmpty {
+                            reply.thinkingTokens += 1
+                            onThought(parts.thinking)
+                        }
                     case .toolCall(let call):
                         calls.append(call)
                     case .finished(let stats):

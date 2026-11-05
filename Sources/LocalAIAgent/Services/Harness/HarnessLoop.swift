@@ -5,6 +5,11 @@ import Foundation
 /// seconds runs out. It keeps the best attempt so far, so another round can't make the result worse.
 /// Check is code, not the model's opinion of itself, and it sees only the task, never an expected
 /// answer, so it works the same on anything.
+///
+/// v3 keeps thinking off wherever it can, to save tokens. v4 is the same loop with the model thinking at
+/// every step it takes part in, when Think is on. A failed check reaches the next round's thinking as
+/// the problems it has to fix, so Check stays code, and a step that thinks itself out of room goes again
+/// without thinking, so v4 can't end up with less than v3 would have had.
 extension TestLab {
     enum TaskKind: String {
         case calculation, code, fact, document, writing, other
@@ -65,18 +70,67 @@ extension TestLab {
 
     /// Time a task gets per round. A round that has started always finishes.
     private static let secondsPerRound = 60.0
+    /// The same with thinking at each step. A step can think for 80 seconds at 25 tokens a second, the
+    /// slowest speed in the saved runs, and most rounds have two steps that call the model.
+    private static let thinkingSecondsPerRound = 180.0
     /// Plenty for stating a result, and little enough that thinking can't use up a small context.
     private static let tightTokens = 384
     private static let triesPerUnit = 6
 
+    /// Tokens a step gets on top of its reply for thinking, since a model's limit counts both. Qwen3 1.7B
+    /// used 350 to over 2,000 at a single step, and writing a program used the most. A quarter of the
+    /// context still leaves room for the prompt and the reply.
+    static func thinkingRoom(_ setup: TestSetup) -> Int { min(setup.context / 4, 2_048) }
+
+    /// One step's request to the model, for a step that needs a short reply in `tokens` tokens. Its cost
+    /// lands in `total`. In v4 the model thinks first, and if that leaves no reply the step goes again
+    /// without thinking. `log` is whether this step gets its own line, since a rewrite logs for itself.
+    static func stepReply(_ stage: HarnessStage, _ turns: [ChatTurn], setup: TestSetup, tokens: Int, log: Bool = true,
+                          total: inout Reply) async -> Reply {
+        if setup.thinksAtSteps {
+            // Chat shows thinking as it comes, in the small batches it takes to keep up.
+            let tell = total.onThought
+            var unsent = (total.thinkingTokens > 0 ? "\n\n" : "") + "\(stage.title):\n", sent = Date.distantPast
+            let reply = await converse(turns, setup: setup, maxTokens: tokens + thinkingRoom(setup), useTools: false, think: true) { thought in
+                unsent += thought
+                if Date().timeIntervalSince(sent) > 0.05 {
+                    tell?(unsent)
+                    unsent = ""
+                    sent = Date()
+                }
+            }
+            if reply.thinkingTokens > 0 { tell?(unsent) }
+            absorb(reply, into: &total)
+            if log { noteThinking(stage, reply, total: &total) }
+            if hasReply(reply) { return reply }
+            total.toolLog.append("\(stage.title): ran out of room thinking, so it went again without")
+        }
+        let reply = await converse(turns, setup: setup, maxTokens: tokens, useTools: false, think: setup.think == nil ? nil : false)
+        absorb(reply, into: &total)
+        return reply
+    }
+
+    /// False when thinking used up the tokens before any reply came. Being stopped or an error isn't that.
+    private static func hasReply(_ reply: Reply) -> Bool {
+        reply.error != nil || Task.isCancelled || !reply.answer.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+
+    private static func noteThinking(_ stage: HarnessStage, _ reply: Reply, total: inout Reply) {
+        if reply.thinkingTokens > 0 { total.toolLog.append("\(stage.title): thought for \(reply.thinkingTokens) tokens") }
+    }
+
     /// Works a task through the loop. `answer` is how the caller gets a reply from the model, so chat can
     /// stream it. `earlier` is the chat so far. The result lands in `total.answer`.
-    static func runLoop(prompt: String, earlier: String = "", setup: TestSetup, total: inout Reply,
+    /// `thinkEachStep` is the difference between v3 and v4, and only counts with thinking on.
+    static func runLoop(prompt: String, earlier: String = "", setup: TestSetup, thinkEachStep: Bool = false, total: inout Reply,
                         answer: (AnswerPlan) async -> Reply) async {
         let started = Date()
         let rounds = max(setup.maxRounds, 1)
-        let budget = Double(rounds) * secondsPerRound
+        let thinks = thinkEachStep && setup.think == true
+        let budget = Double(rounds) * (thinks ? thinkingSecondsPerRound : secondsPerRound)
         let task = HarnessTask(prompt: prompt, earlier: earlier)
+        var setup = setup
+        if thinks { setup.thinkingUntil = started.addingTimeInterval(budget) }
 
         total.onStage?(.understand, 1)
         let kind = await understand(task, setup: setup, total: &total)
@@ -101,8 +155,19 @@ extension TestLab {
                 let draft = await repairUnits(of: best?.text ?? "", task: task, state: &state, setup: setup, total: &total)
                 attempt = judge(draft, cut: false, task: task, state: state)
             } else {
-                let reply = await answer(plan(round: round, task: task, state: state, last: last, setup: setup))
+                var answerPlan = plan(round: round, task: task, state: state, last: last, setup: setup)
+                var reply = await answer(answerPlan)
                 absorb(reply, into: &total)
+                if answerPlan.think == true {
+                    noteThinking(.answer, reply, total: &total)
+                    if !hasReply(reply) {
+                        total.toolLog.append("Answer: ran out of room thinking, so it went again without")
+                        answerPlan.think = false
+                        answerPlan.maxTokens = tightTokens
+                        reply = await answer(answerPlan)
+                        absorb(reply, into: &total)
+                    }
+                }
                 if let error = reply.error {
                     total.error = error
                     break
@@ -150,7 +215,8 @@ extension TestLab {
     // MARK: Answer
 
     /// Thinking is for working something out. Once a tool has the answer, or code will check the reply,
-    /// it only uses up the tokens, which is how a small model ends up with no reply at all.
+    /// it only uses up the tokens, which is how a small model ends up with no reply at all. So v4 gives
+    /// it room for both, unless the last reply got cut off, when thinking is what there wasn't room for.
     private static func plan(round: Int, task: HarnessTask, state: LoopState, last: Attempt?, setup: TestSetup) -> AnswerPlan {
         var plan = AnswerPlan(task: task.ask)
         plan.addendum = evidenceNote(state.evidence)
@@ -159,7 +225,11 @@ extension TestLab {
             if let label = state.rules.finalLabel { plan.addendum += "\nEnd your reply with this line:\n\(label): \(result)" }
         }
         let needsWorking = state.kind == .document && task.needsCounting && state.result == nil
-        if round > 1 || (!needsWorking && (!state.evidence.isEmpty || state.rules.hasShape)) {
+        let tight = round > 1 || (!needsWorking && (!state.evidence.isEmpty || state.rules.hasShape))
+        if setup.thinksAtSteps, last?.problems.contains(.cutOff) != true {
+            plan.think = true
+            if tight { plan.maxTokens = tightTokens + thinkingRoom(setup) }
+        } else if tight {
             plan.think = setup.think == nil ? nil : false
             plan.maxTokens = tightTokens
         }
@@ -190,13 +260,11 @@ extension TestLab {
         // The same prompt at temperature 0 would bring back the same text.
         var varied = setup
         varied.temperature = max(setup.temperature, 0.7)
-        let think: Bool?? = setup.think == nil ? .none : .some(false)
         let topic = task.topic
         var words: [String] = []
         if let letter = rules.startLetter {
             let request = "Topic: \(topic)\n\nList 12 different words that start with the letter \(letter.uppercased()) and fit this topic. One word per line, nothing else."
-            let reply = await converse([ChatTurn(role: "user", content: request)], setup: varied, maxTokens: 80, useTools: false, think: think)
-            absorb(reply, into: &total)
+            let reply = await stepReply(.answer, [ChatTurn(role: "user", content: request)], setup: varied, tokens: 80, log: false, total: &total)
             words = rules.firstWords(in: reply.answer).filter { !state.usedWords.contains($0) }
         }
 
@@ -208,8 +276,7 @@ extension TestLab {
                 let word = words.isEmpty ? nil : words.removeFirst()
                 if let word { state.usedWords.insert(word) }
                 let request = "Topic: \(topic)\n\n\(rules.request(at: index, firstWord: word))"
-                let reply = await converse([ChatTurn(role: "user", content: request)], setup: varied, maxTokens: 80, useTools: false, think: think)
-                absorb(reply, into: &total)
+                let reply = await stepReply(.answer, [ChatTurn(role: "user", content: request)], setup: varied, tokens: 80, log: false, total: &total)
                 guard let option = rules.firstUnit(in: reply.answer) else { continue }
                 let problems = rules.violations(ofUnit: option, at: index).count
                 if problems < bestProblems {

@@ -64,7 +64,8 @@ struct HarnessTestDashboard: View {
         let thinking = testModel?.catalog?.thinking == true && settings.thinkingEnabled && backends.kind == .ollama
         let versions = lab.harnessChoice == nil ? HarnessVersion.allCases.count : 1
         let time = thinking ? "Thinking on, can take \(versions * 2)+ hours" : "Takes up to \(versions == 1 ? "an hour" : "\(versions) hours")"
-        return "\(backends.kind.displayName) · \(context) context · \(time)"
+        let sameAsLoop = !thinking && lab.harnessChoice == .thinking ? " · Without thinking, \(HarnessVersion.thinking.short) runs like \(HarnessVersion.loop.short)" : ""
+        return "\(backends.kind.displayName) · \(context) context · \(time)\(sameAsLoop)"
     }
 
     // MARK: Overview
@@ -387,7 +388,7 @@ private struct VersionCard: View {
                                     .background(Palette.accent.opacity(0.10), in: RoundedRectangle(cornerRadius: 6, style: .continuous))
                             }
                         }
-                        if version == .loop {
+                        if version.usesRounds {
                             Label("Fails? Back to Act", systemImage: "arrow.counterclockwise")
                                 .font(.uiCaption2)
                                 .foregroundStyle(Palette.accent)

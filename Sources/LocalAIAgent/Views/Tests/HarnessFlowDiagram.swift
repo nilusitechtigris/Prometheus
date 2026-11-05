@@ -35,8 +35,9 @@ struct HarnessFlowDiagram: View {
                 stacked
             }
             loopNote
+            thinkingNote
             guardrails
-            Text("This is \(HarnessVersion.latest.title), the newest version. It's off in chat until you pick a version with the Harness button under the message box. With it on, search terms go to Wikipedia, Stack Overflow, arXiv and MDN, pages come from the trusted sites, and every search and page is listed above the reply. Test questions are fixed, so a test sends nothing of yours. In a test the model can also call the web search, page reader, calculator and code runner itself. In chat, v2 and v3 keep those tools with the harness, so a web page can't steer one while your chat is in view. In v1 the model holds them, so once it has read the web it can't search again and can only open links it was given. The guard is basic protection: it blocks common attacks like the ones in this test, not every possible one. Code runs on this Mac only.")
+            Text("This is \(HarnessVersion.latest.title), the newest version. It's off in chat until you pick a version with the Harness button under the message box. With it on, search terms go to Wikipedia, Stack Overflow, arXiv and MDN, pages come from the trusted sites, and every search and page is listed above the reply. Test questions are fixed, so a test sends nothing of yours. In a test the model can also call the web search, page reader, calculator and code runner itself. In chat, v2, v3 and v4 keep those tools with the harness, so a web page can't steer one while your chat is in view. In v1 the model holds them, so once it has read the web it can't search again and can only open links it was given. The guard is basic protection: it blocks common attacks like the ones in this test, not every possible one. Code runs on this Mac only.")
                 .font(.uiCaption)
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
@@ -129,14 +130,25 @@ struct HarnessFlowDiagram: View {
 
     /// The way back from Check to Act.
     private var loopNote: some View {
+        note(symbol: "arrow.counterclockwise", title: "Check fails? Back to step 2",
+             text: "Code checks every reply: was it cut off, does it state the tool's result, is the answer in the sources, does it break a rule such as a word count or a banned letter. If it fails, the harness goes round again with what it learned, up to the rounds set in Settings › Safety. Each round can read the next page, search again, fix the program or rewrite one sentence. It stops when a round changes nothing, and it always keeps the best attempt so far.")
+    }
+
+    /// What the model does at each step in the newest version.
+    private var thinkingNote: some View {
+        note(symbol: "brain.head.profile", title: "Think on? The model thinks at each step",
+             text: "With Think on, the model reasons before it classifies a task, picks a search, writes a program, answers or rewrites a sentence, and it sees what Check found wrong when it goes round again. Each step gets extra tokens for this, and if thinking uses them all, that step goes again without thinking. Check stays code, and anything plain code can settle, such as a simple sum, doesn't call the model at all. This takes longer than \(HarnessVersion.loop.short). With Think off the two work the same.")
+    }
+
+    private func note(symbol: String, title: String, text: String) -> some View {
         HStack(alignment: .top, spacing: 8) {
-            Image(systemName: "arrow.counterclockwise")
+            Image(systemName: symbol)
                 .font(.system(size: 13, weight: .bold))
                 .foregroundStyle(Palette.accent)
                 .frame(width: 20)
             VStack(alignment: .leading, spacing: 2) {
-                Text("Check fails? Back to step 2").font(.uiCallout.weight(.semibold))
-                Text("Code checks every reply: was it cut off, does it state the tool's result, is the answer in the sources, does it break a rule such as a word count or a banned letter. If it fails, the harness goes round again with what it learned, up to the rounds set in Settings › Safety. Each round can read the next page, search again, fix the program or rewrite one sentence. It stops when a round changes nothing, and it always keeps the best attempt so far.")
+                Text(title).font(.uiCallout.weight(.semibold))
+                Text(text)
                     .font(.uiCaption)
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)

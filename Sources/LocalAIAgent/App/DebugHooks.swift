@@ -26,7 +26,7 @@ import SwiftUI
 ///   LOCALAI_CHAT_SEARCH=text        search the chats for this after launch
 ///   LOCALAI_HARNESS_SAMPLE=id,id    run these questions through the harness; LOCALAI_SAMPLE_OUT=/path gets the report
 ///   LOCALAI_CHAT_HARNESS=1          turn the harness on for chat
-///   LOCALAI_HARNESS_VERSION=tools|pipeline|loop   the version chat, the sample and the Harness tab use
+///   LOCALAI_HARNESS_VERSION=tools|pipeline|loop|thinking   the version chat, the sample and the Harness tab use
 ///   LOCALAI_SETTINGS_TAB=safety     open that section of the Settings page
 ///   LOCALAI_PICK_CHATS=all|2        start in the chats' Select mode with these chats ticked
 ///   LOCALAI_DELETE_PICKED=1         delete the ticked chats after 3 s
@@ -363,6 +363,7 @@ enum DebugHooks {
         expect("old run with rounds is the loop", oldRun(rounds: 3, log: ["Understood: fact task"]).version == .loop)
         expect("old run that logged a task is the pipeline", oldRun(rounds: nil, log: ["Understood: fact task"]).version == .pipeline)
         expect("old run that logged nothing is model tools", oldRun(rounds: nil, log: []).version == .tools)
+        lines += await stepThinkingCheck()
         // The code runner, against code trying to get out. Every attempt has to fail.
         let home = NSHomeDirectory()
         let attacks: [(String, String)] = [
@@ -399,6 +400,103 @@ enum DebugHooks {
         return lines.joined(separator: "\n")
     }
 
+    /// What v3 and v4 ask of a model at each step, against a scripted one, so this runs no real model.
+    private static func stepThinkingCheck() async -> [String] {
+        var lines: [String] = []
+        func expect(_ name: String, _ ok: Bool) { lines.append("\(ok ? "PASS" : "FAIL") \(name)") }
+        func finished(_ reason: String) -> StreamEvent {
+            var stats = BackendStats()
+            stats.stopReason = reason
+            return .finished(stats)
+        }
+        /// A model that thinks when asked to and always has a reply.
+        func willing(_ reply: String) -> (ChatRequest) -> [StreamEvent] {
+            { request in (request.think == true ? [.thinking("hmm")] : []) + [.content(reply), finished("stop")] }
+        }
+        func isStep(_ request: ChatRequest) -> Bool { request.messages.last?.content.contains("Don't solve this yet") == true }
+        func run(_ version: HarnessVersion, _ prompt: String, think: Bool?, _ script: @escaping (ChatRequest) -> [StreamEvent])
+            async -> (requests: [ChatRequest], reply: TestLab.Reply) {
+            let backend = ScriptedBackend(script: script)
+            let setup = TestLab.TestSetup(model: LocalModel(id: "scripted"), backend: backend, context: 8_192, think: think, supportsTools: false)
+            let reply = await TestLab.harnessReply(version, prompt: prompt, setup: setup, maxTokens: 512)
+            return (backend.requests, reply)
+        }
+        let room = 2_048
+        let plain = "Tell me something nice about autumn."
+
+        let v4 = await run(.thinking, plain, think: true, willing("Autumn is lovely."))
+        expect("v4 thinks at Understand, with room", v4.requests.first?.think == true && v4.requests.first?.maxTokens == 120 + room)
+        expect("v4 thinks at Answer", v4.requests.last?.think == true)
+        expect("v4 logs each step's thinking", v4.reply.toolLog.contains("Understand: thought for 1 tokens") && v4.reply.toolLog.contains("Answer: thought for 1 tokens"))
+        let v3 = await run(.loop, plain, think: true, willing("Autumn is lovely."))
+        expect("v3 still skips thinking at Understand", v3.requests.first?.think == false && v3.requests.first?.maxTokens == 120)
+        expect("v3 still logs no thinking", !v3.reply.toolLog.contains { $0.contains("thought for") })
+        let off = await run(.thinking, plain, think: false, willing("Autumn is lovely."))
+        expect("v4 with Think off asks what v3 does", off.requests.map(\.think) == [false, false] && off.requests.first?.maxTokens == 120)
+        let none = await run(.thinking, plain, think: nil, willing("Autumn is lovely."))
+        expect("v4 on a model that can't think sends no setting", none.requests.allSatisfy { $0.think == nil })
+
+        let lostStep = await run(.thinking, plain, think: true) { request in
+            request.think == true && isStep(request) ? [.thinking("hmm"), finished("length")] : willing("Autumn is lovely.")(request)
+        }
+        expect("a step that runs out of room goes again without thinking",
+               lostStep.requests.map(\.think) == [true, false, true] && lostStep.requests[1].maxTokens == 120
+                   && lostStep.reply.toolLog.contains("Understand: ran out of room thinking, so it went again without"))
+        let lostAnswer = await run(.thinking, plain, think: true) { request in
+            request.think == true && !isStep(request) ? [.thinking("hmm"), finished("length")] : willing("Autumn is lovely.")(request)
+        }
+        expect("an answer that runs out of room goes again without thinking",
+               lostAnswer.requests.last?.think == false && lostAnswer.requests.last?.maxTokens == 384 && lostAnswer.reply.answer == "Autumn is lovely.")
+        var cutOnce = false
+        let cut = await run(.thinking, plain, think: true) { request in
+            guard !isStep(request), !cutOnce else { return willing("Autumn is lovely.")(request) }
+            cutOnce = true
+            return [.thinking("hmm"), .content("Autumn is"), finished("length")]
+        }
+        expect("a cut off reply is retried without thinking", cut.requests.last?.think == false && cut.requests.last?.maxTokens == 384)
+
+        let sum = "How much do 3 boxes of 12 eggs weigh if each egg is 50 grams?"
+        let program: (ChatRequest) -> [StreamEvent] = { request in
+            willing(request.messages.last?.content.contains("Write a real Python program") == true ? "```python\nprint(1800)\n```" : "Answer: 1800")(request)
+        }
+        let v4Sum = await run(.thinking, sum, think: true, program)
+        expect("v4 thinks before writing a program", v4Sum.requests.first?.think == true && v4Sum.requests.first?.maxTokens == 1_024 + room)
+        expect("v4 thinks before stating a result", v4Sum.requests.last?.think == true && v4Sum.requests.last?.maxTokens == 384 + room)
+        expect("v4 still gets the program's result: \(v4Sum.reply.answer)", v4Sum.reply.answer.contains("1800"))
+        let v3Sum = await run(.loop, sum, think: true, program)
+        expect("v3 still doesn't think there", v3Sum.requests.first?.think == false && v3Sum.requests.first?.maxTokens == 1_024
+                   && v3Sum.requests.last?.think == false && v3Sum.requests.last?.maxTokens == 384)
+
+        let poem = "Write exactly 2 sentences about rain. Each sentence must start with the letter S."
+        func isRewrite(_ request: ChatRequest) -> Bool { request.messages.first?.content.hasPrefix("Topic:") == true }
+        let v4Poem = await run(.thinking, poem, think: true, willing("Rain falls. Rain stops."))
+        let v3Poem = await run(.loop, poem, think: true, willing("Rain falls. Rain stops."))
+        expect("v4 thinks through rewrites", v4Poem.requests.contains(where: isRewrite) && v4Poem.requests.filter(isRewrite).allSatisfy { $0.think == true && $0.maxTokens == 80 + room })
+        expect("v3 still rewrites without thinking", v3Poem.requests.contains(where: isRewrite) && v3Poem.requests.filter(isRewrite).allSatisfy { $0.think == false && $0.maxTokens == 80 })
+
+        let sentences = TextRules(task: "Write exactly 3 sentences about the sea.")
+        expect("a rewritten sentence with no full stop stays apart", sentences.units(of: sentences.joined(["Sea waves crash", "Salt hangs in air!", "Sun sets."])).count == 3)
+        expect("sentences that end properly are left alone", sentences.joined(["One two.", "Three?"]) == "One two. Three?")
+        let verse = TextRules(task: "Write a 2-line poem about the sea.")
+        expect("lines get no full stops", verse.joined(["Sea waves crash", "Salt hangs"]) == "Sea waves crash\nSalt hangs")
+
+        var setup = TestLab.TestSetup(model: LocalModel(id: "scripted"), backend: ScriptedBackend(script: willing("Yes.")), context: 4_096, think: true, supportsTools: false)
+        expect("no thinking without a time limit", !setup.thinksAtSteps)
+        setup.thinkingUntil = .distantPast
+        expect("thinking stops at the limit", !setup.thinksAtSteps)
+        setup.thinkingUntil = .distantFuture
+        expect("room fits a small context", TestLab.thinkingRoom(setup) == 1_024 && setup.thinksAtSteps)
+        var heard = ""
+        var total = TestLab.Reply()
+        total.onThought = { heard += $0 }
+        let turns = [ChatTurn(role: "user", content: "Hello")]
+        _ = await TestLab.stepReply(.understand, turns, setup: setup, tokens: 40, total: &total)
+        _ = await TestLab.stepReply(.act, turns, setup: setup, tokens: 40, total: &total)
+        expect("chat hears each step's thinking under its name", heard == "Understand:\nhmm\n\nAct:\nhmm")
+        expect("each step's thinking is counted once", total.thinkingTokens == 2)
+        return lines
+    }
+
     private static func tourFrame() -> NSBitmapImageRep? {
         guard let window = NSApp.windows.first(where: { $0.isVisible && $0.className.contains("AppKitWindow") }) ?? NSApp.mainWindow,
               let view = window.contentView?.superview ?? window.contentView,
@@ -423,6 +521,28 @@ enum DebugHooks {
               let rep = view.bitmapImageRepForCachingDisplay(in: view.bounds) else { return }
         view.cacheDisplay(in: view.bounds, to: rep)
         try? rep.representation(using: .png, properties: [:])?.write(to: URL(fileURLWithPath: path))
+    }
+}
+
+/// A model that replies from a script and keeps what it was asked.
+private final class ScriptedBackend: LLMBackend, @unchecked Sendable {
+    let kind = BackendKind.ollama
+    let baseURL = URL(string: "http://localhost")!
+    private let script: (ChatRequest) -> [StreamEvent]
+    private(set) var requests: [ChatRequest] = []
+
+    init(script: @escaping (ChatRequest) -> [StreamEvent]) { self.script = script }
+
+    func ping() async throws -> String { "" }
+    func listModels() async throws -> [LocalModel] { [] }
+
+    func chat(_ request: ChatRequest) -> AsyncThrowingStream<StreamEvent, Error> {
+        requests.append(request)
+        let events = script(request)
+        return AsyncThrowingStream { continuation in
+            events.forEach { continuation.yield($0) }
+            continuation.finish()
+        }
     }
 }
 #endif
