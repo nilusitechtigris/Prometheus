@@ -78,6 +78,8 @@ extension TestLab {
             roundsRun = round
             total.onStage?(.answer, round)
             council.notes.rounds.append([])
+            // Last round's standing would be out of date as soon as anyone here writes.
+            council.notes.standing = nil
             for agent in CouncilAgent.all where !Task.isCancelled {
                 let brief = brief(for: agent, round: round, council: council)
                 let reply = await askAgent(agentPlan(agent, brief: brief, round: round, isNote: true, council: council), total: &total, answer: answer)

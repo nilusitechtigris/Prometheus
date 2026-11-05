@@ -113,9 +113,7 @@ extension TestLab {
         Don't solve this yet. Classify it, replying with exactly this line:
         TYPE: CALCULATION (needs arithmetic, counting or logic that a program could check), FACT (a fact worth looking up), WRITING (text that has to follow rules), or OTHER
         """
-        let reply = await converse([ChatTurn(role: "user", content: request)], setup: setup, maxTokens: 120, useTools: false,
-                                   think: setup.think == nil ? nil : false)
-        absorb(reply, into: &total)
+        let reply = await stepReply(.understand, [ChatTurn(role: "user", content: request)], setup: setup, tokens: 120, total: &total)
         switch capture(#"(?im)^\W*TYPE:\W*(\w+)"#, in: reply.answer)?.lowercased() {
         case "calculation": return .calculation
         case "fact": return .fact
@@ -222,9 +220,8 @@ extension TestLab {
             if let failed = state.failedProgram {
                 request += "\n\nYour last program failed, so fix it.\n\(failed.problem)\n\nThe program was:\n\(failed.code)"
             }
-            let reply = await converse([ChatTurn(role: "system", content: "You write short, correct programs."), ChatTurn(role: "user", content: request)],
-                                       setup: setup, maxTokens: 1_024, useTools: false, think: setup.think == nil ? nil : false)
-            absorb(reply, into: &total)
+            let reply = await stepReply(.act, [ChatTurn(role: "system", content: "You write short, correct programs."), ChatTurn(role: "user", content: request)],
+                                        setup: setup, tokens: 1_024, total: &total)
             guard let (language, code) = codeBlock(in: reply.answer) else {
                 total.toolLog.append("Wrote no program\(HarnessTools.failedMark)")
                 return nil
@@ -349,9 +346,7 @@ extension TestLab {
         switch state.queries.count {
         case 0:
             let request = "\(task.subject)\n\n---\nWrite a web search of 3 to 8 words that would find this. Reply with only the search words."
-            let reply = await converse([ChatTurn(role: "user", content: request)], setup: setup, maxTokens: 40, useTools: false,
-                                       think: setup.think == nil ? nil : false)
-            absorb(reply, into: &total)
+            let reply = await stepReply(.act, [ChatTurn(role: "user", content: request)], setup: setup, tokens: 40, total: &total)
             query = HarnessText.cleanQuery(firstLine(of: reply.answer))
         case 1:
             query = fromTask

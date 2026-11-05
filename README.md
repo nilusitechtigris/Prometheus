@@ -81,6 +81,7 @@ Every version stays available, in chat and in the Harness Test, so you can compa
 | **v1 Model tools** | The model gets the tools and decides when to call them. |
 | **v2 Pipeline** | The harness works out what the task needs and runs one tool, then the model answers from what it found. Kept exactly as it was. |
 | **v3 Loop** | The pipeline, plus code that checks each reply and goes round again until it passes. |
+| **v4 Thinking loop** | The loop, with the model thinking through every step it takes part in. Needs Think on: with it off, it works like v3. |
 | **v5 Council** | The newest. Code prepares a shared notes file, then three agents with their own personality and temperature discuss the task in it, thinking on. |
 
 ![The Harness Test results](docs/screenshots/harness.png)
@@ -93,12 +94,12 @@ The Versions tab puts them side by side, question by question, for runs on the s
 
 Scores out of 100, with thinking on:
 
-| Model | Context | Off | v1 | v2 | v3 | v5 |
-| --- | --- | --- | --- | --- | --- | --- |
-| Qwen3 1.7B Q4_K_M | 4K | 24 | 25 | 42 | not run | not run |
-| Qwen3 1.7B FP16 | 8K | 28 | not run | not run | 48 | not run |
+| Model | Context | Off | v1 | v2 | v3 | v4 | v5 |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| Qwen3 1.7B Q4_K_M | 4K | 24 | 25 | 42 | not run | not run | not run |
+| Qwen3 1.7B FP16 | 8K | 28 | not run | not run | 48 | not run | not run |
 
-These are single runs, so don't read much into small differences, and the two rows use different setups. The v3 run came before a calculator fix that affected one 4-point question. Injection protection stopped 7 of 7 poisoned pages in these runs, against 0 of 7 without it.
+These are single runs, so don't read much into small differences, and the two rows use different setups. The v3 run came before a calculator fix that affected one 4-point question, and v4 and v5 haven't been scored yet. Injection protection stopped 7 of 7 poisoned pages in these runs, against 0 of 7 without it.
 
 ### How v3 works
 
@@ -108,6 +109,12 @@ These are single runs, so don't read much into small differences, and the two ro
 4. **Check**: code tests the reply. Was it cut off? Does it state the tool's result? Is the answer in the sources? Does it break a rule such as a word count? If it fails, it goes back to Act with what it learned.
 
 It stops when a reply passes, when a round changes nothing, or at the rounds set in Settings › Safety, and it keeps the best attempt so far. It only ever sees the question, never the expected answer.
+
+### What v4 adds
+
+v3 turns thinking off at almost every step, to save tokens. v4 leaves it on. With Think on, the model reasons before it classifies a task, picks a search, writes a program, answers or rewrites a sentence, and it sees what Check found wrong when it goes round again.
+
+Each step gets extra tokens for this, a quarter of the context up to 2,048. If thinking uses them all, that step goes again without thinking, so a step can't end up with less than it would have had in v3. Check stays code, and anything plain code can settle, such as a simple sum, doesn't call the model at all. It takes longer than v3, and with Think off the two work the same.
 
 ### How v5 works
 
@@ -131,7 +138,7 @@ The file builds up under **Shared notes** above the reply, with a button to find
 
 ### Can the models call tools themselves?
 
-Yes. All six Qwen3 models tried so far (1.7B, 4B and 8B, in several quantizations) produce real tool calls, in 34 of 44 prompts in a short check, and all of them used a calculator result correctly. All 10 misses had thinking on and ran out of tokens before making a call, so try v1 with Think off. Being able to call a tool doesn't make the reply right, though: the 1.7B models sometimes search the web for arithmetic, or search for a fact and still get it wrong. That's why v2 and v3 don't leave it to the model.
+Yes. All six Qwen3 models tried so far (1.7B, 4B and 8B, in several quantizations) produce real tool calls, in 34 of 44 prompts in a short check, and all of them used a calculator result correctly. All 10 misses had thinking on and ran out of tokens before making a call, so try v1 with Think off. Being able to call a tool doesn't make the reply right, though: the 1.7B models sometimes search the web for arithmetic, or search for a fact and still get it wrong. That's why v2 onwards don't leave it to the model.
 
 ## Privacy and safety
 
@@ -139,7 +146,7 @@ Yes. All six Qwen3 models tried so far (1.7B, 4B and 8B, in several quantization
 - **Harness on:** search terms go to Wikipedia, Stack Overflow, arXiv and MDN, and pages come only from a list of 100 trusted sites. Every search and page is listed above the reply.
 - **Code** runs in a deny-by-default macOS sandbox with no internet, no other programs and no access to your files, limited to 10 seconds, 1 GB of memory and 10 MB of files.
 - **Prompt injection:** hidden text and text aimed at the assistant are removed before the model reads a page, and links to untrusted sites are removed from its replies. This is basic protection: it blocks common attacks, not every possible one.
-- **Tools in chat:** in v2, v3 and v5 only the harness uses them, so a web page can't steer one. In v5, once the web has been read, each agent's note gets the same cleaning as a page before the others read it. In v1 the model holds them, so once it has read the web it can't search again and can only open links it was given.
+- **Tools in chat:** from v2 on only the harness uses them, so a web page can't steer one. In v5, once the web has been read, each agent's note gets the same cleaning as a page before the others read it. In v1 the model holds them, so once it has read the web it can't search again and can only open links it was given.
 - **Models:** The catalog (`Sources/LocalAIAgent/Models/ModelCatalog.swift`) only lists official open-weight models from Meta, Google, Microsoft, Alibaba Qwen, Mistral AI, IBM, DeepSeek and OpenAI. These are widely used models, and the app verified each Ollama tag against the registry. They download as GGUF files: tensors only, no executable code, checksum-verified. Models outside the catalog are disabled unless you turn on **Settings › Safety › Allow unverified models**.
 
 The harness needs Ollama, and a model that supports tools for v1.

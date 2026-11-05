@@ -3,7 +3,7 @@ import Foundation
 /// The harness as it was built, one version at a time. All of them stay runnable, in chat and in the
 /// Harness Test, so their results can be compared on the same model.
 enum HarnessVersion: String, Codable, CaseIterable, Identifiable {
-    case tools, pipeline, loop, council
+    case tools, pipeline, loop, thinking, council
 
     static let latest = HarnessVersion.council
 
@@ -15,6 +15,7 @@ enum HarnessVersion: String, Codable, CaseIterable, Identifiable {
         case .tools: return "v1"
         case .pipeline: return "v2"
         case .loop: return "v3"
+        case .thinking: return "v4"
         case .council: return "v5"
         }
     }
@@ -24,6 +25,7 @@ enum HarnessVersion: String, Codable, CaseIterable, Identifiable {
         case .tools: return "Model tools"
         case .pipeline: return "Pipeline"
         case .loop: return "Loop"
+        case .thinking: return "Thinking loop"
         case .council: return "Council"
         }
     }
@@ -35,6 +37,7 @@ enum HarnessVersion: String, Codable, CaseIterable, Identifiable {
         case .tools: return "The model gets the tools and decides when to call them."
         case .pipeline: return "The harness runs the right tool once, then the model answers from what it found."
         case .loop: return "The pipeline, plus code that checks each reply and goes round again until it passes."
+        case .thinking: return "The loop, with the model thinking through every step it takes part in. Needs Think on: with it off, this is v3."
         case .council: return "Code prepares a shared notes file, then three agents with their own personality and temperature discuss the task in it, thinking on."
         }
     }
@@ -45,12 +48,16 @@ enum HarnessVersion: String, Codable, CaseIterable, Identifiable {
         case .tools: return ["Task", "Model calls tools if it wants", "Reply"]
         case .pipeline: return ["Task", "Understand", "Run one tool", "Answer", "Reply"]
         case .loop: return ["Task", "Understand", "Act", "Answer", "Code checks it", "Reply"]
+        case .thinking: return ["Task", "Think, understand", "Think, act", "Think, answer", "Code checks it", "Reply"]
         case .council: return ["Task", "Code prepares the notes", "Three agents discuss", "One writes the reply", "Code checks it", "Reply"]
         }
     }
 
-    /// Whether the rounds setting applies.
-    var usesRounds: Bool { self == .loop || self == .council }
+    /// Whether it's the loop, which goes round again after a failed check.
+    var isLoop: Bool { self == .loop || self == .thinking }
+
+    /// Whether the rounds setting applies, which in v5 limits the discussion.
+    var usesRounds: Bool { isLoop || self == .council }
 
     /// True when it thinks whatever the Think button says.
     var alwaysThinks: Bool { self == .council }
@@ -88,8 +95,8 @@ extension TestLab {
             await modelTools(prompt: prompt, setup: setup, total: &total, answer: answer)
         case .pipeline:
             await PipelineHarness.run(prompt: prompt, earlier: earlier, setup: setup, maxTokens: maxTokens, total: &total, answer: answer)
-        case .loop:
-            await runLoop(prompt: prompt, earlier: earlier, setup: setup, total: &total, answer: answer)
+        case .loop, .thinking:
+            await runLoop(prompt: prompt, earlier: earlier, setup: setup, thinkEachStep: version == .thinking, total: &total, answer: answer)
         case .council:
             await runCouncil(prompt: prompt, earlier: earlier, setup: setup, maxTokens: maxTokens, total: &total, answer: answer)
         }

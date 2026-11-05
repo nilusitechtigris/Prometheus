@@ -106,6 +106,11 @@ final class TestLab {
         var temperature = 0.0
         /// Rounds the harness gets on a task.
         var maxRounds = 3
+        /// In v4, when the model stops thinking at each step. Nil in every other case.
+        var thinkingUntil: Date?
+
+        /// Whether the step about to run should think, rather than use as few tokens as it can.
+        var thinksAtSteps: Bool { thinkingUntil.map { Date() < $0 } ?? false }
     }
 
     #if DEBUG
@@ -420,6 +425,8 @@ final class TestLab {
         var notesName: String?
         /// The shared notes so far.
         var onNotes: ((String) -> Void)?
+        /// More of what the model thought at a step that doesn't stream into the chat by itself.
+        var onThought: ((String) -> Void)?
     }
 
     /// Rounds of tool use a question gets. After that the model has to answer with what it has.
@@ -427,7 +434,7 @@ final class TestLab {
 
     /// Gets a reply from the model, running any tools it asks for along the way.
     static func converse(_ startingTurns: [ChatTurn], setup: TestSetup, maxTokens: Int, useTools: Bool,
-                         think: Bool?? = .none) async -> Reply {
+                         think: Bool?? = .none, onThought: (String) -> Void = { _ in }) async -> Reply {
         var turns = startingTurns
         var reply = Reply()
         var gate = ToolGate()
@@ -445,12 +452,16 @@ final class TestLab {
                         if reply.firstToken == nil { reply.firstToken = Date() }
                         reply.thinkingTokens += 1
                         reply.thinking += thought
+                        onThought(thought)
                     case .content(let chunk):
                         if reply.firstToken == nil { reply.firstToken = Date() }
                         let parts = parser.feed(chunk)
                         text += parts.answer
                         reply.thinking += parts.thinking
-                        if !parts.thinking.isEmpty { reply.thinkingTokens += 1 }
+                        if !parts.thinking.isEmpty {
+                            reply.thinkingTokens += 1
+                            onThought(parts.thinking)
+                        }
                     case .toolCall(let call):
                         calls.append(call)
                     case .finished(let stats):

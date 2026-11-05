@@ -192,7 +192,7 @@ final class ChatController {
 
     // MARK: Harness
 
-    /// Runs a reply through a version of the harness, streaming each attempt into the message. In v2 and v3
+    /// Runs a reply through a version of the harness, streaming each attempt into the message. From v2 on
     /// only the harness uses tools, so a page the model reads can't steer one with this chat in view. In v1
     /// the model holds them, and the gate is what stops a page steering them.
     private func runHarness(_ version: HarnessVersion, _ request: ChatRequest, messages: [ChatMessage], model: LocalModel,
@@ -215,6 +215,10 @@ final class ChatController {
         reply.onNotes = { [weak self] notes in
             self?.update(messageID, in: convID) { $0.sharedNotes = notes }
         }
+        reply.onThought = { [weak self] thought in
+            self?.live?.phase = .thinking
+            self?.update(messageID, in: convID) { $0.thinking = ($0.thinking ?? "") + thought }
+        }
         let earlier = messages.dropLast().filter { !$0.content.isEmpty }.suffix(2)
             .map { "\($0.role == .user ? "User" : "Assistant"): \($0.content.prefix(600))" }
             .joined(separator: "\n")
@@ -227,12 +231,13 @@ final class ChatController {
             if version == .tools {
                 return await streamWithTools(plan, canCall: canCall, base: request, messages: messages, messageID: messageID, convID: convID)
             }
-            return await streamAttempt(plan, base: request, messages: messages, messageID: messageID, convID: convID)
+            return await streamAttempt(plan, keepThoughts: version == .thinking, base: request, messages: messages, messageID: messageID, convID: convID)
         }
     }
 
     /// One attempt at the reply. It streams like any reply, and hands back what the loop needs to check it.
-    private func streamAttempt(_ plan: TestLab.AnswerPlan, base: ChatRequest, messages: [ChatMessage],
+    /// `keepThoughts` adds its thinking to what earlier steps thought, rather than replacing it.
+    private func streamAttempt(_ plan: TestLab.AnswerPlan, keepThoughts: Bool, base: ChatRequest, messages: [ChatMessage],
                                messageID: UUID, convID: UUID) async -> TestLab.Reply {
         // What the tools found takes room from the chat history, so the turns are rebuilt each time.
         let evidence = String(plan.addendum.prefix(base.contextLength * 7 / 6))
@@ -249,7 +254,7 @@ final class ChatController {
         fresh.round = live?.round ?? 1
         live = fresh
         await stream(request, backend: backends.backend, messageID: messageID, convID: convID, estimatedPrompt: built.estimated,
-                     keepIfStopped: !firstAttempt)
+                     keepIfStopped: !firstAttempt, earlierThoughts: keepThoughts ? message(messageID, in: convID)?.thinking ?? "" : "")
         return replySoFar(in: messageID, convID: convID)
     }
 
@@ -310,22 +315,27 @@ final class ChatController {
     /// What a message holds right now, in the form the harness reads a reply.
     private func replySoFar(in messageID: UUID, convID: UUID) -> TestLab.Reply {
         var reply = TestLab.Reply()
-        guard let ci = index(of: convID), let message = conversations[ci].messages.first(where: { $0.id == messageID }) else { return reply }
+        guard let message = message(messageID, in: convID) else { return reply }
         reply.answer = message.content
         reply.thinking = message.thinking ?? ""
         reply.error = message.errorText
+        reply.thinkingTokens = message.metrics?.thinkingTokens ?? 0
         var stats = BackendStats()
         stats.stopReason = message.metrics?.stopReason
         reply.stats = stats
         return reply
     }
 
+    private func message(_ messageID: UUID, in convID: UUID) -> ChatMessage? {
+        index(of: convID).flatMap { ci in conversations[ci].messages.first { $0.id == messageID } }
+    }
+
     /// `keepIfStopped` leaves the message in place when Stop comes before any text, for a retry whose
-    /// earlier attempt is worth keeping. `asNote` keeps the text out of the message, in `live.note`.
-    /// Returns any tools the model asked for.
+    /// earlier attempt is worth keeping. `earlierThoughts` stays above what this reply thinks. `asNote` keeps
+    /// the text out of the message, in `live.note`. Returns any tools the model asked for.
     @discardableResult
     private func stream(_ request: ChatRequest, backend: LLMBackend, messageID: UUID, convID: UUID, estimatedPrompt: Int,
-                        keepIfStopped: Bool = false, asNote: Bool = false) async -> [ToolCall] {
+                        keepIfStopped: Bool = false, earlierThoughts: String = "", asNote: Bool = false) async -> [ToolCall] {
         let start = Date()
         var content = "", thinking = ""
         var parser = ThinkTagParser()
@@ -335,6 +345,11 @@ final class ChatController {
         var errorText: String?
         var cancelled = false
         var calls: [ToolCall] = []
+
+        func shownThoughts() -> String? {
+            if earlierThoughts.isEmpty { return thinking.isEmpty ? nil : thinking }
+            return thinking.isEmpty ? earlierThoughts : "\(earlierThoughts)\n\n\(HarnessStage.answer.title):\n\(thinking)"
+        }
 
         func noteToken(isThinking: Bool) {
             guard var l = live else { return }
@@ -372,7 +387,7 @@ final class ChatController {
                     if asNote { live?.note = content }
                     update(messageID, in: convID) {
                         if !asNote { $0.content = content }
-                        $0.thinking = thinking.isEmpty ? nil : thinking
+                        $0.thinking = shownThoughts()
                     }
                     lastFlush = Date()
                 }
@@ -434,7 +449,7 @@ final class ChatController {
         if asNote { live?.note = content }
         update(messageID, in: convID) {
             if !asNote { $0.content = content }
-            $0.thinking = thinking.isEmpty ? nil : thinking
+            $0.thinking = shownThoughts()
             $0.metrics = gotOutput ? m : nil
             $0.errorText = errorText
         }
