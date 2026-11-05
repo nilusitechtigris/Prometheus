@@ -80,7 +80,8 @@ Every version stays available, in chat and in the Harness Test, so you can compa
 | --- | --- |
 | **v1 Model tools** | The model gets the tools and decides when to call them. |
 | **v2 Pipeline** | The harness works out what the task needs and runs one tool, then the model answers from what it found. Kept exactly as it was. |
-| **v3 Loop** | The newest. The pipeline, plus code that checks each reply and goes round again until it passes. |
+| **v3 Loop** | The pipeline, plus code that checks each reply and goes round again until it passes. |
+| **v5 Council** | The newest. Code prepares a shared notes file, then three agents with their own personality and temperature discuss the task in it, thinking on. |
 
 ![The Harness Test results](docs/screenshots/harness.png)
 
@@ -92,10 +93,10 @@ The Versions tab puts them side by side, question by question, for runs on the s
 
 Scores out of 100, with thinking on:
 
-| Model | Context | Off | v1 | v2 | v3 |
-| --- | --- | --- | --- | --- | --- |
-| Qwen3 1.7B Q4_K_M | 4K | 24 | 25 | 42 | not run |
-| Qwen3 1.7B FP16 | 8K | 28 | not run | not run | 48 |
+| Model | Context | Off | v1 | v2 | v3 | v5 |
+| --- | --- | --- | --- | --- | --- | --- |
+| Qwen3 1.7B Q4_K_M | 4K | 24 | 25 | 42 | not run | not run |
+| Qwen3 1.7B FP16 | 8K | 28 | not run | not run | 48 | not run |
 
 These are single runs, so don't read much into small differences, and the two rows use different setups. The v3 run came before a calculator fix that affected one 4-point question. Injection protection stopped 7 of 7 poisoned pages in these runs, against 0 of 7 without it.
 
@@ -108,6 +109,26 @@ These are single runs, so don't read much into small differences, and the two ro
 
 It stops when a reply passes, when a round changes nothing, or at the rounds set in Settings › Safety, and it keeps the best attempt so far. It only ever sees the question, never the expected answer.
 
+### How v5 works
+
+Three agents discuss the task in a Markdown file. They're the same model taking turns, so they use the memory of one and the time of several.
+
+| Agent | Temperature | Personality |
+| --- | --- | --- |
+| **Solver** | 0.2 | Works step by step and relies on what it can show |
+| **Skeptic** | 0.5 | Looks for the flaw and tests answers on a small case |
+| **Explorer** | 0.8 | Tries another route and questions what the others assume |
+
+1. **Prepare**: code writes the file, with the task, the chat so far and what the tools found, the same way v3 does.
+2. **Round 1**: each agent answers on its own. Nobody sees the others' notes yet, so they don't all copy whoever went first.
+3. **Later rounds**: each agent reads the file and answers the others. Code adds what it can check, such as a broken word count or a result the tools disagree with. An agent can only change its answer by giving a reason, because small models tend to copy whoever they read last. Otherwise its old answer stands.
+4. **Decide**: after each round, code compares their answers. It stops when all three agree, when nobody changes their answer, or at the rounds set in Settings › Safety. Two out of three is enough at the end.
+5. **Reply**: an agent that holds the group's answer writes the reply, and v3's checks test it. A result from the tools outranks anything the agents settled on. On writing tasks, a draft that passes the checks is the reply.
+
+Code does all the reading and writing, so a small model needs no file tools and a bad reply can't damage the file. When the file outgrows the context, an agent is handed the newest rounds that fit. Thinking stays on whatever the Think button says, and an agent that thinks until its tokens run out finishes from where its thinking stopped, so the reasoning isn't lost.
+
+The file builds up under **Shared notes** above the reply, with a button to find it in Finder. It's kept in the app's data folder and goes when you delete the chat.
+
 ### Can the models call tools themselves?
 
 Yes. All six Qwen3 models tried so far (1.7B, 4B and 8B, in several quantizations) produce real tool calls, in 34 of 44 prompts in a short check, and all of them used a calculator result correctly. All 10 misses had thinking on and ran out of tokens before making a call, so try v1 with Think off. Being able to call a tool doesn't make the reply right, though: the 1.7B models sometimes search the web for arithmetic, or search for a fact and still get it wrong. That's why v2 and v3 don't leave it to the model.
@@ -118,7 +139,7 @@ Yes. All six Qwen3 models tried so far (1.7B, 4B and 8B, in several quantization
 - **Harness on:** search terms go to Wikipedia, Stack Overflow, arXiv and MDN, and pages come only from a list of 100 trusted sites. Every search and page is listed above the reply.
 - **Code** runs in a deny-by-default macOS sandbox with no internet, no other programs and no access to your files, limited to 10 seconds, 1 GB of memory and 10 MB of files.
 - **Prompt injection:** hidden text and text aimed at the assistant are removed before the model reads a page, and links to untrusted sites are removed from its replies. This is basic protection: it blocks common attacks, not every possible one.
-- **Tools in chat:** in v2 and v3 only the harness uses them, so a web page can't steer one. In v1 the model holds them, so once it has read the web it can't search again and can only open links it was given.
+- **Tools in chat:** in v2, v3 and v5 only the harness uses them, so a web page can't steer one. In v5, once the web has been read, each agent's note gets the same cleaning as a page before the others read it. In v1 the model holds them, so once it has read the web it can't search again and can only open links it was given.
 - **Models:** The catalog (`Sources/LocalAIAgent/Models/ModelCatalog.swift`) only lists official open-weight models from Meta, Google, Microsoft, Alibaba Qwen, Mistral AI, IBM, DeepSeek and OpenAI. These are widely used models, and the app verified each Ollama tag against the registry. They download as GGUF files: tensors only, no executable code, checksum-verified. Models outside the catalog are disabled unless you turn on **Settings › Safety › Allow unverified models**.
 
 The harness needs Ollama, and a model that supports tools for v1.
@@ -134,7 +155,7 @@ Sources/LocalAIAgent/
   App/                      App entry, settings, debug hooks
   Backends/                 Ollama + OpenAI-compatible clients (streaming)
   Services/                 Backend/chat controllers, persistence, model + hardware tests
-  Services/Harness/         Trusted sites, web tools, calculator, injection guard and test
+  Services/Harness/         The harness versions, shared notes, trusted sites, web tools, calculator, injection guard and test
   Telemetry/                CPU/GPU/memory/thermal sampling
   Models/                   Chat types, curated catalog, health thresholds
   Views/                    Forge layout and chats, chat, telemetry widgets, test dashboards, library, settings

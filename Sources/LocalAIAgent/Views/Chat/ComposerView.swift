@@ -15,7 +15,7 @@ struct ComposerView: View {
         VStack(spacing: 10) {
             if let live = chat.live {
                 HStack {
-                    if let stage = live.stage { HarnessStageStrip(current: stage, round: live.round) }
+                    if let stage = live.stage { HarnessStageStrip(current: stage, round: live.round, speaker: live.speaker) }
                     Spacer()
                     LiveTicker(live: live)
                 }
@@ -149,7 +149,8 @@ struct ComposerView: View {
 
     private var harnessNote: String {
         let version = settings.harnessVersion
-        return "Harness \(version.short) on: \(version == .tools ? "the model picks its own searches, which go" : "search terms go") to Wikipedia, Stack Overflow, arXiv and MDN. Code runs in a sandbox on this Mac."
+        let thinking = version.alwaysThinks ? " Thinking stays on for its agents." : ""
+        return "Harness \(version.short) on: \(version == .tools ? "the model picks its own searches, which go" : "search terms go") to Wikipedia, Stack Overflow, arXiv and MDN. Code runs in a sandbox on this Mac.\(thinking)"
     }
 
     private var canSend: Bool {
@@ -320,10 +321,12 @@ private struct TelemetryPill: View {
 private struct HarnessStageStrip: View {
     let current: HarnessStage
     let round: Int
+    var speaker: String?
 
     var body: some View {
         HStack(spacing: 8) {
             Image(systemName: "shield.lefthalf.filled").foregroundStyle(Palette.accent)
+            if let speaker { Text(speaker).fontWeight(.semibold).foregroundStyle(Palette.accent) }
             if round > 1 { Text("Round \(round)").fontWeight(.semibold).foregroundStyle(Palette.accent) }
             ForEach(HarnessStage.allCases) { stage in
                 HStack(spacing: 3) {

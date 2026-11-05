@@ -26,7 +26,7 @@ import SwiftUI
 ///   LOCALAI_CHAT_SEARCH=text        search the chats for this after launch
 ///   LOCALAI_HARNESS_SAMPLE=id,id    run these questions through the harness; LOCALAI_SAMPLE_OUT=/path gets the report
 ///   LOCALAI_CHAT_HARNESS=1          turn the harness on for chat
-///   LOCALAI_HARNESS_VERSION=tools|pipeline|loop   the version chat, the sample and the Harness tab use
+///   LOCALAI_HARNESS_VERSION=tools|pipeline|loop|council   the version chat, the sample and the Harness tab use
 ///   LOCALAI_SETTINGS_TAB=safety     open that section of the Settings page
 ///   LOCALAI_PICK_CHATS=all|2        start in the chats' Select mode with these chats ticked
 ///   LOCALAI_DELETE_PICKED=1         delete the ticked chats after 3 s
@@ -244,6 +244,96 @@ enum DebugHooks {
         }
     }
 
+    /// v5's parts that need no model: reading replies, telling who agrees, and what each agent gets to read.
+    private static func councilCheck() -> [String] {
+        var lines: [String] = []
+        func expect(_ name: String, _ ok: Bool) { lines.append("\(ok ? "PASS" : "FAIL") \(name)") }
+        let (solver, skeptic, explorer) = (CouncilAgent.all[0], CouncilAgent.all[1], CouncilAgent.all[2])
+        expect("three agents, each with its own temperature", Set(CouncilAgent.all.map(\.temperature)).count == 3)
+
+        let parsed = SharedNotes.parse("It is 6 times 7.\n**Answer:** <your answer>42.", label: "Answer")
+        expect("reply parsed: \(parsed)", parsed.note == "It is 6 times 7." && parsed.answer == "42")
+        expect("answer on the next line", SharedNotes.parse("Done.\nAnswer:\nBob", label: "Answer").answer == "Bob")
+        expect("no answer line falls back to the last line", SharedNotes.parse("Hm.\nBob", label: "Answer").answer == "Bob")
+        expect("a task's own label", SharedNotes.parse("Hm.\nResult: 7", label: "Result").answer == "7")
+        let echoed = SharedNotes.parse("Why: it fits.\nAnswer: <your answer>\nAnswer: Cara\nAnswer: <your answer>", label: "Answer")
+        expect("a copied form is ignored: \(echoed)", echoed.answer == "Cara" && echoed.note == "Why: it fits.")
+        let blank = SharedNotes.parse("Why: <your reason, in one or two sentences>\nAnswer: <your answer>", label: "Answer")
+        expect("an unfilled form says nothing: \(blank)", blank.note.isEmpty && blank.answer == nil)
+
+        for (first, second) in [("$12.50", "12.5"), ("The Hittites", "hittites"), ("**Au**", "au"), ("1,081", "1081")] {
+            expect("\(first) agrees with \(second)", SharedNotes.key(of: first) == SharedNotes.key(of: second))
+        }
+        expect("different answers differ", SharedNotes.key(of: "Bob") != SharedNotes.key(of: "Alice"))
+        expect("long text can't be compared", SharedNotes.key(of: String(repeating: "word ", count: 30)) == nil)
+
+        func entry(_ agent: CouncilAgent, _ answer: String?) -> SharedNotes.Entry { .init(agent: agent, note: "Note by \(agent.name).", answer: answer) }
+        let all = SharedNotes.standing(of: [entry(solver, "42"), entry(skeptic, "42.0"), entry(explorer, "42")])
+        expect("three of three", all.isUnanimous && all.summary == "All three agree on 42")
+        let two = SharedNotes.standing(of: [entry(solver, "40"), entry(skeptic, "42"), entry(explorer, "42")])
+        expect("two of three pick the writer", !two.isUnanimous && two.answer == "42" && two.backers == [skeptic, explorer])
+        let split = SharedNotes.standing(of: [entry(solver, "1"), entry(skeptic, "2"), entry(explorer, "3")])
+        expect("no majority", split.answer == nil && split.summary == nil && !split.isUnanimous)
+        let long = String(repeating: "long ", count: 30)
+        expect("long answers never agree", SharedNotes.standing(of: [entry(solver, long), entry(skeptic, long), entry(explorer, long)]).answer == nil)
+
+        let first = SharedNotes.Entry(agent: solver, note: "", answer: "tungsten")
+        let copied = SharedNotes.holdingFirm(.init(agent: solver, note: "", answer: "ta"), after: first)
+        expect("no change without a reason", copied.answer == "tungsten" && copied.problems.count == 1)
+        let hollow = SharedNotes.holdingFirm(.init(agent: solver, note: "Why: agreed.", answer: "ta"), after: first)
+        expect("a word or two isn't a reason", hollow.answer == "tungsten")
+        let reasoned = SharedNotes.holdingFirm(.init(agent: solver, note: "Why: tantalum is 73, not 74.", answer: "ta"), after: first)
+        expect("a change with a reason stands", reasoned.answer == "ta" && reasoned.problems.isEmpty)
+        let kept = SharedNotes.holdingFirm(.init(agent: solver, note: "", answer: "Tungsten"), after: first)
+        expect("keeping an answer needs no reason", kept.answer == "Tungsten" && kept.problems.isEmpty)
+        expect("the first round has nothing to hold to", SharedNotes.holdingFirm(first, after: nil).answer == "tungsten")
+
+        var notes = SharedNotes(model: "m", task: "What is 6 × 7?", evidence: ["<untrusted source=\"page\">\nFacts.\n</untrusted>"])
+        notes.rounds = [[entry(solver, "40"), entry(skeptic, "42")]]
+        let blind = notes.reading(for: explorer, round: 1, characters: 4_000)
+        expect("round 1 reads the task and tools only", blind.contains("6 × 7") && blind.contains("Facts.") && !blind.contains("Note by"))
+        let open = notes.reading(for: skeptic, round: 2, characters: 4_000)
+        expect("round 2 reads the others", open.contains("Note by Solver.") && open.contains("Answer: 40") && open.contains("### Skeptic (you)"))
+
+        notes.rounds = (1...5).map { round in CouncilAgent.all.map { .init(agent: $0, note: "Round \(round). " + String(repeating: "x", count: 500), answer: "\(round)") } }
+        let tight = notes.reading(for: solver, round: 6, characters: 2_000)
+        expect("the file fits the context (\(tight.count) characters)", tight.count <= 2_400)
+        expect("newest round stays, oldest goes", tight.contains("## Round 5") && !tight.contains("## Round 1") && tight.contains("left out"))
+        expect("the file itself keeps every round", notes.markdown.contains("## Round 1") && notes.markdown.contains("## Round 5"))
+
+        // Saved files have to survive a version name this build has never heard of.
+        let decoder = JSONDecoder(), encoder = JSONEncoder()
+        let saved = Data(#"{"id":"11111111-1111-1111-1111-111111111111","role":"assistant","content":"Hi","createdAt":0,"harnessVersion":"thinking"}"#.utf8)
+        let message = try? decoder.decode(ChatMessage.self, from: saved)
+        expect("an unknown version name still loads", message?.content == "Hi" && message?.harnessVersion?.version == nil)
+        let again = message.flatMap { try? encoder.encode($0) }.map { String(decoding: $0, as: UTF8.self) } ?? ""
+        expect("saving keeps an unknown version name", again.contains(#""harnessVersion":"thinking""#))
+        let known = (try? encoder.encode(SavedHarnessVersion(.council))).map { String(decoding: $0, as: UTF8.self) }
+        expect("a version saves as its plain name, as it always has", known == #""council""#)
+        var unknownRun = ModelTestResult(harness: true, harnessRounds: 3, model: "m", displayName: "m", quant: "q", quantProvider: "p", backend: "b", thinking: true, contextLength: 4_096)
+        unknownRun.harnessVersion = message?.harnessVersion
+        expect("a run from another build doesn't pass for the loop", unknownRun.version == nil)
+        let broken = ConversationStore.directory.appendingPathComponent("self-check-\(UUID().uuidString).json")
+        try? Data("not json".utf8).write(to: broken)
+        ConversationStore.setAside(broken)
+        let folder = (try? FileManager.default.contentsOfDirectory(atPath: ConversationStore.directory.path)) ?? []
+        let copies = folder.filter { $0.hasPrefix(broken.deletingPathExtension().lastPathComponent + ".unreadable-") }
+        expect("an unreadable file is kept", copies.count == 1)
+        try? FileManager.default.removeItem(at: broken)
+        for copy in copies { try? FileManager.default.removeItem(at: ConversationStore.directory.appendingPathComponent(copy)) }
+
+        let cut = SharedNotes.cut("<untrusted source=\"page\">\n" + String(repeating: "x", count: 500) + "\n</untrusted>", to: 100)
+        expect("cutting a source closes it", cut.hasSuffix("</untrusted>"))
+
+        let name = "Tests/self-check-\(UUID().uuidString)"
+        notes.save(as: name)
+        let url = SharedNotes.fileURL(named: name)
+        expect("the file reaches the disk", (try? String(contentsOf: url, encoding: .utf8)) == notes.markdown)
+        SharedNotes.discard([name])
+        expect("the file goes with its reply", !FileManager.default.fileExists(atPath: url.path))
+        return lines
+    }
+
     private static func harnessCheck() async -> String {
         var lines: [String] = []
         func expect(_ name: String, _ ok: Bool) { lines.append("\(ok ? "PASS" : "FAIL") \(name)") }
@@ -342,6 +432,7 @@ enum DebugHooks {
         for task in ["What is 7^2025?", "What is 2^300?", "What is 17 + 5 modulo 3?", "What are the last two digits of 3 * 77777?"] {
             expect("no shortcut for \(task)", TestLab.exactArithmetic(in: task) == nil)
         }
+        lines += councilCheck()
         // The gate, once the web has been read.
         var gate = ToolGate()
         let search = ToolCall(name: "web_search", arguments: ["query": "bees"])

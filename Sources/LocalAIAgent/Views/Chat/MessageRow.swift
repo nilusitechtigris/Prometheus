@@ -72,8 +72,12 @@ private struct AssistantMessage: View {
                 }
 
                 if let steps = message.harnessSteps, !steps.isEmpty {
-                    HarnessStepsView(steps: steps, version: message.harnessVersion, isLive: isStreaming && message.content.isEmpty)
+                    HarnessStepsView(steps: steps, version: message.harnessVersion?.version, isLive: isStreaming && message.content.isEmpty)
                         .animation(Motion.quick, value: steps.count)
+                }
+
+                if let notes = message.sharedNotes {
+                    SharedNotesView(text: notes, messageID: message.id, isLive: isStreaming && message.content.isEmpty)
                 }
 
                 if let thinking = message.thinking, !thinking.isEmpty {
@@ -158,6 +162,74 @@ private struct HarnessStepsView: View {
     }
 }
 
+/// The file v5's agents share, growing as they write, with the note under way below it.
+private struct SharedNotesView: View {
+    @Environment(ChatController.self) private var chat
+    let text: String
+    let messageID: UUID
+    let isLive: Bool
+    @State private var expanded: Bool?
+
+    private var fileURL: URL { SharedNotes.fileURL(named: messageID.uuidString) }
+
+    private var title: String {
+        guard isLive, let live = chat.live else { return "Shared notes" }
+        guard let speaker = live.speaker else { return "Shared notes · preparing" }
+        return "Shared notes · round \(live.round) · \(speaker) \(live.phase == .thinking ? "thinking" : "writing")"
+    }
+
+    var body: some View {
+        let isOpen = expanded ?? isLive
+        VStack(alignment: .leading, spacing: 6) {
+            Button {
+                withAnimation(Motion.quick) { expanded = !isOpen }
+            } label: {
+                HStack(spacing: 6) {
+                    Image(systemName: "doc.text")
+                        .symbolEffect(.pulse, isActive: isLive)
+                    Text(title).contentTransition(.opacity)
+                    Image(systemName: "chevron.right")
+                        .rotationEffect(.degrees(isOpen ? 90 : 0))
+                        .imageScale(.small)
+                }
+                .font(.uiCallout)
+                .foregroundStyle(.secondary)
+            }
+            .buttonStyle(.plain)
+
+            if isOpen {
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 8) {
+                        MarkdownView(text: text)
+                            .textSelection(.enabled)
+                        if isLive, let live = chat.live, let speaker = live.speaker, let note = live.note, !note.isEmpty {
+                            Text(speaker).font(.uiCallout.weight(.semibold)).foregroundStyle(Palette.accent)
+                            Text(note).font(.uiCallout).foregroundStyle(.secondary)
+                        }
+                    }
+                    .padding(.leading, 12)
+                    .padding(.trailing, 8)
+                }
+                .defaultScrollAnchor(.bottom)
+                .frame(maxHeight: 320)
+                .overlay(alignment: .leading) {
+                    Rectangle().fill(.separator).frame(width: 2)
+                }
+                if !isLive {
+                    Button {
+                        NSWorkspace.shared.activateFileViewerSelecting([fileURL])
+                    } label: {
+                        Label("Show file in Finder", systemImage: "folder")
+                    }
+                    .buttonStyle(.borderless)
+                    .font(.uiCaption)
+                    .disabled(!FileManager.default.fileExists(atPath: fileURL.path))
+                }
+            }
+        }
+    }
+}
+
 private struct ThinkingView: View {
     let text: String
     let isLive: Bool
@@ -217,6 +289,7 @@ private struct WaitingIndicator: View {
 
     private var label: String {
         guard let live = chat.live else { return "Waiting…" }
+        if let speaker = live.speaker { return "\(speaker) is on it…" }
         let waited = Date().timeIntervalSince(live.startedAt)
         return waited > 2 ? "Loading model & reading prompt…" : "Waiting for first token…"
     }

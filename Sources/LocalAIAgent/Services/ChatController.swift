@@ -13,6 +13,10 @@ struct LiveGeneration {
     var stage: HarnessStage?
     /// Which round of the harness's loop this is.
     var round = 1
+    /// The agent taking its turn, in v5.
+    var speaker: String?
+    /// What that agent has written so far. It only joins the shared notes once it's whole.
+    var note: String?
 
     var timeToFirstToken: Double? { firstTokenAt.map { $0.timeIntervalSince(startedAt) } }
 
@@ -79,6 +83,7 @@ final class ChatController {
 
     func delete(_ ids: Set<UUID>) {
         if let streaming = streamingConversationID, ids.contains(streaming) { stop() }
+        discardNotes(of: conversations.filter { ids.contains($0.id) }.flatMap(\.messages))
         conversations.removeAll { ids.contains($0.id) }
         if let selectedID, ids.contains(selectedID) { self.selectedID = conversations.first?.id }
         scheduleSave()
@@ -93,9 +98,14 @@ final class ChatController {
 
     func clearAll() {
         stop()
+        discardNotes(of: conversations.flatMap(\.messages))
         conversations.removeAll()
         selectedID = nil
         scheduleSave()
+    }
+
+    private func discardNotes(of messages: [ChatMessage]) {
+        SharedNotes.discard(messages.filter { $0.sharedNotes != nil }.map(\.id.uuidString))
     }
 
     private func index(of id: UUID) -> Int? { conversations.firstIndex { $0.id == id } }
@@ -126,6 +136,7 @@ final class ChatController {
     func regenerate() {
         guard canSend, let id = selectedID, let i = index(of: id) else { return }
         while let last = conversations[i].messages.last, last.role == .assistant {
+            discardNotes(of: [last])
             conversations[i].messages.removeLast()
         }
         guard conversations[i].messages.last?.role == .user else { return }
@@ -155,7 +166,7 @@ final class ChatController {
         )
 
         var assistant = ChatMessage(role: .assistant, content: "", modelName: model.id)
-        assistant.harnessVersion = harness
+        assistant.harnessVersion = harness.map(SavedHarnessVersion.init)
         conversations[ci].messages.append(assistant)
         conversations[ci].updatedAt = Date()
         moveToTop(convID)
@@ -200,12 +211,19 @@ final class ChatController {
         reply.onDraft = { [weak self] text in
             self?.update(messageID, in: convID) { $0.content = text }
         }
+        reply.notesName = messageID.uuidString
+        reply.onNotes = { [weak self] notes in
+            self?.update(messageID, in: convID) { $0.sharedNotes = notes }
+        }
         let earlier = messages.dropLast().filter { !$0.content.isEmpty }.suffix(2)
             .map { "\($0.role == .user ? "User" : "Assistant"): \($0.content.prefix(600))" }
             .joined(separator: "\n")
         await TestLab.work(version, prompt: messages.last?.content ?? "", earlier: earlier, setup: setup,
                            maxTokens: request.maxTokens ?? 2_048, total: &reply) { [weak self] plan in
             guard let self else { return TestLab.Reply() }
+            if let agent = plan.agent {
+                return await streamAgent(plan, agent, base: request, messageID: messageID, convID: convID)
+            }
             if version == .tools {
                 return await streamWithTools(plan, canCall: canCall, base: request, messages: messages, messageID: messageID, convID: convID)
             }
@@ -233,6 +251,31 @@ final class ChatController {
         await stream(request, backend: backends.backend, messageID: messageID, convID: convID, estimatedPrompt: built.estimated,
                      keepIfStopped: !firstAttempt)
         return replySoFar(in: messageID, convID: convID)
+    }
+
+    /// One agent's turn in v5, which stands alone on the agent's own temperature. Notes stream beside the
+    /// shared notes, so the only text that reaches the message is the final reply.
+    private func streamAgent(_ plan: TestLab.AnswerPlan, _ agent: TestLab.AgentTurn, base: ChatRequest,
+                             messageID: UUID, convID: UUID) async -> TestLab.Reply {
+        let system = [settings.systemPrompt.trimmingCharacters(in: .whitespacesAndNewlines), HarnessTools.chatRules, agent.system]
+            .filter { !$0.isEmpty }
+            .joined(separator: "\n\n")
+        var request = base
+        request.messages = [ChatTurn(role: "system", content: system), ChatTurn(role: "user", content: plan.task)]
+        request.temperature = agent.temperature
+        if let think = plan.think { request.think = think }
+        if let limit = plan.maxTokens { request.maxTokens = limit }
+
+        var fresh = LiveGeneration()
+        fresh.stage = live?.stage
+        fresh.round = live?.round ?? 1
+        fresh.speaker = agent.name
+        live = fresh
+        await stream(request, backend: backends.backend, messageID: messageID, convID: convID,
+                     estimatedPrompt: (system.count + plan.task.count) * 10 / 35, keepIfStopped: true, asNote: agent.isNote)
+        var reply = replySoFar(in: messageID, convID: convID)
+        if agent.isNote { reply.answer = live?.note ?? "" }
+        return reply
     }
 
     /// v1: the model holds the tools, so it can go back and forth with them before it replies. Its last round
@@ -269,6 +312,7 @@ final class ChatController {
         var reply = TestLab.Reply()
         guard let ci = index(of: convID), let message = conversations[ci].messages.first(where: { $0.id == messageID }) else { return reply }
         reply.answer = message.content
+        reply.thinking = message.thinking ?? ""
         reply.error = message.errorText
         var stats = BackendStats()
         stats.stopReason = message.metrics?.stopReason
@@ -277,10 +321,11 @@ final class ChatController {
     }
 
     /// `keepIfStopped` leaves the message in place when Stop comes before any text, for a retry whose
-    /// earlier attempt is worth keeping. Returns any tools the model asked for.
+    /// earlier attempt is worth keeping. `asNote` keeps the text out of the message, in `live.note`.
+    /// Returns any tools the model asked for.
     @discardableResult
     private func stream(_ request: ChatRequest, backend: LLMBackend, messageID: UUID, convID: UUID, estimatedPrompt: Int,
-                        keepIfStopped: Bool = false) async -> [ToolCall] {
+                        keepIfStopped: Bool = false, asNote: Bool = false) async -> [ToolCall] {
         let start = Date()
         var content = "", thinking = ""
         var parser = ThinkTagParser()
@@ -324,7 +369,11 @@ final class ChatController {
                     stats = s
                 }
                 if Date().timeIntervalSince(lastFlush) > 0.05 {
-                    update(messageID, in: convID) { $0.content = content; $0.thinking = thinking.isEmpty ? nil : thinking }
+                    if asNote { live?.note = content }
+                    update(messageID, in: convID) {
+                        if !asNote { $0.content = content }
+                        $0.thinking = thinking.isEmpty ? nil : thinking
+                    }
                     lastFlush = Date()
                 }
             }
@@ -382,8 +431,9 @@ final class ChatController {
         m.temperature = request.temperature
 
         let gotOutput = !content.isEmpty || !thinking.isEmpty
+        if asNote { live?.note = content }
         update(messageID, in: convID) {
-            $0.content = content
+            if !asNote { $0.content = content }
             $0.thinking = thinking.isEmpty ? nil : thinking
             $0.metrics = gotOutput ? m : nil
             $0.errorText = errorText

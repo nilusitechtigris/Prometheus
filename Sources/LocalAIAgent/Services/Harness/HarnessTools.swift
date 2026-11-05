@@ -152,8 +152,8 @@ enum WebTools {
             process.standardError = FileHandle.nullDevice
             do { try process.run() } catch { continuation.resume(throwing: error); return }
             DispatchQueue.global().async {
+                // Reading to the end is the wait. waitUntilExit can miss a process that has already gone.
                 let data = output.fileHandleForReading.readDataToEndOfFile()
-                process.waitUntilExit()
                 guard let newline = data.lastIndex(of: 10) else {
                     continuation.resume(throwing: URLError(.badServerResponse))
                     return

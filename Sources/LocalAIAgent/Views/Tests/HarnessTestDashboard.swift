@@ -62,7 +62,7 @@ struct HarnessTestDashboard: View {
     private var setupCaption: String {
         let context = testModel.map { Format.tokens(backends.estimatedContext(for: $0)) } ?? "—"
         let thinking = testModel?.catalog?.thinking == true && settings.thinkingEnabled && backends.kind == .ollama
-        let versions = lab.harnessChoice == nil ? HarnessVersion.allCases.count : 1
+        let versions = lab.harnessChoice.map(\.testTimeWeight) ?? HarnessVersion.allCases.map(\.testTimeWeight).reduce(0, +)
         let time = thinking ? "Thinking on, can take \(versions * 2)+ hours" : "Takes up to \(versions == 1 ? "an hour" : "\(versions) hours")"
         return "\(backends.kind.displayName) · \(context) context · \(time)"
     }
@@ -392,6 +392,18 @@ private struct VersionCard: View {
                                 .font(.uiCaption2)
                                 .foregroundStyle(Palette.accent)
                                 .padding(.leading, 4)
+                        }
+                    }
+                    if version == .council {
+                        FlowLayout(spacing: 4) {
+                            ForEach(CouncilAgent.all) { agent in
+                                Text("\(agent.name) \(String(format: "%.1f", agent.temperature)) · \(agent.summary)")
+                                    .font(.uiCaption2)
+                                    .foregroundStyle(.secondary)
+                                    .padding(.horizontal, 6)
+                                    .padding(.vertical, 3)
+                                    .background(Color.primary.opacity(0.05), in: RoundedRectangle(cornerRadius: 6, style: .continuous))
+                            }
                         }
                     }
                 }

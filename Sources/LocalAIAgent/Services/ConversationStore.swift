@@ -26,7 +26,18 @@ struct ConversationStore {
         guard let data = try? Data(contentsOf: fileURL) else { return [] }
         let decoder = JSONDecoder()
         decoder.dateDecodingStrategy = .iso8601
-        return (try? decoder.decode([Conversation].self, from: data)) ?? []
+        guard let conversations = try? decoder.decode([Conversation].self, from: data) else {
+            Self.setAside(fileURL)
+            return []
+        }
+        return conversations
+    }
+
+    /// Keeps a copy of a file that couldn't be read, because the next save would replace the only one.
+    static func setAside(_ url: URL) {
+        let stamp = ISO8601DateFormatter().string(from: Date()).replacingOccurrences(of: ":", with: "-")
+        let copy = url.deletingPathExtension().appendingPathExtension("unreadable-\(stamp).json")
+        try? FileManager.default.copyItem(at: url, to: copy)
     }
 
     func save(_ conversations: [Conversation]) {

@@ -110,7 +110,7 @@ struct ModelTestResult: Codable, Identifiable, Equatable {
     /// True when the run had the harness: tools plus prompt injection protection.
     var harness: Bool?
     /// Which version of the harness ran. Nil for runs from before versions were saved: see `version`.
-    var harnessVersion: HarnessVersion?
+    var harnessVersion: SavedHarnessVersion?
     /// The run without the harness that this one compares against.
     var baselineRunID: UUID?
     /// False when the model can't use tools, so only the injection guard applied.
@@ -165,7 +165,8 @@ struct ModelTestResult: Codable, Identifiable, Equatable {
     /// saved its rounds, and only the pipeline and the loop write down what they understood.
     var version: HarnessVersion? {
         guard usesHarness else { return nil }
-        if let harnessVersion { return harnessVersion }
+        // A run from a build with other versions stays unknown here, rather than passing for an older one.
+        if let harnessVersion { return harnessVersion.version }
         if harnessRounds != nil { return .loop }
         return items.contains { ($0.toolLog ?? []).contains { $0.hasPrefix("Understood:") } } ? .pipeline : .tools
     }

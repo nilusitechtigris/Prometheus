@@ -3,9 +3,9 @@ import Foundation
 /// The harness as it was built, one version at a time. All of them stay runnable, in chat and in the
 /// Harness Test, so their results can be compared on the same model.
 enum HarnessVersion: String, Codable, CaseIterable, Identifiable {
-    case tools, pipeline, loop
+    case tools, pipeline, loop, council
 
-    static let latest = HarnessVersion.loop
+    static let latest = HarnessVersion.council
 
     var id: String { rawValue }
 
@@ -15,6 +15,7 @@ enum HarnessVersion: String, Codable, CaseIterable, Identifiable {
         case .tools: return "v1"
         case .pipeline: return "v2"
         case .loop: return "v3"
+        case .council: return "v5"
         }
     }
 
@@ -23,6 +24,7 @@ enum HarnessVersion: String, Codable, CaseIterable, Identifiable {
         case .tools: return "Model tools"
         case .pipeline: return "Pipeline"
         case .loop: return "Loop"
+        case .council: return "Council"
         }
     }
 
@@ -33,6 +35,7 @@ enum HarnessVersion: String, Codable, CaseIterable, Identifiable {
         case .tools: return "The model gets the tools and decides when to call them."
         case .pipeline: return "The harness runs the right tool once, then the model answers from what it found."
         case .loop: return "The pipeline, plus code that checks each reply and goes round again until it passes."
+        case .council: return "Code prepares a shared notes file, then three agents with their own personality and temperature discuss the task in it, thinking on."
         }
     }
 
@@ -42,7 +45,36 @@ enum HarnessVersion: String, Codable, CaseIterable, Identifiable {
         case .tools: return ["Task", "Model calls tools if it wants", "Reply"]
         case .pipeline: return ["Task", "Understand", "Run one tool", "Answer", "Reply"]
         case .loop: return ["Task", "Understand", "Act", "Answer", "Code checks it", "Reply"]
+        case .council: return ["Task", "Code prepares the notes", "Three agents discuss", "One writes the reply", "Code checks it", "Reply"]
         }
+    }
+
+    /// Whether the rounds setting applies.
+    var usesRounds: Bool { self == .loop || self == .council }
+
+    /// True when it thinks whatever the Think button says.
+    var alwaysThinks: Bool { self == .council }
+
+    /// How long a test takes, compared with one model reply a question.
+    var testTimeWeight: Int { self == .council ? 2 : 1 }
+}
+
+/// A version as it's saved in a file. It keeps a name this build doesn't know, from a build with versions
+/// this one lacks, so reading the file works and saving it again changes nothing. With the plain enum, one
+/// unknown name would fail the whole file: the app would show nothing and its next save would erase it all.
+struct SavedHarnessVersion: Codable, Equatable {
+    let name: String
+
+    /// Nil for a name this build doesn't know.
+    var version: HarnessVersion? { HarnessVersion(rawValue: name) }
+
+    init(_ version: HarnessVersion) { name = version.rawValue }
+
+    init(from decoder: Decoder) throws { name = try decoder.singleValueContainer().decode(String.self) }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.singleValueContainer()
+        try container.encode(name)
     }
 }
 
@@ -58,6 +90,8 @@ extension TestLab {
             await PipelineHarness.run(prompt: prompt, earlier: earlier, setup: setup, maxTokens: maxTokens, total: &total, answer: answer)
         case .loop:
             await runLoop(prompt: prompt, earlier: earlier, setup: setup, total: &total, answer: answer)
+        case .council:
+            await runCouncil(prompt: prompt, earlier: earlier, setup: setup, maxTokens: maxTokens, total: &total, answer: answer)
         }
     }
 
@@ -84,12 +118,20 @@ extension TestLab {
     }
 
     /// One task in a test: the harness's work, with the model replying straight away rather than streaming.
-    static func harnessReply(_ version: HarnessVersion, prompt: String, setup: TestSetup, maxTokens: Int) async -> Reply {
+    static func harnessReply(_ version: HarnessVersion, prompt: String, setup: TestSetup, maxTokens: Int, notesName: String? = nil) async -> Reply {
         var total = Reply()
+        total.notesName = notesName
         await work(version, prompt: prompt, setup: setup, maxTokens: maxTokens, total: &total) { plan in
+            let think: Bool?? = plan.think == nil ? .none : .some(plan.think)
+            if let agent = plan.agent {
+                var own = setup
+                own.temperature = agent.temperature
+                return await converse([ChatTurn(role: "system", content: ModelTestSuite.systemPrompt + "\n\n" + agent.system),
+                                       ChatTurn(role: "user", content: plan.task)],
+                                      setup: own, maxTokens: plan.maxTokens ?? maxTokens, useTools: false, think: think)
+            }
             let tools = setup.supportsTools && plan.addendum.isEmpty
             let system = ModelTestSuite.systemPrompt + "\n\n" + PromptGuard.systemRules + (tools ? "\n\n" + HarnessTools.systemRules : "")
-            let think: Bool?? = plan.think == nil ? .none : .some(plan.think)
             return await converse([ChatTurn(role: "system", content: system), ChatTurn(role: "user", content: plan.task + plan.addendum)],
                                   setup: setup, maxTokens: plan.maxTokens ?? maxTokens, useTools: tools, think: think)
         }

@@ -18,6 +18,8 @@ extension TestLab {
         /// Nil keeps the model's usual setting.
         var think: Bool?
         var maxTokens: Int?
+        /// Set on v5's turns, which stand alone instead of following the chat.
+        var agent: AgentTurn?
     }
 
     /// Something Check found wrong with a reply.
@@ -29,7 +31,7 @@ extension TestLab {
             switch self {
             case .empty: return "The reply was empty."
             case .cutOff: return "The reply was cut off before it finished."
-            case .missingResult: return "The reply left out the tool's result."
+            case .missingResult: return "The reply left out the result."
             case .unsupported: return "The reply's answer isn't in what the tools found."
             case .rule(let text): return text
             }
@@ -55,7 +57,7 @@ extension TestLab {
         var usedWords: Set<String> = []
     }
 
-    private struct Attempt {
+    struct Attempt {
         let text: String
         let problems: [Problem]
 
@@ -66,7 +68,7 @@ extension TestLab {
     /// Time a task gets per round. A round that has started always finishes.
     private static let secondsPerRound = 60.0
     /// Plenty for stating a result, and little enough that thinking can't use up a small context.
-    private static let tightTokens = 384
+    static let tightTokens = 384
     private static let triesPerUnit = 6
 
     /// Works a task through the loop. `answer` is how the caller gets a reply from the model, so chat can
@@ -126,11 +128,11 @@ extension TestLab {
         finish(best, rounds: roundsRun, task: task, state: state, total: &total)
     }
 
-    private static func finish(_ best: Attempt?, rounds: Int, task: HarnessTask, state: LoopState, total: inout Reply) {
+    static func finish(_ best: Attempt?, rounds: Int, task: HarnessTask, state: LoopState, total: inout Reply) {
         var text = best?.text ?? ""
         if let result = state.result, !HarnessText.mentions(result, in: text, label: state.rules.finalLabel) {
             text = HarnessText.adding(result, to: text, label: state.rules.finalLabel)
-            total.toolLog.append("Wrote the tool's result into the reply")
+            total.toolLog.append("Wrote the result into the reply")
         } else if let problem = best?.problems.first {
             total.toolLog.append("Stopped after \(rounds) round\(rounds == 1 ? "" : "s"): \(problem.text)")
         } else if best != nil {
@@ -177,7 +179,7 @@ extension TestLab {
     /// Rewrites each sentence or line that breaks a rule, one at a time, and lets code pick a version that
     /// passes. A small model ignores "start with S" but follows "its first word must be Storm", and it
     /// hits an exact word count about one try in two, so a few short tries do what one long one can't.
-    private static func repairUnits(of draft: String, task: HarnessTask, state: inout LoopState, setup: TestSetup,
+    static func repairUnits(of draft: String, task: HarnessTask, state: inout LoopState, setup: TestSetup,
                                     total: inout Reply) async -> String {
         let rules = state.rules
         guard let unit = rules.unit else { return draft }
@@ -224,7 +226,7 @@ extension TestLab {
 
     // MARK: Check
 
-    private static func judge(_ raw: String, cut: Bool, task: HarnessTask, state: LoopState) -> Attempt {
+    static func judge(_ raw: String, cut: Bool, task: HarnessTask, state: LoopState) -> Attempt {
         let text = state.rules.tidied(raw)
         guard !text.isEmpty else { return Attempt(text: "", problems: [.empty]) }
         var problems: [Problem] = []

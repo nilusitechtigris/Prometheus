@@ -101,7 +101,7 @@ final class TestLab {
         let model: LocalModel
         let backend: LLMBackend
         let context: Int
-        let think: Bool?
+        var think: Bool?
         let supportsTools: Bool
         var temperature = 0.0
         /// Rounds the harness gets on a task.
@@ -240,7 +240,9 @@ final class TestLab {
 
         harnessTask = Task { [weak self] in
             guard let self else { return }
-            let setup = await Self.prepare(model, backends: backends, settings: settings)
+            var setup = await Self.prepare(model, backends: backends, settings: settings)
+            // A version that always thinks, tested on its own, compares with a run that thinks too.
+            if versions.allSatisfy(\.alwaysThinks), setup.think != nil { setup.think = true }
             var baseline = existingBaseline(setup)
 
             @MainActor func report(_ step: String, _ detail: String, _ fraction: Double) {
@@ -283,7 +285,7 @@ final class TestLab {
                     }) else { break }
                     run.baselineRunID = baseline.id
                     run.toolsAvailable = setup.supportsTools
-                    run.harnessRounds = version == .loop ? setup.maxRounds : nil
+                    run.harnessRounds = version.usesRounds ? setup.maxRounds : nil
                     run.injectionWithout = without
                     run.injectionWith = with
                     run.duration = Date().timeIntervalSince(began)
@@ -325,10 +327,11 @@ final class TestLab {
                           report: @MainActor (Int, Int, ModelTestQuestion) -> Void) async -> ModelTestResult? {
         let start = Date()
         let questions = ModelTestSuite.questions(contextLength: setup.context)
-        var result = ModelTestResult(suiteVersion: ModelTestSuite.version, harness: harness == nil ? nil : true, harnessVersion: harness,
+        var result = ModelTestResult(suiteVersion: ModelTestSuite.version, harness: harness == nil ? nil : true, harnessVersion: harness.map(SavedHarnessVersion.init),
                                      model: setup.model.id, displayName: setup.model.displayName, quant: setup.model.quantLabel,
                                      quantProvider: setup.model.quantProvider, backend: setup.backend.kind.displayName,
-                                     thinking: setup.think ?? false, contextLength: setup.context)
+                                     thinking: harness?.alwaysThinks == true ? setup.think != nil : setup.think ?? false,
+                                     contextLength: setup.context)
         var generated = 0, generationSeconds = 0.0
         var firstTokens: [Double] = []
         var promptReadTokens = 0
@@ -366,7 +369,7 @@ final class TestLab {
         let limit = tokenLimit(question, context: setup.context)
         let reply: Reply
         if let harness {
-            reply = await harnessReply(harness, prompt: question.prompt, setup: setup, maxTokens: limit)
+            reply = await harnessReply(harness, prompt: question.prompt, setup: setup, maxTokens: limit, notesName: "Tests/\(question.id)")
         } else {
             let system = ModelTestSuite.systemPrompt
             reply = await converse([ChatTurn(role: "system", content: system), ChatTurn(role: "user", content: question.prompt)],
@@ -398,6 +401,7 @@ final class TestLab {
 
     struct Reply {
         var answer = ""
+        var thinking = ""
         var thinkingTokens = 0
         var firstToken: Date?
         var stats: BackendStats?
@@ -412,6 +416,10 @@ final class TestLab {
         var onStage: ((HarnessStage, Int) -> Void)?
         /// The best reply so far.
         var onDraft: ((String) -> Void)?
+        /// Where v5 keeps its shared notes, inside their folder. Nil keeps them off the disk.
+        var notesName: String?
+        /// The shared notes so far.
+        var onNotes: ((String) -> Void)?
     }
 
     /// Rounds of tool use a question gets. After that the model has to answer with what it has.
@@ -433,13 +441,15 @@ final class TestLab {
                 for try await event in setup.backend.chat(request) {
                     if Task.isCancelled { break }
                     switch event {
-                    case .thinking:
+                    case .thinking(let thought):
                         if reply.firstToken == nil { reply.firstToken = Date() }
                         reply.thinkingTokens += 1
+                        reply.thinking += thought
                     case .content(let chunk):
                         if reply.firstToken == nil { reply.firstToken = Date() }
                         let parts = parser.feed(chunk)
                         text += parts.answer
+                        reply.thinking += parts.thinking
                         if !parts.thinking.isEmpty { reply.thinkingTokens += 1 }
                     case .toolCall(let call):
                         calls.append(call)
@@ -636,7 +646,11 @@ struct TestResultStore {
         guard let data = try? Data(contentsOf: fileURL) else { return Payload() }
         let decoder = JSONDecoder()
         decoder.dateDecodingStrategy = .iso8601
-        return (try? decoder.decode(Payload.self, from: data)) ?? Payload()
+        guard let payload = try? decoder.decode(Payload.self, from: data) else {
+            ConversationStore.setAside(fileURL)
+            return Payload()
+        }
+        return payload
     }
 
     func save(_ payload: Payload) {
