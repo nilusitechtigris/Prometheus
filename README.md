@@ -16,7 +16,23 @@ The app also measures all of this for you: how capable a model is, how fast your
 
 ## Start it
 
-You'll need an Apple Silicon Mac with macOS 14 or later, plus Xcode or the Command Line Tools (`xcode-select --install`). There's no prebuilt download yet, so you build it yourself.
+You'll need an Apple Silicon Mac with macOS 14 or later. There's no prebuilt download yet, so you build it yourself.
+
+### On a new Mac
+
+Paste this into Terminal. It works on a Mac with nothing installed:
+
+```bash
+/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/nilusitechtigris/Prometheus/main/scripts/setup-mac.sh)"
+```
+
+It asks for your password once, then installs whatever's missing: the Command Line Tools, Homebrew, Ollama and Node. It puts the code in `~/Prometheus`, builds the app into your Applications folder, downloads a first model that fits your Mac and opens the app.
+
+It's safe to run again, because it skips what's already done. To see what it would do first, or to change the folder or skip the model, add `-- --dry-run` or `-- --help` to the end of the command.
+
+### By hand
+
+You'll need Xcode or the Command Line Tools (`xcode-select --install`).
 
 **1. Build and open the app**
 
@@ -41,6 +57,12 @@ brew install ollama && brew services start ollama
 ```
 
 If Ollama is installed but not running, the app shows a **Start Ollama** button.
+
+The harness runs JavaScript with Node, so install that too if you'll use it:
+
+```bash
+brew install node
+```
 
 **3. Download a model.** Open **Models** in the sidebar and pick one. It shows which models fit your Mac. Qwen3 4B Instruct 2507 is a good first choice on 16 GB.
 
@@ -167,6 +189,7 @@ Sources/LocalAIAgent/
   Models/                   Chat types, curated catalog, health thresholds
   Views/                    Forge layout and chats, chat, telemetry widgets, test dashboards, library, settings
 scripts/build-app.sh        Builds and ad-hoc signs the .app bundle
+scripts/setup-mac.sh        Takes a new Mac from nothing to the running app
 ```
 
 Conversations are stored in `~/Library/Application Support/LocalAIAgent/conversations.json`.
