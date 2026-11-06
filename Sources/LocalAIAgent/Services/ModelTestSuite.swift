@@ -56,8 +56,8 @@ struct ModelTestQuestion: Identifiable {
 /// one below it, so most of the score sits in the expert questions and only a frontier-class model
 /// reaches 100.
 enum ModelTestSuite {
-    /// Bump when the questions or weights change: scores from different versions don't compare.
-    static let version = 2
+    /// Bump when the questions, weights or token limits change: scores from different versions don't compare.
+    static let version = 3
 
     /// The model a score of 100 stands for.
     static let referenceModel = "Opus 5.5"

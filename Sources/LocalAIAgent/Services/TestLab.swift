@@ -186,12 +186,14 @@ final class TestLab {
     // MARK: - Harness test
 
     /// The run to show: the one picked, else the newest of the chosen version on this model, else whatever
-    /// this model has, else any model's.
+    /// this model has, else any model's. Runs from an older test come last, so they stay in view.
     func harnessRun(for modelID: String?) -> ModelTestResult? {
         modelResults.first { $0.id == selectedHarnessRunID }
             ?? modelResults.first { $0.usesHarness && $0.isCurrentSuite && $0.model == modelID && (harnessChoice == nil || $0.version == harnessChoice) }
             ?? modelResults.first { $0.usesHarness && $0.isCurrentSuite && $0.model == modelID }
             ?? modelResults.first { $0.usesHarness && $0.isCurrentSuite }
+            ?? modelResults.first { $0.usesHarness && $0.model == modelID }
+            ?? modelResults.first { $0.usesHarness }
     }
 
     /// Picks the version to test and shows its newest run, if it has one.
@@ -210,7 +212,7 @@ final class TestLab {
     /// The newest run of each version that compares with this one: same questions, model, context and thinking.
     func comparableRuns(to run: ModelTestResult) -> [HarnessVersion: ModelTestResult] {
         var runs: [HarnessVersion: ModelTestResult] = [:]
-        for candidate in modelResults where candidate.isCurrentSuite && candidate.model == run.model
+        for candidate in modelResults where candidate.suiteVersion == run.suiteVersion && candidate.model == run.model
             && candidate.contextLength == run.contextLength && candidate.thinking == run.thinking {
             if let version = candidate.version, runs[version] == nil { runs[version] = candidate }
         }
@@ -499,13 +501,14 @@ final class TestLab {
         return total
     }
 
-    /// Hard questions get a lot of room: cutting a model off mid-thought would measure this limit
-    /// instead of the model. Capped so prompt and reply still fit in the context window.
+    /// Every question gets room to think too: cutting a model off mid-thought would measure this limit
+    /// instead of the model. Qwen3 1.7B took 842 tokens on 47 × 23 and 2,164 on element 74, thinking
+    /// included. Capped so prompt and reply still fit in the context window.
     private static func tokenLimit(_ question: ModelTestQuestion, context: Int) -> Int {
         let limit: Int
         switch question.level {
-        case .basic: limit = 512
-        case .intermediate: limit = 1_024
+        case .basic: limit = 2_048
+        case .intermediate: limit = 4_096
         case .advanced: limit = 4_096
         case .expert: limit = 8_192
         }

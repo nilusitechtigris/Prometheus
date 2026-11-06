@@ -89,7 +89,7 @@ struct ModelTestDashboard: View {
                  headline: run.isCurrentSuite ? TestScoring.tier(run.score) : "\(run.passed) of \(run.items.count) correct",
                  aside: run.isCurrentSuite ? "\(run.points) of \(run.maxPoints) points" : nil,
                  detail: "\(run.quant) by \(run.quantProvider) · \(run.backend)",
-                 note: run.isCurrentSuite ? ModelTestSuite.scaleNote : "From the older, easier test, so this score can't be compared with the current scale.") {
+                 note: run.isCurrentSuite ? ModelTestSuite.scaleNote : "From an older version of the test, so this score can't be compared with the current scale.") {
             ModelRunChips(run: run)
         }
     }

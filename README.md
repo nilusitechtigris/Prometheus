@@ -106,6 +106,8 @@ One page with three tabs, all laid out the same way:
 - **Hardware Test** (⌥⌘4, about 30 seconds): CPU, GPU, memory bandwidth and disk speed, plus 15 seconds of sustained GPU load to check for throttling.
 - **Harness Test** (⌥⌘5): the same 24 questions with the harness off and on, then 7 poisoned web pages both ways. Turn off **Harness off too** to run them with the harness on only.
 
+**Publish** (⌥⌘6) shares your results. Tick the runs you want and press **Publish**. The app saves a JSON file named after your Mac and the date, then opens GitHub, where you drag the file in to make a pull request. People's results are in [results](results/README.md), which also describes the file.
+
 ## The harness
 
 Every version stays available, in chat and in the Harness Test, so you can compare them on your own models.
@@ -133,7 +135,7 @@ Scores out of 100, with thinking on:
 | Qwen3 1.7B Q4_K_M | 4K | 24 | 25 | 42 | not run | not run | not run |
 | Qwen3 1.7B FP16 | 8K | 28 | not run | not run | 48 | not run | not run |
 
-These are single runs, so don't read much into small differences, and the two rows use different setups. The v3 run came before a calculator fix that affected one 4-point question, and v4 and v5 haven't been scored yet. Injection protection stopped 7 of 7 poisoned pages in these runs, against 0 of 7 without it.
+These are single runs, so don't read much into small differences, and the two rows use different setups. They also come from an older version of the test, which gave thinking less room on easy questions and marked a few right answers wrong, so new runs won't compare with them. The v3 run came before a calculator fix that affected one 4-point question, and v4 and v5 haven't been scored yet. Injection protection stopped 7 of 7 poisoned pages in these runs, against 0 of 7 without it.
 
 ### How v3 works
 
@@ -178,6 +180,7 @@ Yes. All six Qwen3 models tried so far (1.7B, 4B and 8B, in several quantization
 
 - **Harness off:** the only internet access is downloading models you choose, through your framework, and updating the app when you press **Update**. It never checks for updates by itself.
 - **Harness on:** search terms go to Wikipedia, Stack Overflow, arXiv and MDN, and pages come only from a list of 100 trusted sites. Every search and page is listed above the reply.
+- **Publishing:** the app sends nothing itself. The file holds the runs you chose and your Mac's kind, chip, core counts, memory and macOS version, but never your chats, your name, your computer's name or its serial number. It only goes online if you upload it to GitHub, and it's public once you do.
 - **Code** runs in a deny-by-default macOS sandbox with no internet, no other programs and no access to your files, limited to 10 seconds, 1 GB of memory and 10 MB of files.
 - **Prompt injection:** hidden text and text aimed at the assistant are removed before the model reads a page, and links to untrusted sites are removed from its replies. This is basic protection: it blocks common attacks, not every possible one.
 - **Tools in chat:** from v2 on only the harness uses them, so a web page can't steer one. In v5, once the web has been read, each agent's note gets the same cleaning as a page before the others read it. In v1 the model holds them, so once it has read the web it can't search again and can only open links it was given.
@@ -200,6 +203,7 @@ Sources/LocalAIAgent/
   Telemetry/                CPU/GPU/memory/thermal sampling
   Models/                   Chat types, curated catalog, health thresholds
   Views/                    Forge layout and chats, chat, telemetry widgets, test dashboards, library, settings
+results/                    Test results people have published, and the file format
 scripts/build-app.sh        Builds and ad-hoc signs the .app bundle
 scripts/setup-mac.sh        Takes a new Mac from nothing to the running app
 scripts/update-app.sh       Updates the app to the newest code; the Update button runs this too

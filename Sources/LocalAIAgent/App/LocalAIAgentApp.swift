@@ -221,6 +221,8 @@ struct LocalAIAgentApp: App {
                     .keyboardShortcut("4", modifiers: [.command, .option])
                 Button("Harness Test Results") { ui.openTests(.harness) }
                     .keyboardShortcut("5", modifiers: [.command, .option])
+                Button("Publish Test Results") { ui.openTests(.publish) }
+                    .keyboardShortcut("6", modifiers: [.command, .option])
             }
         }
     }

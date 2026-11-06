@@ -1,8 +1,8 @@
 import SwiftUI
 
-/// The three tests. Their results share one page, one tab at a time.
+/// The three tests, and sharing their results. They share one page, one tab at a time.
 enum TestTab: String, CaseIterable, Identifiable {
-    case model, hardware, harness
+    case model, hardware, harness, publish
 
     var id: String { rawValue }
 
@@ -11,6 +11,7 @@ enum TestTab: String, CaseIterable, Identifiable {
         case .model: return "Model"
         case .hardware: return "Hardware"
         case .harness: return "Harness"
+        case .publish: return "Publish"
         }
     }
 
@@ -29,6 +30,7 @@ struct TestsPage: View {
                 case .model: ModelTestDashboard()
                 case .hardware: HardwareTestDashboard()
                 case .harness: HarnessTestDashboard()
+                case .publish: PublishPage()
                 }
             }
         }
@@ -68,7 +70,7 @@ private struct TestTabBar: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .help("Show the \(tab.title.lowercased()) test results")
+        .help(tab == .publish ? "Share your results on GitHub" : "Show the \(tab.title.lowercased()) test results")
     }
 
     private func isRunning(_ tab: TestTab) -> Bool {
@@ -76,6 +78,7 @@ private struct TestTabBar: View {
         case .model: return lab.modelProgress != nil
         case .hardware: return lab.hardwareProgress != nil
         case .harness: return lab.harnessProgress != nil
+        case .publish: return false
         }
     }
 
@@ -84,6 +87,7 @@ private struct TestTabBar: View {
         case .model: return lab.selectedModelRun.map { "\(TestFormat.score($0.score))/100" }
         case .hardware: return lab.selectedHardwareRun?.gpuBandwidth.map { "\(TestFormat.gbPerSecond($0)) GB/s" }
         case .harness: return lab.harnessRun(for: lab.testModel(in: backends)?.id).map { "\(TestFormat.score($0.score))/100" }
+        case .publish: return nil
         }
     }
 }

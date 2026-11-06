@@ -53,6 +53,7 @@ struct HarnessTestDashboard: View {
     /// The chosen model or version has no run of its own, so the page is showing another one.
     private func notice(showing run: ModelTestResult?) -> String? {
         guard let model = testModel, let run, lab.harnessProgress == nil else { return nil }
+        if !run.isCurrentSuite { return "From an older version of the test, so its score won't compare with new runs." }
         if model.id != run.model { return "Not tested yet. Showing \(run.displayName) \(run.quant)." }
         if let choice = lab.harnessChoice, let shown = run.version, choice != shown {
             return "\(choice.title) not tested on this model yet. Showing \(shown.title)."
@@ -315,7 +316,7 @@ struct HarnessTestDashboard: View {
         TestRunList(runs: lab.harnessRuns) { run in
             TestRunRow(level: TestScoring.modelScore.level(run.score), date: run.date,
                        title: "\(run.displayName) · \(run.quant)\(run.thinking ? " · thinking" : "")",
-                       tag: run.version?.title,
+                       tag: [run.version?.title, run.isCurrentSuite ? nil : "old test"].compactMap { $0 }.joined(separator: " · "),
                        result: "\(lab.baseline(of: run).map { TestFormat.score($0.score) } ?? "—") → \(TestFormat.score(run.score))",
                        selected: run.id == selected.id,
                        onSelect: { lab.show(harnessRun: run) },

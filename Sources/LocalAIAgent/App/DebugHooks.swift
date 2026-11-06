@@ -10,7 +10,8 @@ import SwiftUI
 ///   LOCALAI_SHOW_MODEL_PICKER=1     open the model + quant picker after launch
 ///   LOCALAI_NO_ACTIVATE=1           don't bring the app to the front on launch
 ///   LOCALAI_DATA_DIR=/path          keep chats in this folder instead of the user's
-///   LOCALAI_DESTINATION=model|hardware|harness|library   open that page after launch
+///   LOCALAI_DESTINATION=model|hardware|harness|publish|library   open that page after launch
+///   LOCALAI_PUBLISH_ALL=1           write the file Publish makes, with every saved run
 ///   LOCALAI_AUTOTEST=model|hardware|harness      run that test after launch
 ///   LOCALAI_PAGE_TOUR=tests,harness  move through these pages, writing frames of each move to LOCALAI_TOUR_DIR
 ///   LOCALAI_TEST_MODEL=tag          model the model test runs on (the chat's model stays as it is)
@@ -38,6 +39,11 @@ enum DebugHooks {
     static func install(chat: ChatController, ui: UIState, lab: TestLab, backends: BackendController,
                         monitor: SystemMonitor, settings: AppSettings, updater: AppUpdater) {
         let env = ProcessInfo.processInfo.environment
+        if env["LOCALAI_PUBLISH_ALL"] != nil {
+            let machine = ResultsPublisher.machine(chip: monitor.chipName, gpuCores: monitor.gpuCoreCount)
+            _ = try? ResultsPublisher.write(PublishedResults(app: AppUpdater.commit, machine: machine,
+                                                             modelRuns: lab.modelResults, hardwareRuns: lab.hardwareResults))
+        }
         if let delay = Double(env["LOCALAI_PRESS_UPDATE"] ?? "") {
             Task {
                 try? await Task.sleep(for: .seconds(delay))
@@ -84,6 +90,7 @@ enum DebugHooks {
             case "model": ui.openTests(.model)
             case "hardware": ui.openTests(.hardware)
             case "harness": ui.openTests(.harness)
+            case "publish": ui.openTests(.publish)
             case "library": ui.destination = .library
             case "chat": ui.destination = .chat
             case "settings": ui.destination = .settings
