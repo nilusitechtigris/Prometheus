@@ -71,7 +71,10 @@ app_is_open() {
 
 # The commit the app was built from. Copies from before this script have none.
 installed_commit() {
-    /usr/libexec/PlistBuddy -c 'Print :PrometheusCommit' "$APP_PATH/Contents/Info.plist" 2>/dev/null || true
+    # PlistBuddy reports a missing file on stdout, where it would read like a commit.
+    if [ -f "$APP_PATH/Contents/Info.plist" ]; then
+        /usr/libexec/PlistBuddy -c 'Print :PrometheusCommit' "$APP_PATH/Contents/Info.plist" 2>/dev/null || true
+    fi
 }
 
 check_tools() {

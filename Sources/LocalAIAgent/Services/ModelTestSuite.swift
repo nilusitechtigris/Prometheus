@@ -4,7 +4,8 @@ import Foundation
 /// and works the same for every model.
 struct ModelTestQuestion: Identifiable {
     enum Check {
-        /// The last number in the final answer must equal this.
+        /// The last number in the final answer must equal this, so "47 × 23 = 1081" counts. So may
+        /// the first, unless the answer is a sum, so "807 / 1000" counts too.
         case number(Double)
         /// At least one of these must appear as a whole word in the final answer (case-insensitive).
         case word([String])
@@ -34,8 +35,9 @@ struct ModelTestQuestion: Identifiable {
         let answer = ModelTestSuite.finalAnswer(raw)
         switch check {
         case .number(let value):
-            guard let last = ModelTestSuite.numbers(in: answer).last else { return false }
-            return abs(last - value) < 0.001
+            let found = ModelTestSuite.numbers(in: answer)
+            guard let first = found.first, let last = found.last else { return false }
+            return abs(last - value) < 0.001 || (!answer.contains("=") && abs(first - value) < 0.001)
         case .word(let words):
             return words.contains { ModelTestSuite.containsWord($0, in: answer) }
         case .allWords(let words):
@@ -107,8 +109,11 @@ enum ModelTestSuite {
               prompt: "On an island, knights always tell the truth and knaves always lie. You meet A, B and C.\nA says: \"Exactly one of the three of us is a knight.\"\nB says: \"A is a knave.\"\nC says: \"Exactly one of A and B is a knight.\"\nWhich of them are knights? List their letters.\n\n\(finish)",
               expected: "B, C",
               check: .final { answer in
-                  let letters = Set(answer.split { !$0.isLetter }.map(String.init).filter { ["A", "B", "C"].contains($0) })
-                  return letters == ["B", "C"]
+                  // "A is a knave, B and C are knights" only names A to rule it out.
+                  let knights = answer.replacingOccurrences(of: #"\b[ABC]\s+is\s+a\s+knave\b|(?i:knaves?)\W+[ABC]\b"#, with: "",
+                                                            options: .regularExpression)
+                  let letters = knights.split { !$0.isLetter }.filter { word in word.allSatisfy { "ABC".contains($0) } }
+                  return Set(letters.joined()) == ["B", "C"]
               }),
         .init(id: "reason-4", category: .reasoning, level: .expert, title: "The on-call puzzle",
               summary: "A 13-clue logic grid across three dimensions, with exactly one solution. It has to be deduced in full; it can't be recalled from memory.",
@@ -137,6 +142,10 @@ enum ModelTestSuite {
 
     // MARK: Knowledge
 
+    /// How sources spell the king who signed the treaty. Accents don't matter: see `containsWord`.
+    private static let hattusiliSpellings = ["Hattusili", "Hattusilis", "Hattusilli", "Hattushili", "Hattushilish",
+                                             "Khattusili", "Khattusilis"]
+
     private static let knowledge: [ModelTestQuestion] = [
         .init(id: "know-1", category: .knowledge, level: .basic, title: "Symbol for gold",
               summary: "Common school knowledge.",
@@ -154,7 +163,7 @@ enum ModelTestSuite {
               prompt: "After the Battle of Kadesh, a peace treaty was concluded with Ramesses II. Which Hittite king concluded it, and in which language was the copy found at the Hittite capital written?\n\n\(finish)",
               expected: "Hattusili III, Akkadian",
               check: .final { answer in
-                  containsWord("Akkadian", in: answer) && (containsWord("Hattusili", in: answer) || containsWord("Hattusilis", in: answer))
+                  containsWord("Akkadian", in: answer) && hattusiliSpellings.contains { containsWord($0, in: answer) }
               }),
     ]
 
@@ -175,8 +184,10 @@ enum ModelTestSuite {
               expected: "{\"name\": …, \"age\": …}",
               check: .reply { text in
                   guard let data = text.data(using: .utf8),
-                        let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { return false }
-                  return object["name"] is String && object["age"] is NSNumber && object.count == 2
+                        let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                        let age = object["age"] as? NSNumber else { return false }
+                  // JSON's true and false also arrive as NSNumber.
+                  return object["name"] is String && CFGetTypeID(age) != CFBooleanGetTypeID() && object.count == 2
               }),
         .init(id: "follow-3", category: .instructions, level: .advanced, title: "Four rules at once",
               summary: "Several rules that all have to hold together: sentence count, first letters, an exact word count and a banned word.",
@@ -189,7 +200,7 @@ enum ModelTestSuite {
                   return sentences.count == 3
                       && sentences.allSatisfy { $0.lowercased().hasPrefix("s") }
                       && sentences[1].split(whereSeparator: \.isWhitespace).count == 5
-                      && !text.lowercased().contains("water")
+                      && !containsWord("water", in: text)
               }),
         .init(id: "follow-4", category: .instructions, level: .expert, title: "Poem without the letter e",
               summary: "A lipogram with exact line lengths. Models see tokens rather than letters, so this takes real checking and rewriting.",

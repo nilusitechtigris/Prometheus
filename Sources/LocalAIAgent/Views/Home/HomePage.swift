@@ -62,96 +62,37 @@ private struct HomeHero: View {
     @Environment(ChatController.self) private var chat
 
     var body: some View {
-        ZStack(alignment: .topTrailing) {
-            ModePicker()
-            VStack(alignment: .leading, spacing: 8) {
-                (Text("Small models.\n").foregroundStyle(Forge.ink) + Text("Serious work.").foregroundStyle(Palette.accent))
-                    .font(.geist(46, weight: .semibold))
-                    .lineSpacing(0)
-                Text("Turn lightweight LLMs into focused, reliable task executors.")
-                    .font(.geist(16))
-                    .foregroundStyle(Forge.dim)
-                HStack(spacing: 12) {
-                    Button {
-                        ui.destination = .chat
-                        chat.newConversation()
-                        ui.composerFocusRequest += 1
-                    } label: {
-                        Label("Start a New Task", systemImage: "play.fill")
-                    }
-                    .buttonStyle(AccentButtonStyle())
-                    Button {
-                        ui.destination = .library
-                    } label: {
-                        HStack(spacing: 8) {
-                            Text("Browse Models")
-                            Image(systemName: "arrow.right")
-                        }
-                    }
-                    .buttonStyle(OutlineButtonStyle())
+        VStack(alignment: .leading, spacing: 8) {
+            (Text("Small models.\n").foregroundStyle(Forge.ink) + Text("Serious work.").foregroundStyle(Palette.accent))
+                .font(.geist(46, weight: .semibold))
+                .lineSpacing(0)
+            Text("Turn lightweight LLMs into focused, reliable task executors.")
+                .font(.geist(16))
+                .foregroundStyle(Forge.dim)
+            HStack(spacing: 12) {
+                Button {
+                    ui.destination = .chat
+                    chat.newConversation()
+                    ui.composerFocusRequest += 1
+                } label: {
+                    Label("Start a New Task", systemImage: "play.fill")
                 }
-                .padding(.top, 14)
+                .buttonStyle(AccentButtonStyle())
+                Button {
+                    ui.destination = .library
+                } label: {
+                    HStack(spacing: 8) {
+                        Text("Browse Models")
+                        Image(systemName: "arrow.right")
+                    }
+                }
+                .buttonStyle(OutlineButtonStyle())
             }
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(.top, 48)
+            .padding(.top, 14)
         }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.top, 48)
         .frame(height: 334, alignment: .top)
-    }
-}
-
-/// Local mode or harness on, which is the one switch that decides whether anything leaves this Mac.
-private struct ModePicker: View {
-    @Environment(AppSettings.self) private var settings
-    @Environment(BackendController.self) private var backends
-    @State private var open = false
-
-    private var harness: Bool { settings.harnessEnabled && backends.kind.supportsTools }
-
-    var body: some View {
-        Button { open.toggle() } label: {
-            HStack(spacing: 7) {
-                Circle().fill(harness ? Palette.warning : Palette.good).frame(width: 8, height: 8)
-                Text(harness ? "Harness \(settings.harnessVersion.short)" : "Local Mode").font(.uiCaption.weight(.medium))
-                Image(systemName: "chevron.down").font(.system(size: 9, weight: .semibold)).foregroundStyle(Forge.dim)
-            }
-            .padding(.horizontal, 12)
-            .padding(.vertical, 8)
-            .background(Forge.card, in: Capsule())
-            .overlay(Capsule().strokeBorder(Forge.line, lineWidth: 1))
-            .contentShape(Capsule())
-        }
-        .buttonStyle(.plain)
-        .popover(isPresented: $open, arrowEdge: .bottom) {
-            VStack(alignment: .leading, spacing: 4) {
-                choice("Local Mode", "Everything stays on this Mac.", selected: !harness) { settings.harnessEnabled = false }
-                choice("Harness On", "Search terms go to Wikipedia, Stack Overflow, arXiv and MDN.", selected: harness) {
-                    settings.harnessEnabled = true
-                }
-                .disabled(!backends.kind.supportsTools)
-            }
-            .padding(8)
-            .frame(width: 290)
-        }
-    }
-
-    private func choice(_ title: String, _ detail: String, selected: Bool, action: @escaping () -> Void) -> some View {
-        Button {
-            action()
-            open = false
-        } label: {
-            HStack(alignment: .top, spacing: 9) {
-                Image(systemName: selected ? "checkmark.circle.fill" : "circle")
-                    .foregroundStyle(selected ? Palette.accent : Forge.faint)
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(title).font(.uiCallout.weight(.medium))
-                    Text(detail).font(.uiCaption).foregroundStyle(Forge.dim).fixedSize(horizontal: false, vertical: true)
-                }
-                Spacer(minLength: 0)
-            }
-            .padding(8)
-            .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
     }
 }
 

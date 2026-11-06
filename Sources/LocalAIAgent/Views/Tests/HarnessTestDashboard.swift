@@ -16,7 +16,7 @@ struct HarnessTestDashboard: View {
 
     var body: some View {
         let run = lab.harnessRun(for: testModel?.id)
-        let pair = run.flatMap { run in lab.baseline(of: run).map { (run: run, baseline: $0) } }
+        let baseline = run.flatMap { lab.baseline(of: $0) }
         TestPage(title: "Harness Test",
                  subtitle: "The same \(ModelTestSuite.questionCount) questions with each version, then \(InjectionSuite.cases.count) poisoned pages.",
                  caption: backends.kind.supportsTools ? setupCaption : "Harness tools need Ollama for now",
@@ -24,12 +24,13 @@ struct HarnessTestDashboard: View {
                  progress: lab.harnessProgress, onStop: { lab.cancelHarnessTest() }, scrollable: scrollable, shownRun: run?.id) {
             TestModelPicker()
             HarnessVersionPicker()
+            HarnessOffToggle()
             RunTestButton(title: lab.harnessChoice == nil ? "Run all \(HarnessVersion.allCases.count)" : "Run test",
                           disabled: !canRun || !backends.kind.supportsTools) {
                 lab.runHarnessTest(backends: backends, settings: settings)
             }
         } content: {
-            if let (run, baseline) = pair {
+            if let run {
                 TestBlocks(title: run.displayName, symbol: "cube.fill", date: run.date, tiles: tiles(run, baseline)) {
                     hero(run, baseline)
                 } left: {
@@ -42,7 +43,7 @@ struct HarnessTestDashboard: View {
             } else if lab.harnessProgress == nil {
                 TestEmptyState(text: "Run the test to compare the chosen model with and without the harness: the same questions, then poisoned web pages that try to take it over.")
             }
-            details(pair)
+            details(run, baseline)
         }
     }
 
@@ -70,39 +71,51 @@ struct HarnessTestDashboard: View {
 
     // MARK: Overview
 
-    private func tiles(_ run: ModelTestResult, _ baseline: ModelTestResult) -> (MetricTile, MetricTile, MetricTile, MetricTile) {
+    private func tiles(_ run: ModelTestResult, _ baseline: ModelTestResult?) -> (MetricTile, MetricTile, MetricTile, MetricTile) {
         let without = run.injectionWithout ?? [], with = run.injectionWith ?? []
         let toolLog = run.items.flatMap { $0.toolLog ?? [] }.filter(HarnessTools.isToolCall)
         let failedCalls = toolLog.filter { $0.hasSuffix(HarnessTools.failedMark) }.count
         let questionsWithTools = run.items.filter(usedTools).count
         return (MetricTile(title: "Injections stopped", value: "\(with.filter(\.passed).count)/\(with.count)",
-                           caption: "Was \(without.filter(\.passed).count)/\(without.count) without the harness", symbol: "shield.lefthalf.filled",
+                           caption: without.isEmpty ? Self.notRunOff : "Was \(without.filter(\.passed).count)/\(without.count) without the harness",
+                           symbol: "shield.lefthalf.filled",
                            level: with.allSatisfy(\.passed) ? .good : .warning),
                 MetricTile(title: "Tool calls", value: "\(toolLog.count)",
                            caption: toolCaption(run, questions: questionsWithTools, failed: failedCalls),
                            symbol: "wrench.and.screwdriver", level: failedCalls > 0 ? .warning : nil),
                 MetricTile(title: "Points", value: "\(run.points)", unit: "of \(run.maxPoints)",
-                           caption: "Was \(baseline.points) without the harness", symbol: "star"),
+                           caption: baseline.map { "Was \($0.points) without the harness" } ?? Self.notRunOff, symbol: "star"),
                 MetricTile(title: "Test time", value: Format.seconds(run.duration),
-                           caption: "Was \(Format.seconds(baseline.duration)) without the harness", symbol: "clock"))
+                           caption: baseline.map { "Was \(Format.seconds($0.duration)) without the harness" } ?? Self.notRunOff,
+                           symbol: "clock"))
     }
+
+    private static let notRunOff = "Harness off wasn't run"
 
     private func toolCaption(_ run: ModelTestResult, questions: Int, failed: Int) -> String {
         let spread = failed > 0 ? "\(failed) failed, across \(questions) questions" : "Across \(questions) of \(run.items.count) questions"
         return run.modelToolCalls.map { "\($0) by the model itself. \(spread)" } ?? spread
     }
 
-    private func hero(_ run: ModelTestResult, _ baseline: ModelTestResult) -> some View {
-        let off = TestFormat.score(baseline.score), on = TestFormat.score(run.score)
-        let delta = Int(run.score) - Int(baseline.score)
+    private func hero(_ run: ModelTestResult, _ baseline: ModelTestResult?) -> some View {
+        let on = TestFormat.score(run.score)
         let version = run.version?.title ?? "the harness"
-        return TestHero(score: run.score,
-                        headline: delta == 0 ? "No change with \(version)" : "\(delta > 0 ? "+" : "")\(delta) with \(version)",
-                        aside: "\(off) → \(on)",
-                        detail: "\(run.quant) by \(run.quantProvider) · \(run.backend)",
-                        note: run.toolsAvailable == false
-                            ? "\(off) off, \(on) on. This model can't call tools itself, so only the harness used them."
-                            : "\(off) with the harness off, \(on) with it on, on the same questions.") {
+        let cantCallTools = "This model can't call tools itself, so only the harness used them."
+        let headline, note: String
+        let aside: String?
+        if let baseline {
+            let off = TestFormat.score(baseline.score)
+            let delta = Int(run.score) - Int(baseline.score)
+            headline = delta == 0 ? "No change with \(version)" : "\(delta > 0 ? "+" : "")\(delta) with \(version)"
+            aside = "\(off) → \(on)"
+            note = run.toolsAvailable == false ? "\(off) off, \(on) on. \(cantCallTools)" : "\(off) with the harness off, \(on) with it on, on the same questions."
+        } else {
+            headline = "\(on) with \(version)"
+            aside = nil
+            note = run.toolsAvailable == false ? cantCallTools : "Run with the harness on only, so there's no score to compare it with."
+        }
+        return TestHero(score: run.score, headline: headline, aside: aside,
+                        detail: "\(run.quant) by \(run.quantProvider) · \(run.backend)", note: note) {
             ModelRunChips(run: run)
         }
     }
@@ -114,25 +127,30 @@ struct HarnessTestDashboard: View {
     // MARK: Details
 
     @ViewBuilder
-    private func details(_ pair: (run: ModelTestResult, baseline: ModelTestResult)?) -> some View {
-        let tabs: [(id: Detail, title: String)] = pair == nil
-            ? [(.howItWorks, "How it works"), (.versions, "Versions"), (.sites, "Trusted sites")]
-            : [(.howItWorks, "How it works"), (.versions, "Versions"), (.changes, "What changed"), (.tools, "Tool use"), (.sites, "Trusted sites")]
-        TestDetails(tabs: tabs, selection: $detail) {
-            switch (detail, pair) {
-            case (.versions, _): versions(pair)
-            case (.changes, let pair?): changes(pair.run, pair.baseline)
-            case (.tools, let pair?): toolActivity(pair.run)
-            case (.sites, _): TrustedSiteList()
+    private func details(_ run: ModelTestResult?, _ baseline: ModelTestResult?) -> some View {
+        TestDetails(tabs: detailTabs(run, baseline), selection: $detail) {
+            switch (detail, run, baseline) {
+            case (.versions, _, _): versions(run, baseline)
+            case (.changes, let run?, let baseline?): changes(run, baseline)
+            case (.tools, let run?, _): toolActivity(run)
+            case (.sites, _, _): TrustedSiteList()
             default: HarnessFlowDiagram()
             }
         }
     }
 
+    private func detailTabs(_ run: ModelTestResult?, _ baseline: ModelTestResult?) -> [(id: Detail, title: String)] {
+        var tabs: [(id: Detail, title: String)] = [(.howItWorks, "How it works"), (.versions, "Versions")]
+        if run != nil, baseline != nil { tabs.append((.changes, "What changed")) }
+        if run != nil { tabs.append((.tools, "Tool use")) }
+        tabs.append((.sites, "Trusted sites"))
+        return tabs
+    }
+
     // MARK: Topics
 
     /// Every version beside the run with the harness off, so the results sit side by side.
-    private func topics(_ run: ModelTestResult, _ baseline: ModelTestResult) -> some View {
+    private func topics(_ run: ModelTestResult, _ baseline: ModelTestResult?) -> some View {
         let runs = lab.comparableRuns(to: run)
         return TestPanel(title: "By topic", symbol: "square.grid.3x2.fill", note: "score, on this model and setup") {
             Grid(alignment: .leading, horizontalSpacing: 12, verticalSpacing: 16) {
@@ -153,7 +171,7 @@ struct HarnessTestDashboard: View {
                             Image(systemName: category.symbol).font(.uiCaption).foregroundStyle(.secondary).frame(width: 16)
                             Text(category.name).frame(maxWidth: .infinity, alignment: .leading)
                         }
-                        Text(baseline.score(for: category).map(Format.percent) ?? "—").monospacedDigit().foregroundStyle(.secondary)
+                        Text(baseline?.score(for: category).map(Format.percent) ?? "—").monospacedDigit().foregroundStyle(.secondary)
                         ForEach(HarnessVersion.allCases) { version in
                             topicCell(runs[version]?.score(for: category).map(Format.percent), chosen: version == run.version)
                         }
@@ -162,7 +180,7 @@ struct HarnessTestDashboard: View {
                 }
                 GridRow {
                     Text("All topics").frame(maxWidth: .infinity, alignment: .leading)
-                    Text(TestFormat.score(baseline.score)).monospacedDigit().foregroundStyle(.secondary)
+                    Text(baseline.map { TestFormat.score($0.score) } ?? "—").monospacedDigit().foregroundStyle(.secondary)
                     ForEach(HarnessVersion.allCases) { version in
                         topicCell(runs[version].map { TestFormat.score($0.score) }, chosen: version == run.version)
                     }
@@ -183,21 +201,21 @@ struct HarnessTestDashboard: View {
 
     /// What each version does, how it scored on this setup, and every question side by side.
     @ViewBuilder
-    private func versions(_ pair: (run: ModelTestResult, baseline: ModelTestResult)?) -> some View {
-        let runs = pair.map { lab.comparableRuns(to: $0.run) } ?? [:]
+    private func versions(_ run: ModelTestResult?, _ baseline: ModelTestResult?) -> some View {
+        let runs = run.map { lab.comparableRuns(to: $0) } ?? [:]
         VStack(alignment: .leading, spacing: 12) {
-            Text(pair.map { "Scores for \($0.run.displayName) \($0.run.quant) at \(Format.tokens($0.run.contextLength)) context, thinking \($0.run.thinking ? "on" : "off"). Only runs on this same setup are compared." }
+            Text(run.map { "Scores for \($0.displayName) \($0.quant) at \(Format.tokens($0.contextLength)) context, thinking \($0.thinking ? "on" : "off"). Only runs on this same setup are compared." }
                  ?? "Run the test to score a version.")
                 .font(.uiCaption).foregroundStyle(.secondary)
             VStack(spacing: 8) {
                 ForEach(HarnessVersion.allCases) { version in
-                    VersionCard(version: version, run: runs[version], baseline: pair?.baseline,
-                                selected: version == pair?.run.version) {
+                    VersionCard(version: version, run: runs[version], baseline: baseline,
+                                selected: version == run?.version) {
                         if let run = runs[version] { lab.show(harnessRun: run) }
                     }
                 }
             }
-            if let pair { VersionQuestionGrid(run: pair.run, baseline: pair.baseline, runs: runs) }
+            if let run { VersionQuestionGrid(run: run, baseline: baseline, runs: runs) }
         }
     }
 
@@ -303,6 +321,23 @@ struct HarnessTestDashboard: View {
                        onSelect: { lab.show(harnessRun: run) },
                        onDelete: { lab.delete(modelRun: run.id) })
         }
+    }
+}
+
+/// Whether a run also covers the harness off, or only the harness on.
+private struct HarnessOffToggle: View {
+    @Environment(TestLab.self) private var lab
+    @Environment(AppSettings.self) private var settings
+
+    var body: some View {
+        @Bindable var settings = settings
+        Toggle("Harness off too", isOn: $settings.harnessTestRunsOff)
+            .toggleStyle(.switch)
+            .controlSize(.mini)
+            .font(.uiCaption)
+            .fixedSize()
+            .disabled(lab.isRunning)
+            .help("On: runs the questions and poisoned pages with the harness off as well, or reuses a matching run. Off: runs them with the harness on only.")
     }
 }
 
@@ -446,7 +481,7 @@ private struct VersionCard: View {
 /// Every question, passed or failed, with the harness off and in each version.
 private struct VersionQuestionGrid: View {
     let run: ModelTestResult
-    let baseline: ModelTestResult
+    let baseline: ModelTestResult?
     let runs: [HarnessVersion: ModelTestResult]
 
     var body: some View {
@@ -465,7 +500,7 @@ private struct VersionQuestionGrid: View {
                     GridRow {
                         Text(item.title).font(.uiCallout).lineLimit(1).frame(maxWidth: .infinity, alignment: .leading)
                         Text("\(item.weight)").font(.uiCaption.monospacedDigit()).foregroundStyle(.secondary)
-                        mark(baseline.items.first { $0.id == item.id })
+                        mark(baseline?.items.first { $0.id == item.id })
                         ForEach(HarnessVersion.allCases) { version in
                             mark(runs[version]?.items.first { $0.id == item.id })
                         }
@@ -493,10 +528,16 @@ private struct InjectionRow: View {
     let without: InjectionResult?
     @State private var expanded = false
 
+    /// A dash when that side wasn't run, because a cross would say the attack got through.
+    @ViewBuilder
     private func mark(_ result: InjectionResult?) -> some View {
-        Image(systemName: result?.passed == true ? "checkmark.circle.fill" : "xmark.circle.fill")
-            .foregroundStyle(result?.passed == true ? Palette.good : Palette.critical)
-            .frame(width: 34)
+        if let result {
+            Image(systemName: result.passed ? "checkmark.circle.fill" : "xmark.circle.fill")
+                .foregroundStyle(result.passed ? Palette.good : Palette.critical)
+                .frame(width: 34)
+        } else {
+            Text("—").foregroundStyle(.tertiary).frame(width: 34)
+        }
     }
 
     var body: some View {

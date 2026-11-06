@@ -234,7 +234,8 @@ final class TestLab {
 
     /// The same questions on the same model without the harness, the poisoned pages both ways, then the
     /// questions through each chosen version. A matching run without the harness is reused rather than
-    /// repeated. The pages run once, since every version guards them the same way.
+    /// repeated, and with `harnessTestRunsOff` turned off nothing runs without the harness at all.
+    /// The pages run once, since every version guards them the same way.
     func runHarnessTest(backends: BackendController, settings: AppSettings) {
         guard !isRunning, backends.activeTest == nil, let model = testModel(in: backends) else { return }
         let versions = harnessChoice.map { [$0] } ?? HarnessVersion.allCases
@@ -249,16 +250,18 @@ final class TestLab {
             // A version that always thinks, tested on its own, compares with a run that thinks too.
             if versions.allSatisfy(\.alwaysThinks), setup.think != nil { setup.think = true }
             var baseline = existingBaseline(setup)
+            let runsOff = settings.harnessTestRunsOff
+            let needsOffRun = runsOff && baseline == nil
 
             @MainActor func report(_ step: String, _ detail: String, _ fraction: Double) {
                 self.harnessProgress = TestProgress(step: step, detail: detail, fraction: fraction, startedAt: start)
             }
             // Every set of questions gets the same share of the bar, and the poisoned pages a tenth.
             let pagesShare = 0.1
-            let suiteShare = (1 - pagesShare) / Double(versions.count + (baseline == nil ? 1 : 0))
-            let withoutShare = baseline == nil ? suiteShare : 0
+            let suiteShare = (1 - pagesShare) / Double(versions.count + (needsOffRun ? 1 : 0))
+            let withoutShare = needsOffRun ? suiteShare : 0
 
-            if baseline == nil {
+            if needsOffRun {
                 baseline = await runSuite(setup, harness: nil) { index, total, question in
                     report("Without the harness", "Question \(index + 1) of \(total) · \(question.title)",
                            withoutShare * Double(index) / Double(total))
@@ -269,18 +272,20 @@ final class TestLab {
                 }
             }
 
+            // The run without the harness comes back empty if it was stopped or failed.
+            let ready = baseline != nil || !runsOff
             var without: [InjectionResult] = [], with: [InjectionResult] = []
-            if baseline != nil {
+            if ready {
                 let cases = InjectionSuite.cases
                 for (i, attack) in cases.enumerated() where !Task.isCancelled {
                     report("Injection test", "Page \(i + 1) of \(cases.count) · \(attack.title)",
                            withoutShare + pagesShare * Double(i) / Double(cases.count))
-                    without.append(await Self.attack(attack, setup: setup, harness: false))
+                    if runsOff { without.append(await Self.attack(attack, setup: setup, harness: false)) }
                     with.append(await Self.attack(attack, setup: setup, harness: true))
                 }
             }
 
-            if let baseline {
+            if ready {
                 for (position, version) in versions.enumerated() where !Task.isCancelled {
                     let began = Date()
                     let step = versions.count > 1 ? "\(version.title), \(position + 1) of \(versions.count)" : "With \(version.title)"
@@ -288,7 +293,7 @@ final class TestLab {
                     guard var run = await runSuite(setup, harness: version, report: { index, total, question in
                         report(step, "Question \(index + 1) of \(total) · \(question.title)", done + suiteShare * Double(index) / Double(total))
                     }) else { break }
-                    run.baselineRunID = baseline.id
+                    run.baselineRunID = baseline?.id
                     run.toolsAvailable = setup.supportsTools
                     run.harnessRounds = version.usesRounds ? setup.maxRounds : nil
                     run.injectionWithout = without
