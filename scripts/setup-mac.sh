@@ -384,7 +384,7 @@ open_app() {
     ok "Code: $REPO_DIR"
     say ""
     say "Open Chat in Prometheus and send a message."
-    say "To update later: git -C \"$REPO_DIR\" pull && make -C \"$REPO_DIR\" install"
+    say "To update later, press Update in Settings › Updates."
     CURRENT_STEP=""
     if ! app_is_open; then
         run open "$APP_PATH"

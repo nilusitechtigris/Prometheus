@@ -9,6 +9,8 @@ EXECUTABLE="LocalAIAgent"
 BUNDLE_ID="com.localaiagent.app"
 VERSION="1.0.0"
 APP="build/${APP_NAME}.app"
+# Lets an update tell whether it's moving forward. See scripts/update-app.sh.
+COMMIT="$(git rev-parse HEAD 2>/dev/null || true)"
 
 # Command Line Tools ship newer SDKs whose SwiftUI `@State` macro plugin is only bundled with Xcode.
 # In that case, fall back to the newest installed SDK that doesn't need it.
@@ -62,6 +64,7 @@ mkdir -p "$APP/Contents/Resources/Fonts"
 cp assets/fonts/*.ttf assets/fonts/OFL.txt "$APP/Contents/Resources/Fonts/"
 mkdir -p "$APP/Contents/Resources/Art"
 cp assets/art/*.png "$APP/Contents/Resources/Art/"
+cp scripts/update-app.sh "$APP/Contents/Resources/"
 
 cat > "$APP/Contents/Info.plist" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>
@@ -76,6 +79,7 @@ cat > "$APP/Contents/Info.plist" <<PLIST
     <key>CFBundlePackageType</key><string>APPL</string>
     <key>CFBundleShortVersionString</key><string>${VERSION}</string>
     <key>CFBundleVersion</key><string>1</string>
+    <key>PrometheusCommit</key><string>${COMMIT}</string>
     <key>LSMinimumSystemVersion</key><string>14.0</string>
     <key>LSApplicationCategoryType</key><string>public.app-category.developer-tools</string>
     <key>NSHighResolutionCapable</key><true/>

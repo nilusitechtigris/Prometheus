@@ -28,6 +28,7 @@ import SwiftUI
 ///   LOCALAI_CHAT_HARNESS=1          turn the harness on for chat
 ///   LOCALAI_HARNESS_VERSION=tools|pipeline|loop|thinking|council   the version chat, the sample and the Harness tab use
 ///   LOCALAI_SETTINGS_TAB=safety     open that section of the Settings page
+///   LOCALAI_PRESS_UPDATE=3          press Update this many seconds after launch
 ///   LOCALAI_PICK_CHATS=all|2        start in the chats' Select mode with these chats ticked
 ///   LOCALAI_DELETE_PICKED=1         delete the ticked chats after 3 s
 ///   LOCALAI_WINDOW_SIZE=1380x2400   resize the main window after launch, to snapshot more of a page
@@ -35,8 +36,14 @@ import SwiftUI
 @MainActor
 enum DebugHooks {
     static func install(chat: ChatController, ui: UIState, lab: TestLab, backends: BackendController,
-                        monitor: SystemMonitor, settings: AppSettings) {
+                        monitor: SystemMonitor, settings: AppSettings, updater: AppUpdater) {
         let env = ProcessInfo.processInfo.environment
+        if let delay = Double(env["LOCALAI_PRESS_UPDATE"] ?? "") {
+            Task {
+                try? await Task.sleep(for: .seconds(delay))
+                updater.update()
+            }
+        }
         if env["LOCALAI_CLOSE_MAIN"] != nil {
             Task {
                 try? await Task.sleep(for: .seconds(Double(env["LOCALAI_CLOSE_MAIN"] ?? "") ?? 3))

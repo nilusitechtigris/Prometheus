@@ -105,6 +105,7 @@ struct LocalAIAgentApp: App {
     @State private var monitor = SystemMonitor()
     @State private var ui = UIState()
     @State private var lab: TestLab
+    @State private var updater: AppUpdater
 
     init() {
         AppFonts.register()
@@ -112,10 +113,12 @@ struct LocalAIAgentApp: App {
         let backends = BackendController(settings: settings)
         let chat = ChatController(settings: settings, backends: backends)
         let lab = TestLab()
+        let updater = AppUpdater(isBusy: { lab.isRunning || chat.isGenerating || !backends.pulls.isEmpty })
         _settings = State(initialValue: settings)
         _backends = State(initialValue: backends)
         _chat = State(initialValue: chat)
         _lab = State(initialValue: lab)
+        _updater = State(initialValue: updater)
         AppDelegate.isBusy = { MainActor.assumeIsolated { lab.isRunning } }
         AppDelegate.onTerminate = { MainActor.assumeIsolated { chat.saveNow() } }
     }
@@ -129,13 +132,14 @@ struct LocalAIAgentApp: App {
                 .environment(monitor)
                 .environment(ui)
                 .environment(lab)
+                .environment(updater)
                 // With the telemetry panel open the window stays tall enough for the page above it.
                 .frame(minWidth: 1100, minHeight: settings.telemetryOpen ? max(640, 400 + settings.telemetryHeight) : 640)
                 .task {
                     backends.start()
                     monitor.start()
                     #if DEBUG
-                    DebugHooks.install(chat: chat, ui: ui, lab: lab, backends: backends, monitor: monitor, settings: settings)
+                    DebugHooks.install(chat: chat, ui: ui, lab: lab, backends: backends, monitor: monitor, settings: settings, updater: updater)
                     #endif
                 }
         }
@@ -150,6 +154,10 @@ struct LocalAIAgentApp: App {
                         attributes: [.font: NSFont.systemFont(ofSize: 11), .foregroundColor: NSColor.secondaryLabelColor,
                                      .paragraphStyle: centered])
                     NSApp.orderFrontStandardAboutPanel(options: [.applicationName: Brand.name, .credits: credits])
+                }
+                Button("Update \(Brand.name)…") {
+                    ui.settingsTab = .updates
+                    ui.destination = .settings
                 }
             }
             CommandGroup(replacing: .appSettings) {

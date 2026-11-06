@@ -68,6 +68,18 @@ brew install node
 
 **4. Chat.** Open **Chat** and send a message. To try the harness, click the **Harness** button under the message box and pick a version.
 
+### Updating
+
+Open **Settings › Updates** and press **Update**. The app downloads the newest code from GitHub, builds it and restarts itself. You can keep using it during the build, and it waits for a running test, reply or download before it restarts. If anything goes wrong, your copy keeps working.
+
+It keeps the code in `~/Prometheus`, the same place the new Mac command uses, and it needs the Command Line Tools. It only ever moves forward, because an older build can erase saved chats it can't read. So it won't touch a copy built from code that isn't on `main`, or a `~/Prometheus` folder with changes of its own.
+
+If your copy doesn't have the Updates tab yet, quit the app and paste this into Terminal:
+
+```bash
+/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/nilusitechtigris/Prometheus/main/scripts/update-app.sh)"
+```
+
 ## What's inside
 
 ### Chat
@@ -164,7 +176,7 @@ Yes. All six Qwen3 models tried so far (1.7B, 4B and 8B, in several quantization
 
 ## Privacy and safety
 
-- **Harness off:** the only internet access is downloading models you choose, through your framework.
+- **Harness off:** the only internet access is downloading models you choose, through your framework, and updating the app when you press **Update**. It never checks for updates by itself.
 - **Harness on:** search terms go to Wikipedia, Stack Overflow, arXiv and MDN, and pages come only from a list of 100 trusted sites. Every search and page is listed above the reply.
 - **Code** runs in a deny-by-default macOS sandbox with no internet, no other programs and no access to your files, limited to 10 seconds, 1 GB of memory and 10 MB of files.
 - **Prompt injection:** hidden text and text aimed at the assistant are removed before the model reads a page, and links to untrusted sites are removed from its replies. This is basic protection: it blocks common attacks, not every possible one.
@@ -190,6 +202,7 @@ Sources/LocalAIAgent/
   Views/                    Forge layout and chats, chat, telemetry widgets, test dashboards, library, settings
 scripts/build-app.sh        Builds and ad-hoc signs the .app bundle
 scripts/setup-mac.sh        Takes a new Mac from nothing to the running app
+scripts/update-app.sh       Updates the app to the newest code; the Update button runs this too
 ```
 
 Conversations are stored in `~/Library/Application Support/LocalAIAgent/conversations.json`.

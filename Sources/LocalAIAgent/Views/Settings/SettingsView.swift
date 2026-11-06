@@ -3,7 +3,7 @@ import SwiftUI
 
 /// The sections of the Settings page.
 enum SettingsTab: String, CaseIterable, Identifiable {
-    case general, appearance, frameworks, safety, data
+    case general, appearance, frameworks, safety, data, updates
 
     var id: String { rawValue }
     var title: String { rawValue.capitalized }
@@ -43,6 +43,7 @@ struct SettingsView: View {
                 case .frameworks: FrameworkSettings()
                 case .safety: SafetySettings()
                 case .data: DataSettings()
+                case .updates: UpdateSettings()
                 }
             }
             .scrollContentBackground(.hidden)
@@ -244,11 +245,74 @@ private struct SafetySettings: View {
                     .foregroundStyle(.secondary)
             }
             Section("Privacy") {
-                Label("Your chats stay on this Mac. With the harness off, the only internet access is downloading models you choose, through your framework. With it on, search terms go to Wikipedia, Stack Overflow, arXiv and MDN, and pages come from the trusted sites.", systemImage: "lock.shield")
+                Label("Your chats stay on this Mac. With the harness off, the only internet access is downloading models you choose, through your framework, and updating the app when you press Update. With it on, search terms go to Wikipedia, Stack Overflow, arXiv and MDN, and pages come from the trusted sites.", systemImage: "lock.shield")
                     .font(.uiCallout)
             }
         }
         .formStyle(.grouped)
+    }
+}
+
+private struct UpdateSettings: View {
+    @Environment(AppUpdater.self) private var updater
+
+    var body: some View {
+        Form {
+            Section {
+                LabeledContent("This version") {
+                    Text(AppUpdater.commit.map { String($0.prefix(7)) } ?? "Unknown").font(.geistMono(13))
+                }
+                HStack(spacing: 10) {
+                    status
+                    Spacer()
+                    Button("Update") { updater.update() }
+                        .disabled(!updater.canUpdate)
+                }
+            } footer: {
+                Text("Downloads the newest code from GitHub, builds it on this Mac and restarts the app. It goes online only when you press Update, and waits for a running test, reply or download before it restarts. Your chats and settings stay as they are, and if anything goes wrong this copy keeps working.")
+                    .font(.uiCaption)
+                    .foregroundStyle(.secondary)
+                    .multilineTextAlignment(.leading)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
+            if !updater.changes.isEmpty {
+                Section("What's new") {
+                    ForEach(updater.changes, id: \.self) { Text($0).font(.uiCallout) }
+                }
+            }
+        }
+        .formStyle(.grouped)
+    }
+
+    @ViewBuilder private var status: some View {
+        switch updater.phase {
+        case .idle:
+            Text("Press Update to get the newest version.")
+                .font(.uiCallout)
+                .foregroundStyle(.secondary)
+        case .working(let stage):
+            progress(stage)
+        case .waitingForWork:
+            progress("Ready. Restarting when the current work finishes.")
+        case .upToDate:
+            Label("You're on the newest version.", systemImage: "checkmark.circle.fill")
+                .font(.uiCallout)
+                .foregroundStyle(Palette.good)
+        case .failed(let message):
+            VStack(alignment: .leading, spacing: 6) {
+                Label(message, systemImage: "exclamationmark.triangle.fill")
+                    .font(.uiCallout)
+                    .foregroundStyle(Palette.critical)
+                Button("Show Log") { NSWorkspace.shared.activateFileViewerSelecting([AppUpdater.logURL]) }
+            }
+        }
+    }
+
+    private func progress(_ text: String) -> some View {
+        HStack(spacing: 8) {
+            ProgressView().controlSize(.small)
+            Text(text).font(.uiCallout)
+        }
     }
 }
 
