@@ -77,7 +77,7 @@ struct OllamaBackend: LLMBackend {
                         "keep_alive": "10m",
                     ]
                     if let think = request.think { body["think"] = think }
-                    if !request.tools.isEmpty { body["tools"] = request.tools.map(Self.encode) }
+                    if !request.tools.isEmpty { body["tools"] = request.tools.map(\.json) }
 
                     let lines = try await HTTP.lines(HTTP.request(url("api/chat"), method: "POST", json: body))
                     for try await line in lines {
@@ -126,16 +126,6 @@ struct OllamaBackend: LLMBackend {
         }
         if let name = turn.toolName { message["tool_name"] = name }
         return message
-    }
-
-    private static func encode(_ tool: ToolDefinition) -> [String: Any] {
-        let properties = Dictionary(uniqueKeysWithValues: tool.parameters.map {
-            ($0.name, ["type": "string", "description": $0.description])
-        })
-        return ["type": "function",
-                "function": ["name": tool.name, "description": tool.description,
-                             "parameters": ["type": "object", "properties": properties,
-                                            "required": tool.parameters.map(\.name)]]]
     }
 
     // MARK: Ollama-only management

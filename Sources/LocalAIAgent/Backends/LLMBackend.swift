@@ -19,7 +19,7 @@ enum BackendKind: String, CaseIterable, Identifiable, Codable {
         case .ollama: return "Recommended · one-click model downloads"
         case .lmStudio: return "OpenAI-compatible server · GGUF & MLX"
         case .llamaCpp: return "llama-server · maximum control"
-        case .mlx: return "Apple MLX · native Apple Silicon"
+        case .mlx: return "Apple MLX · one-click model downloads"
         }
     }
 
@@ -50,15 +50,18 @@ enum BackendKind: String, CaseIterable, Identifiable, Codable {
         case .llamaCpp:
             return ["brew install llama.cpp", "llama-server -hf ggml-org/gemma-3-4b-it-GGUF -c 8192 --port 8080"]
         case .mlx:
-            return ["pip install mlx-lm", "mlx_lm.server --model mlx-community/Qwen3-4B-Instruct-2507-4bit --port 8081"]
+            return ["brew install mlx-lm", "mlx_lm.server --port 8081"]
         }
     }
 
-    /// Whether the app can set the context window per request. Other frameworks fix it when the model is loaded.
-    var supportsPerRequestContext: Bool { self == .ollama }
+    /// Whether the app can set the context window per request. LM Studio and llama.cpp fix it when the
+    /// model is loaded. MLX LM has no window of its own, so the app's limit is the one that applies.
+    var supportsPerRequestContext: Bool { self == .ollama || self == .mlx }
+    /// Whether thinking can be turned on and off for each request.
+    var supportsThinkingControl: Bool { self == .ollama || self == .mlx }
     /// Whether the harness can give models tools through this framework.
-    var supportsTools: Bool { self == .ollama }
-    var supportsModelDownloads: Bool { self == .ollama }
+    var supportsTools: Bool { self == .ollama || self == .mlx }
+    var supportsModelDownloads: Bool { self == .ollama || self == .mlx }
 }
 
 struct LocalModel: Identifiable, Hashable {
@@ -125,6 +128,17 @@ struct ToolDefinition {
     let name: String
     let description: String
     let parameters: [Parameter]
+
+    /// As Ollama and OpenAI-style servers want it.
+    var json: [String: Any] {
+        let properties = Dictionary(uniqueKeysWithValues: parameters.map {
+            ($0.name, ["type": "string", "description": $0.description])
+        })
+        return ["type": "function",
+                "function": ["name": name, "description": description,
+                             "parameters": ["type": "object", "properties": properties,
+                                            "required": parameters.map(\.name)]]]
+    }
 }
 
 struct ChatRequest {

@@ -120,7 +120,12 @@ struct LocalAIAgentApp: App {
         _lab = State(initialValue: lab)
         _updater = State(initialValue: updater)
         AppDelegate.isBusy = { MainActor.assumeIsolated { lab.isRunning } }
-        AppDelegate.onTerminate = { MainActor.assumeIsolated { chat.saveNow() } }
+        AppDelegate.onTerminate = {
+            MainActor.assumeIsolated {
+                chat.saveNow()
+                backends.stopMLX()
+            }
+        }
     }
 
     var body: some Scene {

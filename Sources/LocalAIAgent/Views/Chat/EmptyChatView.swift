@@ -103,19 +103,19 @@ private struct FrameworkSetupCard: View {
                     .multilineTextAlignment(.center)
             }
 
-            if backends.kind == .ollama && backends.ollamaInstalled {
+            if backends.canStartFramework {
                 Button {
-                    backends.startOllama()
+                    backends.startFramework()
                 } label: {
-                    if backends.isStartingOllama {
+                    if backends.isStartingFramework {
                         ProgressView().controlSize(.small).padding(.horizontal, 30)
                     } else {
-                        Label("Start Ollama", systemImage: "play.fill").padding(.horizontal, 8)
+                        Label("Start \(backends.kind.displayName)", systemImage: "play.fill").padding(.horizontal, 8)
                     }
                 }
                 .controlSize(.large)
                 .buttonStyle(AccentButtonStyle(compact: true))
-                .disabled(backends.isStartingOllama)
+                .disabled(backends.isStartingFramework)
             }
 
             Card {

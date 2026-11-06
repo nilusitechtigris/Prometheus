@@ -125,6 +125,7 @@ final class TestLab {
                 lines.append("\(item.passed ? "PASS" : "FAIL") \(item.id) (\(item.weight) pts, \(Int(item.seconds)) s, \(item.modelToolCalls ?? 0) model calls) expected \(item.expected)")
                 if !item.passed { lines.append("   full: \(item.answer.suffix(260))") }
                 lines.append("   answer: \(ModelTestSuite.finalAnswer(item.answer).prefix(90))")
+                lines.append("   tokens: output \(item.outputTokens ?? 0), thinking \(item.thinkingTokens ?? 0), stopped \(item.stopReason ?? "?")")
                 for step in item.toolLog ?? [] { lines.append("   \(step.prefix(100))") }
                 try? lines.joined(separator: "\n").write(toFile: path, atomically: true, encoding: .utf8)
             }
@@ -143,7 +144,7 @@ final class TestLab {
             }
         }
         return TestSetup(model: model, backend: backend, context: context,
-                         think: backend.kind == .ollama && supportsThinking ? settings.thinkingEnabled : nil,
+                         think: backend.kind.supportsThinkingControl && supportsThinking ? settings.thinkingEnabled : nil,
                          supportsTools: backend.kind.supportsTools && supportsTools, maxRounds: settings.harnessMaxRounds)
     }
 

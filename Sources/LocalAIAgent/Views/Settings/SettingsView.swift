@@ -161,7 +161,7 @@ private struct FrameworkSettings: View {
                     FrameworkRow(kind: kind)
                 }
             } footer: {
-                Text("All frameworks run on this Mac. Ollama supports one-click downloads and per-chat context windows; LM Studio, llama.cpp and MLX use their OpenAI-compatible server.")
+                Text("All frameworks run on this Mac. Ollama and MLX LM support one-click downloads and per-chat context windows, and the app starts MLX LM when you choose it. LM Studio and llama.cpp use their own OpenAI-compatible servers.")
                     .font(.uiCaption)
                     .foregroundStyle(.secondary)
             }

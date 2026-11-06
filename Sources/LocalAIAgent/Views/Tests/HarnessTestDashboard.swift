@@ -19,7 +19,7 @@ struct HarnessTestDashboard: View {
         let baseline = run.flatMap { lab.baseline(of: $0) }
         TestPage(title: "Harness Test",
                  subtitle: "The same \(ModelTestSuite.questionCount) questions with each version, then \(InjectionSuite.cases.count) poisoned pages.",
-                 caption: backends.kind.supportsTools ? setupCaption : "Harness tools need Ollama for now",
+                 caption: backends.kind.supportsTools ? setupCaption : "Harness tools need Ollama or MLX LM for now",
                  notice: notice(showing: run),
                  progress: lab.harnessProgress, onStop: { lab.cancelHarnessTest() }, scrollable: scrollable, shownRun: run?.id) {
             TestModelPicker()
@@ -63,7 +63,7 @@ struct HarnessTestDashboard: View {
 
     private var setupCaption: String {
         let context = testModel.map { Format.tokens(backends.estimatedContext(for: $0)) } ?? "—"
-        let thinking = testModel?.catalog?.thinking == true && settings.thinkingEnabled && backends.kind == .ollama
+        let thinking = testModel?.catalog?.thinking == true && settings.thinkingEnabled && backends.kind.supportsThinkingControl
         let versions = lab.harnessChoice.map(\.testTimeWeight) ?? HarnessVersion.allCases.map(\.testTimeWeight).reduce(0, +)
         let time = thinking ? "Thinking on, can take \(versions * 2)+ hours" : "Takes up to \(versions == 1 ? "an hour" : "\(versions) hours")"
         let sameAsLoop = !thinking && lab.harnessChoice == .thinking ? " · Without thinking, \(HarnessVersion.thinking.short) runs like \(HarnessVersion.loop.short)" : ""

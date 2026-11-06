@@ -94,6 +94,14 @@ struct ModelLibraryView: View {
 }
 
 private struct SafetyCallout: View {
+    @Environment(BackendController.self) private var backends
+
+    private var source: String {
+        backends.kind == .mlx
+            ? "They download from Hugging Face as safetensors weight files (tensors only, no executable code), converted for MLX by the mlx-community project, and run fully offline."
+            : "They download as GGUF weight files (tensors only, no executable code), are checksum-verified by Ollama, and run fully offline."
+    }
+
     var body: some View {
         HStack(alignment: .top, spacing: 12) {
             Image(systemName: "checkmark.shield.fill")
@@ -101,7 +109,7 @@ private struct SafetyCallout: View {
                 .foregroundStyle(Palette.good)
             VStack(alignment: .leading, spacing: 4) {
                 Text("Every model here is verified").font(.uiHeadline)
-                Text("Curated open-weight models published by Meta, Google, Microsoft, Alibaba Qwen, Mistral AI, IBM, DeepSeek and OpenAI — each one used and evaluated by a very large community. They download as GGUF weight files (tensors only, no executable code), are checksum-verified by Ollama, and run fully offline.")
+                Text("Curated open-weight models published by Meta, Google, Microsoft, Alibaba Qwen, Mistral AI, IBM, DeepSeek and OpenAI — each one used and evaluated by a very large community. \(source)")
                     .font(.uiCallout)
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
@@ -123,15 +131,18 @@ struct ModelCard: View {
     @State private var confirmRemove = false
     @State private var chosenTag: String?
 
+    /// The quantizations this framework can run.
+    private var available: [QuantVariant] { model.variants(for: backends.kind) }
+
     /// The quantization this card is acting on: the user's pick, else an installed one, else the default.
     private var variant: QuantVariant {
-        if let tag = chosenTag, let v = model.variant(forTag: tag) { return v }
-        if let selected = backends.selectedModel.flatMap({ model.variant(forTag: $0.id) }) { return selected }
-        return model.variants.first { backends.installed($0) != nil } ?? model.defaultVariant
+        if let tag = chosenTag, let v = available.first(where: { $0.tag == tag }) { return v }
+        if let selected = backends.selectedModel.flatMap({ model.variant(forTag: $0.id) }), available.contains(selected) { return selected }
+        return available.first { backends.installed($0) != nil } ?? available.first(where: \.isDefault) ?? available.first ?? model.defaultVariant
     }
 
     private var installed: LocalModel? {
-        if backends.kind == .ollama { return backends.installed(variant) }
+        if backends.kind.supportsModelDownloads { return backends.installed(variant) }
         return backends.models.first { $0.catalog?.id == model.id }
     }
 
@@ -158,7 +169,7 @@ struct ModelCard: View {
                     Spacer()
                     Image(systemName: "checkmark.shield.fill")
                         .foregroundStyle(Palette.good)
-                        .help("Verified: official weights from \(model.publisher)")
+                        .help(backends.kind == .mlx ? "Verified: \(model.publisher)'s model, converted by mlx-community" : "Verified: official weights from \(model.publisher)")
                 }
 
                 if !compact {
@@ -169,10 +180,10 @@ struct ModelCard: View {
                         .frame(maxWidth: .infinity, minHeight: 34, alignment: .topLeading)
                 }
 
-                if backends.kind == .ollama {
+                if backends.kind.supportsModelDownloads && !available.isEmpty {
                     VStack(alignment: .leading, spacing: 5) {
                         HStack(spacing: 5) {
-                            ForEach(model.variants) { v in
+                            ForEach(available) { v in
                                 variantChip(v, selected: v == variant)
                             }
                         }
@@ -256,7 +267,7 @@ struct ModelCard: View {
                 Button(inUse ? "In Use" : "Use") { backends.select(installed) }
                     .controlSize(.small)
                     .disabled(inUse)
-                if backends.kind == .ollama {
+                if backends.kind.supportsModelDownloads {
                     Menu {
                         Button("Remove from Disk…", role: .destructive) { confirmRemove = true }
                     } label: { Image(systemName: "ellipsis") }
@@ -265,6 +276,11 @@ struct ModelCard: View {
                     .fixedSize()
                 }
             }
+        } else if backends.kind == .mlx && available.isEmpty {
+            Text("Not on MLX")
+                .font(.uiCaption)
+                .foregroundStyle(.secondary)
+                .help("No MLX version of this model passed the check for tensors-only files")
         } else if backends.kind.supportsModelDownloads {
             Button {
                 backends.pull(variant.tag)

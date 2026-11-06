@@ -162,7 +162,7 @@ final class ChatController {
             temperature: settings.temperature,
             contextLength: context,
             maxTokens: settings.maxResponseTokens > 0 ? settings.maxResponseTokens : nil,
-            think: backend.kind == .ollama && backends.supportsThinking ? settings.thinkingEnabled : nil
+            think: backend.kind.supportsThinkingControl && backends.supportsThinking ? settings.thinkingEnabled : nil
         )
 
         var assistant = ChatMessage(role: .assistant, content: "", modelName: model.id)

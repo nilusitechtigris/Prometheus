@@ -197,8 +197,8 @@ private struct ThinkPill: View {
         // Plain glass + accent outline: tinted glass made the whole chat column drop out of window captures.
         .glassCapsule(interactive: true)
         .overlay(Capsule().strokeBorder(on ? Palette.accent.opacity(0.6) : .clear, lineWidth: 1))
-        .disabled(backends.kind != .ollama)
-        .help(backends.kind == .ollama
+        .disabled(!backends.kind.supportsThinkingControl)
+        .help(backends.kind.supportsThinkingControl
               ? (on ? "Thinking on — the model reasons before answering" : "Thinking off — faster, direct answers")
               : "Thinking is controlled by the framework")
     }
@@ -236,7 +236,7 @@ private struct HarnessPill: View {
         .help(backends.kind.supportsTools
               ? (on ? "Harness \(version.title): it uses tools for each message, so search terms leave this Mac. Click to change the version or turn it off."
                     : "Harness off: everything stays on this Mac. Click to give the model web search and a code sandbox.")
-              : "The harness needs Ollama for now")
+              : "The harness needs Ollama or MLX LM for now")
         .accessibilityLabel(on ? "Harness, \(version.title)" : "Harness, off")
         .popover(isPresented: $show, arrowEdge: .top) {
             HarnessPopover { show = false }

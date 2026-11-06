@@ -12,6 +12,8 @@ import SwiftUI
 ///   LOCALAI_DATA_DIR=/path          keep chats in this folder instead of the user's
 ///   LOCALAI_DESTINATION=model|hardware|harness|publish|library   open that page after launch
 ///   LOCALAI_PUBLISH_ALL=1           write the file Publish makes, with every saved run
+///   LOCALAI_REMOVE=tag              remove this model after launch
+///   LOCALAI_PULL=tag                download this model after launch; LOCALAI_PULL_LOG=/path gets its progress
 ///   LOCALAI_AUTOTEST=model|hardware|harness      run that test after launch
 ///   LOCALAI_PAGE_TOUR=tests,harness  move through these pages, writing frames of each move to LOCALAI_TOUR_DIR
 ///   LOCALAI_TEST_MODEL=tag          model the model test runs on (the chat's model stays as it is)
@@ -39,6 +41,23 @@ enum DebugHooks {
     static func install(chat: ChatController, ui: UIState, lab: TestLab, backends: BackendController,
                         monitor: SystemMonitor, settings: AppSettings, updater: AppUpdater) {
         let env = ProcessInfo.processInfo.environment
+        if let tag = env["LOCALAI_REMOVE"] {
+            Task { await backends.delete(tag) }
+        }
+        if let tag = env["LOCALAI_PULL"], let path = env["LOCALAI_PULL_LOG"] {
+            Task {
+                try? await Task.sleep(for: .seconds(2))
+                backends.pull(tag)
+                var lines: [String] = []
+                while let pull = backends.pulls[tag], pull.task != nil {
+                    lines.append(String(format: "%.3f %@", pull.fraction, pull.status))
+                    try? lines.joined(separator: "\n").write(toFile: path, atomically: true, encoding: .utf8)
+                    try? await Task.sleep(for: .milliseconds(500))
+                }
+                lines.append(backends.pulls[tag]?.error ?? "done")
+                try? lines.joined(separator: "\n").write(toFile: path, atomically: true, encoding: .utf8)
+            }
+        }
         if env["LOCALAI_PUBLISH_ALL"] != nil {
             let machine = ResultsPublisher.machine(chip: monitor.chipName, gpuCores: monitor.gpuCoreCount)
             _ = try? ResultsPublisher.write(PublishedResults(app: AppUpdater.commit, machine: machine,
@@ -214,7 +233,7 @@ enum DebugHooks {
         }
         if let prompt = env["LOCALAI_AUTOPROMPT"] {
             Task {
-                for _ in 0..<40 where !chat.canSend { try? await Task.sleep(for: .milliseconds(250)) }
+                for _ in 0..<160 where !chat.canSend { try? await Task.sleep(for: .milliseconds(250)) }
                 chat.newConversation()
                 if let stop = Double(env["LOCALAI_STOP_AFTER"] ?? "") {
                     Task {

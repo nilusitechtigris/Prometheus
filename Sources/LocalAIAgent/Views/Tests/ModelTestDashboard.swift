@@ -63,7 +63,7 @@ struct ModelTestDashboard: View {
     private var setupCaption: String? {
         guard let model = testModel else { return nil }
         var parts = [backends.kind.displayName, "\(Format.tokens(backends.estimatedContext(for: model))) context"]
-        let thinking = model.catalog?.thinking == true && settings.thinkingEnabled && backends.kind == .ollama
+        let thinking = model.catalog?.thinking == true && settings.thinkingEnabled && backends.kind.supportsThinkingControl
         parts.append(thinking ? "Thinking on, can take over an hour" : "Takes about 30 minutes")
         return parts.joined(separator: " · ")
     }

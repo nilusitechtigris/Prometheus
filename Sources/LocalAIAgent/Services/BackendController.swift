@@ -32,12 +32,14 @@ final class BackendController {
     private(set) var availability: [BackendKind: Bool] = [:]
     var pulls: [String: PullState] = [:]
     var lastError: String?
-    var isStartingOllama = false
+    var isStartingFramework = false
     /// Name of the test that's using the model or the hardware right now; chat waits until it ends.
     var activeTest: String?
 
     private var pollTask: Task<Void, Never>?
     private var detailsFor: String?
+    /// The MLX LM server, when the app started it.
+    private var mlxServer: Process?
 
     init(settings: AppSettings) {
         self.settings = settings
@@ -88,6 +90,7 @@ final class BackendController {
         loaded = []
         details = nil
         detailsFor = nil
+        if kind == .mlx { startMLXIfNeeded() } else { stopMLX() }
         Task { await refresh() }
     }
 
@@ -165,6 +168,7 @@ final class BackendController {
 
     func start() {
         guard pollTask == nil else { return }
+        if kind == .mlx { startMLXIfNeeded() }
         pollTask = Task { [weak self] in
             var tick = 0
             while !Task.isCancelled {
@@ -225,14 +229,22 @@ final class BackendController {
         details = try? await backend.details(for: model)
     }
 
-    // MARK: Ollama management
+    // MARK: Downloads
 
     func pull(_ tag: String, selectWhenDone: Bool = false) {
-        guard let ollama, pulls[tag]?.task == nil else { return }
+        guard pulls[tag]?.task == nil else { return }
+        let updates: AsyncThrowingStream<OllamaBackend.PullUpdate, Error>
+        if kind == .mlx {
+            updates = MLXRuntime.download(tag, bytes: ModelCatalog.variant(forTag: tag)?.bytes ?? 0)
+        } else if let ollama {
+            updates = ollama.pull(tag)
+        } else {
+            return
+        }
         var state = PullState()
         state.task = Task { [weak self] in
             do {
-                for try await update in ollama.pull(tag) {
+                for try await update in updates {
                     guard let self else { return }
                     self.pulls[tag]?.status = Self.prettyPullStatus(update.status)
                     self.pulls[tag]?.fraction = update.fraction
@@ -265,9 +277,12 @@ final class BackendController {
     }
 
     func delete(_ name: String) async {
-        guard let ollama else { return }
         do {
-            try await ollama.delete(name)
+            if kind == .mlx {
+                try await MLXRuntime.remove(name)
+            } else if let ollama {
+                try await ollama.delete(name)
+            }
             if settings.selectedModel == name { settings.selectedModel = nil }
             await refresh()
         } catch {
@@ -292,7 +307,7 @@ final class BackendController {
         }
     }
 
-    // MARK: Starting Ollama
+    // MARK: Starting a framework
 
     static let ollamaBinaryPaths = ["/opt/homebrew/bin/ollama", "/usr/local/bin/ollama", "/Applications/Ollama.app/Contents/Resources/ollama"]
 
@@ -301,8 +316,22 @@ final class BackendController {
             || Self.ollamaBinaryPaths.contains { FileManager.default.isExecutableFile(atPath: $0) }
     }
 
-    func startOllama() {
-        isStartingOllama = true
+    var canStartFramework: Bool { kind == .mlx ? MLXRuntime.isInstalled : kind == .ollama && ollamaInstalled }
+
+    func startFramework() {
+        isStartingFramework = true
+        if kind == .mlx { startMLX() } else { startOllama() }
+        Task { [weak self] in
+            for _ in 0..<40 {
+                try? await Task.sleep(for: .milliseconds(500))
+                await self?.refresh()
+                if self?.status.isOnline == true { break }
+            }
+            self?.isStartingFramework = false
+        }
+    }
+
+    private func startOllama() {
         if FileManager.default.fileExists(atPath: "/Applications/Ollama.app") {
             NSWorkspace.shared.openApplication(at: URL(fileURLWithPath: "/Applications/Ollama.app"), configuration: .init())
         } else if let path = Self.ollamaBinaryPaths.first(where: { FileManager.default.isExecutableFile(atPath: $0) }) {
@@ -313,13 +342,25 @@ final class BackendController {
             process.standardError = FileHandle.nullDevice
             try? process.run()
         }
+    }
+
+    /// MLX LM has no service of its own, so the app runs it while it's the chosen framework.
+    private func startMLXIfNeeded() {
+        guard MLXRuntime.isInstalled else { return }
         Task { [weak self] in
-            for _ in 0..<20 {
-                try? await Task.sleep(for: .milliseconds(500))
-                await self?.refresh()
-                if self?.status.isOnline == true { break }
-            }
-            self?.isStartingOllama = false
+            guard let self, self.kind == .mlx, (try? await self.backend.ping()) == nil else { return }
+            self.startFramework()
         }
+    }
+
+    private func startMLX() {
+        guard mlxServer?.isRunning != true else { return }
+        mlxServer = MLXRuntime.startServer(port: URL(string: settings.baseURL(for: .mlx))?.port ?? 8081)
+    }
+
+    /// Stops a server the app started, which also frees the memory its model holds.
+    func stopMLX() {
+        mlxServer?.terminate()
+        mlxServer = nil
     }
 }

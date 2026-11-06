@@ -22,6 +22,7 @@ CLT_DIALOG_TIMEOUT=2700
 
 REPO_DIR=""
 WANT_MODEL=1
+WANT_MLX=0
 ASSUME_YES=0
 DRY_RUN=0
 MODEL=""
@@ -54,6 +55,7 @@ Usage: setup-mac.sh [options]
 
   --dir PATH    Where to put the code (default: ~/Prometheus)
   --no-model    Don't download a first model
+  --mlx         Also install MLX LM, to run MLX models
   --yes         Don't ask before starting
   --dry-run     Show what would happen without changing anything
   --help        Show this
@@ -72,6 +74,7 @@ parse_args() {
                 shift 2
                 ;;
             --no-model) WANT_MODEL=0; shift ;;
+            --mlx)      WANT_MLX=1; shift ;;
             --yes|-y)   ASSUME_YES=1; shift ;;
             --dry-run)  DRY_RUN=1; shift ;;
             --help|-h)  usage; exit 0 ;;
@@ -167,6 +170,9 @@ show_plan() {
     say "Prometheus setup"
     say ""
     say "This installs whatever's missing: the Command Line Tools, Homebrew, Ollama and Node."
+    if [ "$WANT_MLX" = 1 ]; then
+        say "It also installs MLX LM."
+    fi
     say "Then it puts the code in $REPO_DIR, builds the app into /Applications and opens it."
     if [ "$WANT_MODEL" = 1 ]; then
         say "This Mac has $MEMORY_GB GB of memory, so the first model is $MODEL ($MODEL_SIZE)."
@@ -312,6 +318,13 @@ install_packages() {
             run "$BREW_BIN/brew" install "$package"
         fi
     done
+    if [ "$WANT_MLX" = 1 ]; then
+        if [ -x "$BREW_BIN/mlx_lm.server" ]; then
+            ok "mlx-lm is already installed"
+        else
+            run "$BREW_BIN/brew" install mlx-lm
+        fi
+    fi
 }
 
 get_code() {

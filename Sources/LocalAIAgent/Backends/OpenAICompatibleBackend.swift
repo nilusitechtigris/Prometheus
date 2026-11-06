@@ -8,7 +8,8 @@ struct OpenAICompatibleBackend: LLMBackend {
     private func url(_ path: String) -> URL { baseURL.appendingPathComponent(path) }
 
     func ping() async throws -> String {
-        _ = try await HTTP.data(HTTP.request(url("v1/models"), timeout: 2))
+        // MLX LM's model list scans the whole Hugging Face cache, which is too much to do every few seconds.
+        _ = try await HTTP.data(HTTP.request(url(kind == .mlx ? "health" : "v1/models"), timeout: 2))
         return "online"
     }
 
@@ -54,6 +55,9 @@ struct OpenAICompatibleBackend: LLMBackend {
                let settings = obj["default_generation_settings"] as? [String: Any] {
                 details.maxContext = settings.int("n_ctx")
             }
+        case .mlx:
+            // It only knows a model's abilities once it's loaded, and one without tools just ignores them.
+            details.capabilities = ["tools"]
         default:
             break
         }
@@ -67,16 +71,23 @@ struct OpenAICompatibleBackend: LLMBackend {
                 do {
                     var body: [String: Any] = [
                         "model": request.model,
-                        "messages": request.messages.map { ["role": $0.role, "content": $0.content] },
+                        "messages": request.messages.map(Self.encode),
                         "stream": true,
                         "temperature": request.temperature,
                         "stream_options": ["include_usage": true],
                     ]
-                    if let max = request.maxTokens { body["max_tokens"] = max }
+                    // MLX LM stops at 512 tokens unless it's told otherwise.
+                    if let max = request.maxTokens ?? (kind == .mlx ? request.contextLength : nil) { body["max_tokens"] = max }
+                    if kind == .mlx, let think = request.think { body["chat_template_kwargs"] = ["enable_thinking": think] }
+                    if !request.tools.isEmpty { body["tools"] = request.tools.map(\.json) }
 
+                    let started = Date()
                     let lines = try await HTTP.lines(HTTP.request(url("v1/chat/completions"), method: "POST", json: body))
                     var stats = BackendStats()
                     var chunkCount = 0
+                    var firstToken: Date?, lastToken: Date?
+                    // A call can arrive in pieces, so they're put together by position and sent at the end.
+                    var calls: [Int: (name: String, arguments: String)] = [:]
                     for try await line in lines {
                         try Task.checkCancellation()
                         guard line.hasPrefix("data:") else { continue }
@@ -93,6 +104,18 @@ struct OpenAICompatibleBackend: LLMBackend {
                                 let reasoning = (delta["reasoning_content"] as? String) ?? (delta["reasoning"] as? String)
                                 if let r = reasoning, !r.isEmpty { continuation.yield(.thinking(r)); chunkCount += 1 }
                                 if let c = delta["content"] as? String, !c.isEmpty { continuation.yield(.content(c)); chunkCount += 1 }
+                                if reasoning?.isEmpty == false || (delta["content"] as? String)?.isEmpty == false {
+                                    lastToken = Date()
+                                    if firstToken == nil { firstToken = lastToken }
+                                }
+                                for call in delta["tool_calls"] as? [[String: Any]] ?? [] {
+                                    let index = call.int("index") ?? calls.count
+                                    let function = call["function"] as? [String: Any]
+                                    var pieces = calls[index] ?? (name: "", arguments: "")
+                                    pieces.name += function?["name"] as? String ?? ""
+                                    pieces.arguments += function?["arguments"] as? String ?? ""
+                                    calls[index] = pieces
+                                }
                             }
                             if let reason = choice["finish_reason"] as? String { stats.stopReason = reason }
                         }
@@ -111,6 +134,11 @@ struct OpenAICompatibleBackend: LLMBackend {
                         }
                     }
                     if stats.completionTokens == nil { stats.completionTokens = chunkCount }
+                    Self.measure(&stats, started: started, firstToken: firstToken, lastToken: lastToken)
+                    for index in calls.keys.sorted() {
+                        guard let call = calls[index], !call.name.isEmpty else { continue }
+                        continuation.yield(.toolCall(ToolCall(name: call.name, arguments: Self.decode(call.arguments))))
+                    }
                     continuation.yield(.finished(stats))
                     continuation.finish()
                 } catch {
@@ -119,5 +147,43 @@ struct OpenAICompatibleBackend: LLMBackend {
             }
             continuation.onTermination = { _ in task.cancel() }
         }
+    }
+
+    /// Only llama.cpp reports its own speed, so for the others it's timed from here.
+    private static func measure(_ stats: inout BackendStats, started: Date, firstToken: Date?, lastToken: Date?) {
+        guard let firstToken, let lastToken else { return }
+        let reading = stats.promptEvalSeconds ?? firstToken.timeIntervalSince(started)
+        let generating = stats.evalSeconds ?? lastToken.timeIntervalSince(firstToken)
+        stats.promptEvalSeconds = reading
+        stats.evalSeconds = generating
+        if stats.promptTokensPerSecond == nil, reading > 0, let tokens = stats.promptTokens {
+            stats.promptTokensPerSecond = Double(tokens) / reading
+        }
+        if stats.tokensPerSecond == nil, generating > 0, let tokens = stats.completionTokens {
+            stats.tokensPerSecond = Double(tokens) / generating
+        }
+    }
+
+    private static func encode(_ turn: ChatTurn) -> [String: Any] {
+        var message: [String: Any] = ["role": turn.role, "content": turn.content]
+        if !turn.toolCalls.isEmpty {
+            message["tool_calls"] = turn.toolCalls.enumerated().map { index, call in
+                ["id": "call_\(index)", "type": "function", "function": ["name": call.name, "arguments": encode(call.arguments)]]
+            }
+        }
+        if let name = turn.toolName { message["name"] = name }
+        return message
+    }
+
+    /// Arguments travel as JSON text in this protocol.
+    private static func encode(_ arguments: [String: String]) -> String {
+        guard let data = try? JSONSerialization.data(withJSONObject: arguments) else { return "{}" }
+        return String(decoding: data, as: UTF8.self)
+    }
+
+    private static func decode(_ arguments: String) -> [String: String] {
+        guard let data = arguments.data(using: .utf8),
+              let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { return [:] }
+        return object.mapValues { "\($0)" }
     }
 }

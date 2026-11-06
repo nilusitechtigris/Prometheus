@@ -137,7 +137,8 @@ extension TestLab {
                                        ChatTurn(role: "user", content: plan.task)],
                                       setup: own, maxTokens: plan.maxTokens ?? maxTokens, useTools: false, think: think)
             }
-            let tools = setup.supportsTools && plan.addendum.isEmpty
+            // Only v1 hands the model tools. From v2 on the harness runs them itself, as it does in chat.
+            let tools = version == .tools && setup.supportsTools && plan.addendum.isEmpty
             let system = ModelTestSuite.systemPrompt + "\n\n" + PromptGuard.systemRules + (tools ? "\n\n" + HarnessTools.systemRules : "")
             return await converse([ChatTurn(role: "system", content: system), ChatTurn(role: "user", content: plan.task + plan.addendum)],
                                   setup: setup, maxTokens: plan.maxTokens ?? maxTokens, useTools: tools, think: think)
