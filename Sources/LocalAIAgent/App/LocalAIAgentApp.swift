@@ -115,7 +115,8 @@ struct LocalAIAgentApp: App {
         let chat = ChatController(settings: settings, backends: backends)
         let lab = TestLab()
         let dev = DevSession(backends: backends, settings: settings)
-        let updater = AppUpdater(isBusy: { lab.isRunning || chat.isGenerating || !backends.pulls.isEmpty || dev.isBusy })
+        let updater = AppUpdater(isBusy: { lab.isRunning || chat.isGenerating || !backends.pulls.isEmpty || dev.isBusy },
+                                 restartMLX: { await backends.restartMLX() })
         _settings = State(initialValue: settings)
         _backends = State(initialValue: backends)
         _chat = State(initialValue: chat)

@@ -238,6 +238,14 @@ enum ModelCatalog {
                          q("qwen2.5-coder:7b-instruct-q8_0", "Q8_0", 8_098_538_722)],
               mlxVariants: [m("Qwen2.5-Coder-7B-Instruct-4bit", "4bit", 4_284_346_255, isDefault: true),
                             m("Qwen2.5-Coder-7B-Instruct-8bit", "8bit", 8_091_987_725)]),
+        .init(displayName: "Qwen2.5 Coder 14B", publisher: "Alibaba Qwen", license: "Apache 2.0",
+              parameters: "14.7B", maxContext: 32_768, kvKBPerToken: 192, category: .coding,
+              summary: "The larger Qwen coder. Handles bigger files and multi-step fixes better. Best on 24 GB+ Macs.",
+              matchKeys: ["qwen25coder14b"], huggingFaceHint: "Qwen/Qwen2.5-Coder-14B-Instruct",
+              variants: [q("qwen2.5-coder:14b", "Q4_K_M", 8_988_123_810, aliases: ["qwen2.5-coder:14b-instruct-q4_K_M"], isDefault: true),
+                         q("qwen2.5-coder:14b-instruct-q8_0", "Q8_0", 15_701_611_170)],
+              mlxVariants: [m("Qwen2.5-Coder-14B-Instruct-4bit", "4bit", 8_309_494_233, isDefault: true),
+                            m("Qwen2.5-Coder-14B-Instruct-8bit", "8bit", 15_694_091_111)]),
 
         // Large
         .init(displayName: "Gemma 3 12B", publisher: "Google DeepMind", license: "Gemma Terms",
@@ -263,6 +271,27 @@ enum ModelCatalog {
               matchKeys: ["gptoss20b"], huggingFaceHint: "openai/gpt-oss-20b",
               variants: [q("gpt-oss:20b", "MXFP4", 13_793_441_427, by: "OpenAI", aliases: ["gpt-oss"], isDefault: true)],
               mlxVariants: [m("gpt-oss-20b-MXFP4-Q4", "MXFP4", 11_178_569_159, isDefault: true)]),
+        // Only its 5 global layers grow with the context; the other 25 keep a fixed 1,024-token window.
+        // The Ollama builds need Ollama 0.30.9 or newer, and include a vision projector (and, for the default, a draft model).
+        .init(displayName: "Gemma 4 26B A4B", publisher: "Google DeepMind", license: "Apache 2.0",
+              parameters: "25.2B (MoE)", maxContext: 262_144, kvKBPerToken: 20, category: .large,
+              summary: "Mixture of experts: 26B of knowledge at close to 4B speed, with optional thinking. QAT fits a 24 GB Mac.", thinking: true,
+              matchKeys: ["gemma426ba4b", "gemma426b"], huggingFaceHint: "google/gemma-4-26B-A4B-it",
+              variants: [q("gemma4:26b", "Q4_K_M", 18_731_025_387, aliases: ["gemma4:26b-a4b"], isDefault: true),
+                         q("gemma4:26b-a4b-it-qat", "Q4_0 QAT", 15_634_199_400, by: "Google"),
+                         q("gemma4:26b-a4b-it-q8_0", "Q8_0", 28_054_700_552)],
+              mlxVariants: [m("gemma-4-26b-a4b-it-4bit", "4bit", 15_341_205_776, isDefault: true),
+                            m("gemma-4-26b-a4b-it-8bit", "8bit", 27_953_641_429)]),
+        // Only 16 of its 64 layers keep a per-token cache; the rest hold a fixed-size state, so the KV cost is low.
+        // The Ollama build needs Ollama 0.32.12 or newer. The download includes the vision projector, which MLX LM drops.
+        .init(displayName: "Qwen3.8 27B", publisher: "Alibaba Qwen", license: "Apache 2.0",
+              parameters: "27B", maxContext: 262_144, kvKBPerToken: 64, category: .large,
+              summary: "Qwen's newest dense model, strong at coding and long agent tasks. Thinks by default. Needs a 32 GB+ Mac.", thinking: true,
+              matchKeys: ["qwen3827b"], huggingFaceHint: "Qwen/Qwen3.8-27B",
+              variants: [q("qwen3.8:27b", "Q4_K_M", 17_741_871_939, aliases: ["qwen3.8:27b-q4_K_M", "qwen3.8"], isDefault: true),
+                         q("qwen3.8:27b-q8_0", "Q8_0", 29_978_241_837)],
+              mlxVariants: [m("Qwen3.8-27B-4bit", "4bit", 16_054_541_349, isDefault: true),
+                            m("Qwen3.8-27B-8bit", "8bit", 29_501_218_479)]),
     ]
 
     static func entry(forOllamaTag tag: String) -> CatalogModel? {

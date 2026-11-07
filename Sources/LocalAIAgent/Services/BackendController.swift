@@ -380,4 +380,13 @@ final class BackendController {
         mlxServer?.terminate()
         mlxServer = nil
     }
+
+    /// Swaps a server the app started for the version now installed. One the app didn't start is left alone.
+    func restartMLX() async {
+        guard let server = mlxServer else { return }
+        stopMLX()
+        // The new server needs the port the old one is still letting go of.
+        while server.isRunning { try? await Task.sleep(for: .milliseconds(100)) }
+        if kind == .mlx { startFramework() }
+    }
 }
