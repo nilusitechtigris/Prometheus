@@ -24,6 +24,7 @@ struct HarnessTestDashboard: View {
                  caption: backends.kind.supportsTools ? setupCaption : "Harness tools need Ollama or MLX LM for now",
                  notice: notice(showing: run),
                  progress: lab.harnessProgress, onStop: { lab.cancelHarnessTest() }, scrollable: scrollable, shownRun: run?.id) {
+            TestFrameworkPicker()
             TestModelPicker()
             HarnessSizePicker()
             HarnessVersionPicker()

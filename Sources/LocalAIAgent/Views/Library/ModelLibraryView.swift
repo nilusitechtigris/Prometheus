@@ -11,7 +11,7 @@ struct ModelLibraryView: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 16) {
-                PageHeader(title: "Model Library", subtitle: subtitle) { EmptyView() }
+                PageHeader(title: "Model Library", subtitle: subtitle, caption: frameworkCaption) { FrameworkSwitch() }
                 SafetyCallout()
                 filterBar
                 LazyVGrid(columns: [GridItem(.adaptive(minimum: 290, maximum: 420), spacing: 14)], spacing: 14) {
@@ -40,6 +40,16 @@ struct ModelLibraryView: View {
 
     private var subtitle: String {
         "\(monitor.chipName) · \(Format.gigabytes(Int64(ProcessInfo.processInfo.physicalMemory))) unified memory · ≈ \(Format.gigabytes(monitor.gpuBudgetBytes)) usable by the GPU · estimates at \(Format.tokens(settings.contextLength)) context"
+    }
+
+    private var frameworkCaption: String {
+        let state: String
+        switch backends.status {
+        case .online: state = "Running"
+        case .checking: state = "Connecting…"
+        case .offline: state = "Not running"
+        }
+        return "\(state) · chats use this framework too"
     }
 
     private var filterBar: some View {
@@ -90,6 +100,27 @@ struct ModelLibraryView: View {
                 }
             }
         }
+    }
+}
+
+/// Which framework's models the page shows. It's the same choice as the chat's framework picker, so
+/// switching here switches chats too. It waits while a test runs, since the test is using the framework.
+private struct FrameworkSwitch: View {
+    @Environment(BackendController.self) private var backends
+    @Environment(TestLab.self) private var lab
+
+    var body: some View {
+        Picker("Framework", selection: Binding(get: { backends.kind }, set: { backends.switchBackend(to: $0) })) {
+            ForEach(BackendKind.allCases) { kind in
+                Text(kind.displayName).tag(kind)
+            }
+        }
+        .pickerStyle(.segmented)
+        .labelsHidden()
+        .fixedSize()
+        .disabled(lab.isRunning)
+        .help(lab.isRunning ? "A test is using this framework. Switch once it finishes."
+                            : "Show the models for another framework. Chats switch to it too.")
     }
 }
 

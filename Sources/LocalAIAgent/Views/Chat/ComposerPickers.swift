@@ -60,7 +60,8 @@ struct FrameworkPickerButton: View {
     }
 }
 
-private struct FrameworkPopover: View {
+/// The frameworks, with whether each is running. Chat and the test pages share it.
+struct FrameworkPopover: View {
     @Environment(BackendController.self) private var backends
     @Environment(UIState.self) private var ui
     let dismiss: () -> Void
