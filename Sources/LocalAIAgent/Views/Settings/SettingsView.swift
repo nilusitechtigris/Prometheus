@@ -269,7 +269,7 @@ private struct UpdateSettings: View {
                         .disabled(!updater.canUpdate)
                 }
             } footer: {
-                Text("Downloads the newest code from GitHub, builds it on this Mac and restarts the app. It goes online only when you press Update, and waits for a running test, reply or download before it restarts. Your chats and settings stay as they are, and if anything goes wrong this copy keeps working.")
+                Text("Downloads the newest code from GitHub, builds it on this Mac and restarts the app. It also updates Ollama, MLX LM and llama.cpp when Homebrew installed them. It goes online only when you press Update, and waits for a running test, reply or download before it restarts anything. Your chats and settings stay as they are, and if anything goes wrong this copy keeps working.")
                     .font(.uiCaption)
                     .foregroundStyle(.secondary)
                     .multilineTextAlignment(.leading)
@@ -292,8 +292,8 @@ private struct UpdateSettings: View {
                 .foregroundStyle(.secondary)
         case .working(let stage):
             progress(stage)
-        case .waitingForWork:
-            progress("Ready. Restarting when the current work finishes.")
+        case .waitingForWork(let text):
+            progress(text)
         case .upToDate:
             Label("You're on the newest version.", systemImage: "checkmark.circle.fill")
                 .font(.uiCallout)

@@ -7,6 +7,10 @@
 #
 # It only ever moves forward. An older build can erase saved chats it can't read, so this leaves
 # alone any copy that main doesn't contain. The app isn't touched unless the build worked.
+#
+# It also updates the frameworks the app runs models with (Ollama, MLX LM and llama.cpp) when
+# Homebrew installed them. Ollama.app and LM Studio update themselves, so they're left alone. A
+# framework keeps running its old version until nothing is using it, and only then restarts.
 # A new Mac only has bash 3.2, so this sticks to what that version can do.
 set -euo pipefail
 
@@ -25,7 +29,14 @@ MODE="full"
 QUITTING_PID=""
 NEWEST=""
 
+# Homebrew's names for the frameworks, and where Homebrew lives on this Mac.
+FRAMEWORKS="ollama mlx-lm llama.cpp"
+BREW=""
+BREW_PREFIX=""
+UPGRADED=""
+
 # The app shows lines starting with → as progress, • as what's new and ✗ as what went wrong.
+# From --build-only it also reads ↻ lines, which name a framework that was upgraded.
 say() { printf '%s\n' "$*" | tee -a "$LOG"; }
 die() { say "✗ $*"; exit 1; }
 git_repo() { git -C "$REPO_DIR" "$@"; }
@@ -40,9 +51,10 @@ Usage: update-app.sh [options]
   --app PATH    The app to replace (default: /Applications/Prometheus.app)
   --help        Show this
 
-The app itself uses these two:
-  --build-only                 Download and build, but don't replace anything
+The app itself uses these three:
+  --build-only                 Update the frameworks, download and build, but don't replace anything
   --install-when-closed PID    Wait for that process to quit, then replace the app
+  --restart-frameworks         Restart Ollama if it's still running an older version
 USAGE
 }
 
@@ -59,6 +71,7 @@ parse_args() {
                 shift 2
                 ;;
             --build-only) MODE="build"; shift ;;
+            --restart-frameworks) MODE="restart"; shift ;;
             --help|-h)    usage; exit 0 ;;
             *)            die "Unknown option: $1 (see --help)" ;;
         esac
@@ -111,6 +124,96 @@ check_folder() {
     fi
 }
 
+framework_name() {
+    case "$1" in
+        ollama) echo "Ollama" ;;
+        mlx-lm) echo "MLX LM" ;;
+        *)      echo "$1" ;;
+    esac
+}
+
+find_brew() {
+    local path
+    for path in /opt/homebrew/bin/brew /usr/local/bin/brew; do
+        if [ -x "$path" ]; then
+            BREW="$path"
+            BREW_PREFIX="$(dirname "$(dirname "$path")")"
+            return 0
+        fi
+    done
+    return 1
+}
+
+# Old versions stay on disk, so a server that's still running keeps its files until it restarts.
+brew_run() {
+    HOMEBREW_NO_AUTO_UPDATE=1 HOMEBREW_NO_INSTALL_CLEANUP=1 HOMEBREW_NO_ENV_HINTS=1 HOMEBREW_NO_ANALYTICS=1 "$BREW" "$@"
+}
+
+# The version Homebrew has linked, or nothing when it didn't install that framework.
+active_version() {
+    local link
+    link="$(readlink "$BREW_PREFIX/opt/$1" 2>/dev/null || true)"
+    if [ -n "$link" ]; then basename "$link"; fi
+}
+
+update_frameworks() {
+    local formula name before after found=""
+    find_brew || return 0
+    for formula in $FRAMEWORKS; do
+        if [ -n "$(active_version "$formula")" ]; then found="$found $formula"; fi
+    done
+    [ -n "$found" ] || return 0
+
+    say "→ Looking for framework updates"
+    if ! brew_run update --quiet >>"$LOG" 2>&1; then
+        say "• Couldn't check the frameworks for updates. The details are in $LOG"
+        return 0
+    fi
+    for formula in $found; do
+        # brew outdated exits with 1 when it finds something.
+        [ -n "$(brew_run outdated --quiet "$formula" 2>>"$LOG" || true)" ] || continue
+        name="$(framework_name "$formula")"
+        before="$(active_version "$formula")"
+        say "→ Updating $name"
+        if ! brew_run upgrade --quiet "$formula" >>"$LOG" 2>&1; then
+            say "• $name couldn't be updated, so it stays at $before. The details are in $LOG"
+            continue
+        fi
+        after="$(active_version "$formula")"
+        # A pinned formula stays where it is.
+        [ "$after" != "$before" ] || continue
+        if [ "$formula" = "llama.cpp" ]; then
+            say "• $name $before → $after. Restart llama-server to use it."
+        else
+            say "• $name $before → $after"
+        fi
+        UPGRADED="$UPGRADED $formula"
+        if [ "$MODE" = "build" ]; then printf '↻ %s\n' "$formula"; fi
+    done
+}
+
+# Restarts the Ollama service if it's still running an older version than the one installed. This
+# only runs once nothing is using it: the app has quit, or it said it's idle. The app restarts the MLX
+# LM server it runs itself, and llama-server is started by hand, so those are left alone.
+restart_frameworks() {
+    local installed running
+    find_brew || return 0
+    installed="$(active_version ollama)"
+    # Homebrew adds _1 and so on when it rebuilds the same version.
+    installed="${installed%_*}"
+    [ -n "$installed" ] || return 0
+    running="$(curl -s --max-time 3 http://127.0.0.1:11434/api/version 2>/dev/null \
+        | sed -n 's/.*"version":"\([^"]*\)".*/\1/p' || true)"
+    if [ -z "$running" ] || [ "$running" = "$installed" ]; then return 0; fi
+    if brew_run services list 2>/dev/null | awk '$1 == "ollama" && $2 == "started" { found = 1 } END { exit !found }'; then
+        say "→ Restarting Ollama"
+        brew_run services restart ollama >>"$LOG" 2>&1 \
+            || say "• Ollama couldn't restart, so it's still on $running. The details are in $LOG"
+    else
+        say "• Ollama is still running $running. Restart it to use $installed."
+    fi
+}
+
 get_newest_code() {
     say "→ Looking for updates"
     if [ -e "$REPO_DIR" ]; then
@@ -131,6 +234,12 @@ check_for_update() {
         say "✓ Prometheus is up to date"
         if [ "$MODE" = "build" ]; then
             exit "$EXIT_UP_TO_DATE"
+        fi
+        # Never restarts a framework under the app: it could be in the middle of a test.
+        if ! app_is_open; then
+            restart_frameworks
+        elif [ -n "$UPGRADED" ]; then
+            say "• Quit Prometheus and run this again to restart the updated frameworks."
         fi
         exit 0
     fi
@@ -218,19 +327,26 @@ wait_for_you_to_quit() {
 main() {
     mkdir -p "$(dirname "$LOG")"
     parse_args "$@"
+    if [ "$MODE" = "restart" ]; then
+        restart_frameworks
+        exit 0
+    fi
     if [ "$MODE" = "install" ]; then
         wait_for_app_to_quit
+        restart_frameworks
         install_update
     fi
 
     : >"$LOG"
     check_tools
+    update_frameworks
     check_can_replace
     get_newest_code
     check_for_update
     build_update
     if [ "$MODE" = "full" ]; then
         wait_for_you_to_quit
+        restart_frameworks
         install_update
     fi
 }

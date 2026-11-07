@@ -18,6 +18,7 @@ struct ModelTestDashboard: View {
         TestPage(title: "Model Test",
                  subtitle: "How capable and how fast local models are: \(ModelTestSuite.questionCount) auto-graded questions across six topics and four levels. 100 is the level of \(ModelTestSuite.referenceModel).",
                  caption: setupCaption, notice: notice, progress: lab.modelProgress, onStop: { lab.cancelModelTest() }, scrollable: scrollable, shownRun: lab.selectedModelRun?.id) {
+            TestFrameworkPicker()
             TestModelPicker()
             RunTestButton(title: "Run test", disabled: !canRun) {
                 lab.runModelTest(backends: backends, settings: settings)
@@ -428,6 +429,35 @@ struct QuestionRow: View {
 }
 
 /// Chooses which installed model the test runs on. It leaves the chat's model alone.
+/// The framework the tests run on. It's the app's framework, so chats and the Model Library switch with it.
+struct TestFrameworkPicker: View {
+    @Environment(TestLab.self) private var lab
+    @Environment(BackendController.self) private var backends
+    @State private var show = false
+
+    var body: some View {
+        Button {
+            show.toggle()
+        } label: {
+            PickerPill {
+                StatusDot(level: backends.status.isOnline ? .good : .critical, size: 7)
+                Image(systemName: backends.kind.symbol).foregroundStyle(.secondary)
+                Text(backends.kind.displayName).fontWeight(.medium).lineLimit(1)
+            }
+        }
+        .buttonStyle(.plain)
+        .foregroundStyle(.primary)
+        .background(Color.primary.opacity(0.08), in: Capsule())
+        .overlay(Capsule().strokeBorder(Color.primary.opacity(0.12), lineWidth: 0.5))
+        .opacity(lab.isRunning ? 0.5 : 1)
+        .disabled(lab.isRunning)
+        .help("The framework the test runs on. Chats switch to it too.")
+        .popover(isPresented: $show, arrowEdge: .bottom) {
+            FrameworkPopover { show = false }
+        }
+    }
+}
+
 struct TestModelPicker: View {
     @Environment(TestLab.self) private var lab
     @Environment(BackendController.self) private var backends

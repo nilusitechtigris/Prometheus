@@ -38,27 +38,42 @@ struct PageHeader<Controls: View>: View {
     @ViewBuilder var controls: Controls
 
     var body: some View {
-        HStack(alignment: .center, spacing: 14) {
-            VStack(alignment: .leading, spacing: 4) {
-                Text(title).font(Brand.display(26)).lineLimit(1).fixedSize()
-                // Always two lines' worth, so the blocks below start at the same height on every page.
-                Text(subtitle)
-                    .font(.uiCallout)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(2, reservesSpace: true)
+        // Controls sit beside the title while the title keeps room for its subtitle, and move under it
+        // on a narrow window, rather than pushing the whole page wider than the window.
+        ViewThatFits(in: .horizontal) {
+            HStack(alignment: .center, spacing: 30) {
+                heading.frame(minWidth: 0, idealWidth: 300, maxWidth: .infinity, alignment: .leading)
+                controlBlock(.trailing)
             }
-            Spacer(minLength: 16)
-            VStack(alignment: .trailing, spacing: 6) {
-                HStack(spacing: 8) { controls }
-                if let caption {
-                    Text(caption).font(.uiCaption).foregroundStyle(.secondary)
-                }
-                if let notice {
-                    Text(notice).font(.uiCaption).foregroundStyle(Palette.accent)
-                }
+            VStack(alignment: .leading, spacing: 12) {
+                heading
+                controlBlock(.leading)
             }
-            .fixedSize(horizontal: true, vertical: false)
         }
+    }
+
+    private var heading: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text(title).font(Brand.display(26)).lineLimit(1).fixedSize()
+            // Always two lines' worth, so the blocks below start at the same height on every page.
+            Text(subtitle)
+                .font(.uiCallout)
+                .foregroundStyle(.secondary)
+                .lineLimit(2, reservesSpace: true)
+        }
+    }
+
+    private func controlBlock(_ alignment: HorizontalAlignment) -> some View {
+        VStack(alignment: alignment, spacing: 6) {
+            HStack(spacing: 8) { controls }
+            if let caption {
+                Text(caption).font(.uiCaption).foregroundStyle(.secondary)
+            }
+            if let notice {
+                Text(notice).font(.uiCaption).foregroundStyle(Palette.accent)
+            }
+        }
+        .fixedSize(horizontal: true, vertical: false)
     }
 }
 
