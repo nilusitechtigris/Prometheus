@@ -143,3 +143,27 @@ enum DevCompare {
         return (nil, files, [DevScoreLine(name: "Wrote a page or a program", passed: false)])
     }
 }
+
+/// A request made for testing the harness, from docs/dev-mode-test-prompts.md, which explains each one.
+struct DevPrompt: Identifiable, Sendable {
+    var group: String
+    var title: String
+    var text: String
+    var id: String { title }
+}
+
+extension DevCompare {
+    /// The same prompts as docs/dev-mode-test-prompts.md, so they're a click away on the Compare page.
+    static let prompts: [DevPrompt] = [
+        DevPrompt(group: "Demo", title: "Budget dashboard (the main test)", text: "Build a personal budget web app with a clean, modern dashboard look.\n\nLayout: a header with the app's name and the current month. Under it, three summary cards side by side for Balance, Income and Spending, each with a big number. Below them, two columns: a card on the left with a form to add a transaction, and the list of transactions on the right.\n\nForm: a description, an amount, a category (Food, Transport, Home, Fun or Other) and a choice of Income or Spending, with Spending chosen to start with, and an Add button. Don't add a transaction with an empty description or an amount of zero, and say why next to the field.\n\nList: newest first. Each row shows the description, the category as a coloured badge, the date, and the amount in green for income or red for spending, with a delete button. Above the list, buttons show All, Income or Spending. When the list is empty, show a friendly message instead.\n\nBehaviour: the cards and the list update straight away, and everything is still there after a reload.\n\nLook: plenty of white space, rounded cards with soft shadows, one accent colour, clear labels on every field, and a layout that stacks into one column in a narrow window."),
+        DevPrompt(group: "Quick", title: "Habit tracker", text: "Make a habit tracker web app. I type a habit and add it, and each habit shows as a row with a checkbox for today, a streak count and a delete button. Show how many habits are done today at the top."),
+        DevPrompt(group: "Quick", title: "Tip calculator", text: "Make a tip calculator web app with the bill amount, a tip of 10, 15 or 20 percent or a custom percent, and the number of people. Show the tip, the total and what each person pays, updating as I type."),
+        DevPrompt(group: "Quick", title: "Quiz", text: "Make a quiz web app with five multiple choice questions about space. Show one question at a time with four answer buttons, tell me whether I was right, and show my score at the end with a button to play again."),
+        DevPrompt(group: "Quick", title: "Recipe box", text: "Make a recipe box web app. A form takes a recipe's name, its ingredients and the minutes it takes. Show the recipes as cards, and add a search box that filters them by name as I type."),
+        DevPrompt(group: "Quick", title: "Pomodoro timer", text: "Make a pomodoro timer web app with a 25 minute work timer and a 5 minute break, big digits, start, pause and reset buttons, and a count of the work sessions finished today."),
+        DevPrompt(group: "Quick", title: "Kanban board", text: "Make a kanban board web app with To do, Doing and Done columns. I add a card to To do, and each card has buttons to move it left or right and to delete it. Show how many cards each column has."),
+        DevPrompt(group: "Traps", title: "Sales chart (trap)", text: "Make a sales dashboard web app that shows these monthly sales as a bar chart: Jan 120, Feb 95, Mar 140, Apr 180, May 160, Jun 210. Add cards for the total, the best month and the monthly average."),
+        DevPrompt(group: "Traps", title: "Guestbook (trap)", text: "Make a guestbook web app where visitors leave their name and a message, and everyone's messages show newest first."),
+        DevPrompt(group: "Traps", title: "Coffee shop page (trap)", text: "Make a landing page for a coffee shop called Ember Roast, with a menu and prices, the opening hours, a contact form that thanks the visitor, and an icon for each section."),
+    ]
+}

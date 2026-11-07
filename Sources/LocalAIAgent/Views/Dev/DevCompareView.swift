@@ -53,15 +53,30 @@ struct DevCompareStarter: View {
                     .foregroundStyle(Forge.dim)
                     .fixedSize(horizontal: false, vertical: true)
             }
-            HStack(spacing: 8) {
-                TextField(compact ? "Compare another request, such as a recipe box web app" : "A web app to build, such as a habit tracker web app", text: $request)
+            HStack(alignment: .center, spacing: 8) {
+                TextField(compact ? "Compare another request, or pick one from Prompts" : "A web app to build, or pick one from Prompts", text: $request, axis: .vertical)
                     .textFieldStyle(.plain)
                     .font(.uiCallout)
+                    .lineLimit(1...5)
                     .padding(.horizontal, 10)
                     .padding(.vertical, 7)
                     .background(Forge.card, in: RoundedRectangle(cornerRadius: 9, style: .continuous))
                     .overlay(RoundedRectangle(cornerRadius: 9, style: .continuous).strokeBorder(Forge.line, lineWidth: 1))
                     .onSubmit(start)
+                Menu {
+                    ForEach(["Demo", "Quick", "Traps"], id: \.self) { group in
+                        Section(group == "Traps" ? "Traps a model alone falls into" : group) {
+                            ForEach(DevCompare.prompts.filter { $0.group == group }) { prompt in
+                                Button(prompt.title) { request = prompt.text }
+                            }
+                        }
+                    }
+                } label: {
+                    Label("Prompts", systemImage: "text.badge.star").font(.uiCaption)
+                }
+                .menuStyle(.borderlessButton)
+                .fixedSize()
+                .help("Requests made for testing the harness. Pick one to fill in the box.")
                 Button(action: start) {
                     Label("Compare", systemImage: "square.split.2x1")
                 }
