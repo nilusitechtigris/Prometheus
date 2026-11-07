@@ -2,13 +2,15 @@ import AppKit
 import SwiftUI
 
 /// Picks saved runs and turns them into one file to share. The app sends nothing itself: the file
-/// only goes up when someone drops it on GitHub's upload page and submits it.
+/// only goes up when someone pastes it into GitHub's new-file page and submits it.
 struct PublishPage: View {
     @Environment(TestLab.self) private var lab
     @Environment(SystemMonitor.self) private var monitor
     @State private var picked: Set<UUID> = []
     @State private var machine: PublishedResults.Machine?
     @State private var savedFiles: [URL] = []
+    /// The saved file whose text is on the clipboard.
+    @State private var copied: URL?
     @State private var failure: String?
 
     var body: some View {
@@ -59,11 +61,26 @@ struct PublishPage: View {
             let files = try ResultsPublisher.write(results)
             savedFiles = files
             failure = nil
-            NSWorkspace.shared.activateFileViewerSelecting(files)
-            NSWorkspace.shared.open(ResultsPublisher.uploadPage)
+            if let data = files.first { copyAndOpen(data) }
         } catch {
             failure = "Couldn't save the file: \(error.localizedDescription)"
         }
+    }
+
+    /// GitHub's new-file page takes text, not files, so the file goes on the clipboard to paste there.
+    private func copy(_ file: URL) {
+        guard let text = try? String(contentsOf: file, encoding: .utf8) else {
+            failure = "Couldn't read \(file.lastPathComponent)."
+            return
+        }
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(text, forType: .string)
+        copied = file
+    }
+
+    private func copyAndOpen(_ file: URL) {
+        copy(file)
+        NSWorkspace.shared.open(ResultsPublisher.newFilePage(for: file))
     }
 
     // MARK: Runs
@@ -125,7 +142,7 @@ struct PublishPage: View {
                       systemImage: "checkmark.circle")
                 Label("This Mac's kind, chip, core counts, memory and macOS version.", systemImage: "checkmark.circle")
                 Label("Never your chats, your name, your computer's name or its serial number.", systemImage: "lock.shield")
-                Text("Publish saves a JSON file and a readable report, then opens GitHub. Nothing leaves this Mac unless you upload them there, and what you upload is public.")
+                Text("Publish saves a JSON file and a readable report, copies the JSON and opens GitHub. Nothing leaves this Mac unless you paste it there and submit it, and what you submit is public.")
                     .foregroundStyle(.secondary)
             }
             .font(.uiCallout)
@@ -136,16 +153,28 @@ struct PublishPage: View {
     private func nextSteps(_ files: [URL]) -> some View {
         PanelWidget(title: "Saved. Now add it on GitHub", symbol: "checkmark.circle.fill") { EmptyView() } content: {
             VStack(alignment: .leading, spacing: 8) {
-                ForEach(files, id: \.self) { Text($0.lastPathComponent).font(.geistMono(13)).textSelection(.enabled) }
-                Text("1. Drag both files from Finder onto the GitHub page that just opened.")
-                Text("2. Press **Propose changes**, then **Create pull request**.")
-                HStack(spacing: 8) {
-                    Button("Show Files") { NSWorkspace.shared.activateFileViewerSelecting(files) }
-                    Button("Open GitHub") { NSWorkspace.shared.open(ResultsPublisher.uploadPage) }
+                Text("1. On the GitHub page that opened, sign in if it asks, click in the empty file and press **⌘V**. Signing in can replace what's copied, so press **Copy** again if the paste looks wrong.")
+                Text("2. Press **Commit changes…**, then **Propose changes** and **Create pull request**.")
+                Text("3. Add the readable report the same way: press **Copy and Open** on its row.")
+                VStack(alignment: .leading, spacing: 4) {
+                    ForEach(files, id: \.self) { file in
+                        HStack(spacing: 8) {
+                            Text(file.lastPathComponent).font(.geistMono(13)).textSelection(.enabled).lineLimit(1)
+                            if copied == file {
+                                Label("Copied", systemImage: "doc.on.clipboard").font(.uiCaption).foregroundStyle(.secondary)
+                            }
+                            Spacer(minLength: 8)
+                            Button("Copy") { copy(file) }
+                            Button("Copy and Open") { copyAndOpen(file) }
+                        }
+                    }
                 }
                 .padding(.top, 4)
+                Button("Show Files") { NSWorkspace.shared.activateFileViewerSelecting(files) }
+                    .padding(.top, 4)
             }
             .font(.uiCallout)
+            .fixedSize(horizontal: false, vertical: true)
         }
     }
 }

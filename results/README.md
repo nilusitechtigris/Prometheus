@@ -4,11 +4,12 @@ Test results from people's own Macs. Each publish adds two files: a `.md` report
 
 ## Add yours
 
-1. In Prometheus, open **Tests › Publish**, tick the runs you want to share and press **Publish**.
-2. Drag both files from Finder onto the GitHub page that opens.
-3. Press **Propose changes**, then **Create pull request**.
+1. In Prometheus, open **Tests › Publish**, tick the runs you want to share and press **Publish**. It saves both files, copies the `.json` one and opens a new file on GitHub with its name filled in.
+2. Sign in if GitHub asks, click in the empty file and press **⌘V**.
+3. Press **Commit changes…**, then **Propose changes** and **Create pull request**.
+4. Add the `.md` report the same way: press **Copy and Open** on its row in Prometheus.
 
-GitHub asks you to sign in, and makes the fork and the branch for you. The file is public once you submit it.
+GitHub makes the fork and the branch for you. Its **Upload files** page only works for people who can push to this repository, so Prometheus doesn't use it. A file is public once you submit it.
 
 ## What's in a file
 

@@ -25,10 +25,16 @@ struct PublishedResults: Encodable {
     var hardwareRuns: [HardwareTestResult]
 }
 
-/// Writes the file. Nothing here goes online: it only reaches GitHub if someone uploads it there.
+/// Writes the file. Nothing here goes online: it only reaches GitHub if someone pastes it there.
 enum ResultsPublisher {
-    /// GitHub makes the fork, branch and pull request itself, so the app needs no account or token.
-    static let uploadPage = URL(string: "https://github.com/nilusitechtigris/Prometheus/upload/main/results")!
+    /// GitHub's page for a new file in results/, with its name filled in. GitHub makes the fork, branch
+    /// and pull request itself, so the app needs no account or token. Its Upload files page won't do:
+    /// that one says "Uploads are disabled" to anyone without push access, signed in or not.
+    static func newFilePage(for file: URL) -> URL {
+        var page = URLComponents(string: "https://github.com/nilusitechtigris/Prometheus/new/main/results")!
+        page.queryItems = [URLQueryItem(name: "filename", value: file.lastPathComponent)]
+        return page.url!
+    }
 
     static var folder: URL { ConversationStore.directory.appendingPathComponent("Published", isDirectory: true) }
 
