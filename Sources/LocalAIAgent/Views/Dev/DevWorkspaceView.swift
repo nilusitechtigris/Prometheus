@@ -12,7 +12,9 @@ struct DevWorkspaceView: View {
         VStack(spacing: 0) {
             DevTopBar()
             Forge.rule()
-            if dev.project == nil {
+            if dev.showsCompare {
+                DevCompareView()
+            } else if dev.project == nil {
                 DevWelcome()
             } else {
                 // Sized by hand: a split view shares out the width by itself and doesn't remember it.
@@ -97,6 +99,7 @@ private struct DevTopBar: View {
                 .foregroundStyle(Palette.accent)
             if let project = dev.project {
                 Menu {
+                    Button("New Project…") { dev.newProject() }
                     Button("Open Folder…") { dev.chooseFolder() }
                     Button("Show in Finder") { dev.revealInFinder() }
                     let others = dev.recents.filter { $0 != project.root.path }
@@ -116,6 +119,24 @@ private struct DevTopBar: View {
                 .help(project.root.path)
             }
             Spacer(minLength: 8)
+            if !dev.comparisons.isEmpty || dev.isComparing {
+                Button {
+                    withAnimation(Motion.quick) { dev.showsCompare.toggle() }
+                } label: {
+                    HStack(spacing: 5) {
+                        if dev.isComparing { ProgressView().controlSize(.mini) } else { Image(systemName: "square.split.2x1") }
+                        Text(dev.showsCompare ? "Close Compare" : "Compare")
+                    }
+                    .font(.uiCallout.weight(dev.showsCompare ? .semibold : .regular))
+                    .foregroundStyle(dev.showsCompare ? Palette.accent : Forge.ink)
+                    .padding(.horizontal, 11)
+                    .padding(.vertical, 5)
+                    .contentShape(Capsule())
+                }
+                .buttonStyle(.plain)
+                .glassCapsule(interactive: true)
+                .help("The same request built with the harness off and on, side by side")
+            }
             GlassGroup(spacing: 6) {
                 FrameworkPickerButton(compact: true)
                 ModelPickerButton(narrow: true)
@@ -144,20 +165,28 @@ private struct DevTopBar: View {
 
 private struct DevWelcome: View {
     @Environment(DevSession.self) private var dev
+    @State private var request = ""
 
     var body: some View {
         VStack(spacing: 16) {
             Image(systemName: "folder.badge.gearshape")
                 .font(.system(size: 42, weight: .light))
                 .foregroundStyle(Palette.accent)
-            Text("Open a project folder").font(Brand.display(26))
-            Text("The agent writes Python, runs it, reads the errors and fixes them, using a model on this Mac. Programs run in a sandbox, with no network and nothing outside the folder.")
+            Text("Start a project").font(Brand.display(26))
+            Text("The agent builds web apps and Python programs with a model on this Mac: it plans, writes each file, tries the result and fixes what fails. Pages play in Preview and programs run in a sandbox, with no network and nothing outside the folder.")
                 .font(.uiBody)
                 .foregroundStyle(Forge.dim)
                 .multilineTextAlignment(.center)
-                .frame(maxWidth: 460)
-            Button("Open Folder…") { dev.chooseFolder() }
-                .buttonStyle(AccentButtonStyle())
+                .frame(maxWidth: 480)
+            HStack(spacing: 10) {
+                Button("New Project…") { dev.newProject() }
+                    .buttonStyle(AccentButtonStyle())
+                Button("Open Folder…") { dev.chooseFolder() }
+                    .buttonStyle(OutlineButtonStyle())
+            }
+            DevCompareStarter(request: $request)
+                .frame(width: 460)
+                .padding(.top, 10)
             if !dev.recents.isEmpty {
                 VStack(alignment: .leading, spacing: 4) {
                     Forge.label("Recent").padding(.bottom, 2)
@@ -580,9 +609,10 @@ private struct DevAgentColumn: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            HStack {
+            HStack(spacing: 8) {
                 Label("Agent", systemImage: "sparkles").font(.uiCaption.weight(.medium)).foregroundStyle(Forge.dim)
                 Spacer()
+                DevHarnessSwitch()
                 if !dev.messages.isEmpty, !dev.isWorking {
                     Button("Clear", action: dev.clearConversation)
                         .buttonStyle(.plain)
@@ -628,7 +658,10 @@ private struct DevSuggestions: View {
 
     private var suggestions: [String] {
         guard let open = dev.openPath, open.hasSuffix(".py") else {
-            return ["Write a Python program that ", "Make a game where ", "Read the CSV file and "]
+            if dev.entries.contains(where: \.isPage) {
+                return ["Add a dark mode switch", "Let me sort the list by ", "Make it look more "]
+            }
+            return ["Make a habit tracker web app", "Make a web app where ", "Make a game where ", "Write a Python program that "]
         }
         let name = (open as NSString).lastPathComponent
         return ["Explain what \(name) does", "Add tests for \(name)", "Add error handling to \(name)"]
@@ -636,7 +669,8 @@ private struct DevSuggestions: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Text("Tell the agent what to build or change. It runs the code and fixes the errors before it comes back.")
+            Text(dev.harnessOn ? "Tell the agent what to build or change. It plans, writes each file, tries the result and fixes what fails before it comes back."
+                               : "The harness is off: the model gets one go, and its reply is saved as it came, with nothing run or checked. Press ⧉ to build a request both ways.")
                 .font(.uiCallout)
                 .foregroundStyle(Forge.dim)
             ForEach(suggestions, id: \.self) { suggestion in
@@ -735,14 +769,20 @@ private struct DevReplyView: View {
                 }
             }
             if let seconds = message.seconds, seconds > 0 {
-                Text(Format.seconds(seconds)).font(.uiCaption2).foregroundStyle(Forge.faint)
+                HStack(spacing: 6) {
+                    Text(Format.seconds(seconds))
+                    if let calls = message.calls, calls > 0 { Text("· \(calls) model \(calls == 1 ? "call" : "calls")") }
+                    if message.harness == false { Text("· harness off") }
+                }
+                .font(.uiCaption2)
+                .foregroundStyle(Forge.faint)
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
     }
 }
 
-private struct DevStepRow: View {
+struct DevStepRow: View {
     let step: DevStep
     @State private var open = false
 
@@ -905,6 +945,7 @@ private struct DevComposer: View {
     @FocusState private var focused: Bool
 
     private var canSend: Bool { dev.canSend && !dev.draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+    private var canCompare: Bool { dev.canCompare && !dev.draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
 
     var body: some View {
         @Bindable var dev = dev
@@ -913,7 +954,7 @@ private struct DevComposer: View {
                 Text(reason).font(.uiCaption2).foregroundStyle(Palette.warning)
             }
             HStack(alignment: .bottom, spacing: 8) {
-                TextField(dev.isWorking ? "The agent is working…" : "Tell the agent what to do", text: $dev.draft, axis: .vertical)
+                TextField(dev.isWorking ? "The agent is working…" : dev.harnessOn ? "Tell the agent what to do" : "Ask the model (harness off)", text: $dev.draft, axis: .vertical)
                     .textFieldStyle(.plain)
                     .font(.uiCallout)
                     .lineLimit(1...7)
@@ -931,6 +972,18 @@ private struct DevComposer: View {
                     .buttonStyle(.plain)
                     .help("Stop the agent. Nothing it was working on gets saved.")
                 } else {
+                    Button {
+                        withAnimation(Motion.quick) { dev.compare() }
+                    } label: {
+                        Image(systemName: "square.split.2x1")
+                            .font(.system(size: 11, weight: .semibold))
+                            .frame(width: 26, height: 26)
+                            .background(Circle().fill(Color.white.opacity(canCompare ? 0.1 : 0.04)))
+                            .foregroundStyle(canCompare ? Forge.ink : Forge.faint)
+                    }
+                    .buttonStyle(.plain)
+                    .disabled(!canCompare)
+                    .help("Compare: build this twice in new folders, with the harness off and on, and score both")
                     Button {
                         dev.send()
                     } label: {
@@ -974,5 +1027,44 @@ struct DevPill: View {
         .glassCapsule(interactive: true)
         .help("Dev mode: open a project folder and build it with the agent")
         .accessibilityLabel("Dev mode")
+    }
+}
+
+/// Turns the harness on and off for the agent's requests. Off, the model gets one go at a request and
+/// its reply is saved as it came, which is what the harness is measured against.
+private struct DevHarnessSwitch: View {
+    @Environment(DevSession.self) private var dev
+
+    var body: some View {
+        HStack(spacing: 4) {
+            Text("Harness").font(.uiCaption2).foregroundStyle(Forge.faint)
+            HStack(spacing: 0) {
+                segment("On", on: true)
+                segment("Off", on: false)
+            }
+            .padding(2)
+            .background(Color.white.opacity(0.05), in: Capsule())
+            .overlay(Capsule().strokeBorder(Forge.line, lineWidth: 1))
+        }
+        .disabled(dev.isWorking || dev.isComparing)
+        .help(dev.harnessOn ? "Harness on: the agent plans, writes each file, tries the result and fixes what fails. Click Off to see what the model does alone."
+                            : "Harness off: one reply from the model, saved as it came, with nothing run or checked.")
+    }
+
+    private func segment(_ title: String, on: Bool) -> some View {
+        let selected = dev.harnessOn == on
+        return Button {
+            withAnimation(Motion.quick) { dev.harnessOn = on }
+        } label: {
+            Text(title)
+                .font(.uiCaption2.weight(selected ? .semibold : .regular))
+                .foregroundStyle(selected ? (on ? Palette.onAccent : Forge.ink) : Forge.dim)
+                .padding(.horizontal, 8)
+                .padding(.vertical, 2)
+                .background(Capsule().fill(selected ? (on ? AnyShapeStyle(Palette.accent) : AnyShapeStyle(Color.white.opacity(0.16))) : AnyShapeStyle(Color.clear)))
+                .contentShape(Capsule())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("Harness \(title)")
     }
 }

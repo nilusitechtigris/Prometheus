@@ -18,6 +18,9 @@ import WebKit
 ///   LOCALAI_DEV_PROJECT=/path       open this folder in Dev mode; LOCALAI_DEV_OPEN=file shows a file,
 ///                                   LOCALAI_DEV_RUN=command runs one, LOCALAI_DEV_SEND=text asks the agent ("fix" fixes
 ///                                   the last run), and LOCALAI_DEV_STOP_AFTER=2 presses Stop that many seconds later
+///   LOCALAI_DEV_SHOW_COMPARE=1      with LOCALAI_DEV_PROJECT, open the Compare view on the newest comparison;
+///                                   LOCALAI_DEV_HARNESS=off turns the agent's harness off, and
+///                                   LOCALAI_DEV_COMPARE=text builds that request with the harness off and on
 ///   LOCALAI_DEV_TASKS=/path.json    measure the agent on coding tasks; LOCALAI_DEV_OUT=/path gets the report, with
 ///                                   LOCALAI_DEV_MODES=harness,oneshot, LOCALAI_DEV_ONLY=id,id, LOCALAI_DEV_CONTEXT=8192,
 ///                                   LOCALAI_DEV_THINK=1 and LOCALAI_DEV_TRACE=/path for every prompt
@@ -213,6 +216,14 @@ enum DebugHooks {
             ui.destination = .chat
             dev.open(URL(fileURLWithPath: folder))
             if let file = env["LOCALAI_DEV_OPEN"] { dev.openFile(file) }
+            if env["LOCALAI_DEV_SHOW_COMPARE"] != nil, let first = dev.comparisons.first { dev.showComparison(first.id) }
+            if env["LOCALAI_DEV_HARNESS"] == "off" { dev.harnessOn = false }
+            if let request = env["LOCALAI_DEV_COMPARE"] {
+                Task {
+                    for _ in 0..<120 where !dev.canCompare { try? await Task.sleep(for: .milliseconds(250)) }
+                    dev.compare(request)
+                }
+            }
             if let code = UInt16(env["LOCALAI_DEV_PRESS"] ?? "") {
                 // A real key and click, through the Preview pane the way a person's would go.
                 Task {

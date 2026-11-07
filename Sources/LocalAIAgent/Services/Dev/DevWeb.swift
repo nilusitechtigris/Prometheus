@@ -554,6 +554,16 @@ final class DevPageHost: NSObject, WKNavigationDelegate, WKUIDelegate, WKScriptM
     func webView(_ webView: WKWebView, decideMediaCapturePermissionsFor origin: WKSecurityOrigin, initiatedBy frame: WKFrameInfo, type: WKMediaCaptureType) async -> WKPermissionDecision { .deny }
 }
 
+/// What a page is for, which decides what trying it means.
+enum DevPageKind: String, Codable, Sendable {
+    /// Something to look at.
+    case page
+    /// Something to use: fields to fill in and buttons to press.
+    case app
+    /// Something that moves and is played.
+    case game
+}
+
 /// What trying a page showed.
 struct DevPageReport: Sendable {
     var failure: DevFailure?
@@ -564,6 +574,22 @@ struct DevPageReport: Sendable {
     var listens = false
     var moved = false
     var responded = false
+    /// It opened without an error, a crash or a freeze.
+    var loaded = false
+    /// Some style sheet applies, so it isn't the browser's plain black on white.
+    var styled = false
+    /// Nothing on it is wider than the window.
+    var fits = true
+    /// It asked for nothing from the internet.
+    var offline = true
+    /// Filling in its fields and pressing its buttons changed something. Nil if it wasn't tried.
+    var used: Bool?
+    /// How many fields and buttons it has.
+    var controls = 0
+    /// Whether what was typed into it shows up on the page afterwards. Nil if it wasn't used.
+    var showsTyped: Bool?
+    /// It shows template tags, such as {{ name }} or {% for %}, that only a server would fill in.
+    var rawTemplate = false
 }
 
 /// Opens a page out of sight and plays with it: it loads, watches for errors, then sends keys and clicks
@@ -583,6 +609,10 @@ enum DevPageCheck {
         var body: String
         var elements: Int
         var listens: Bool
+        var rules = 0
+        var wide = false
+        var controls = 0
+        var template = false
     }
 
     private static let measure = #"""
@@ -621,12 +651,18 @@ enum DevPageCheck {
       const props = ["onkeydown", "onkeyup", "onkeypress", "onclick", "onmousedown", "onmouseup", "onmousemove", "onpointerdown", "onpointermove", "ontouchstart"];
       const targets = [window, document, body].concat([...document.querySelectorAll("canvas,button,input,select,textarea,a,[onclick],[onkeydown]")]);
       const listens = (window.__heard && window.__heard.size > 0) || targets.some(t => t && props.some(p => t[p])) || document.querySelectorAll("button,input,select,textarea").length > 0;
+      let rules = 0;
+      for (const sheet of document.styleSheets) { try { rules += sheet.cssRules.length; } catch (e) {} }
       return JSON.stringify({
         canvases: [...document.querySelectorAll("canvas")].map(read),
         text: body ? body.innerText.trim().length : 0,
         body: String(mark),
         elements: body ? body.querySelectorAll("svg *, img, table, ul, ol, button, input, select").length : 0,
-        listens
+        listens,
+        rules,
+        wide: document.documentElement.scrollWidth > innerWidth + 4,
+        controls: document.querySelectorAll("input:not([type=hidden]), textarea, select, button, [role=button]").length,
+        template: !!body && /\{\{[^{}]{1,80}\}\}|\{%[^%]{1,80}%\}|<\?php/.test(body.innerText)
       });
     })()
     """#
@@ -672,6 +708,79 @@ enum DevPageCheck {
     })()
     """#
 
+    /// Uses the page the way someone trying an app would: fills in every field, submits each form,
+    /// presses the buttons, then does it again for anything that appeared in answer, such as a delete
+    /// button on a new item. It notes whether anything changed after each step, since adding an item and
+    /// then clearing the list would leave the page as it started.
+    private static let use = #"""
+    (() => {
+      const visible = el => { const box = el.getBoundingClientRect(), style = getComputedStyle(el); return box.width > 0 && box.height > 0 && style.visibility !== "hidden" && style.display !== "none"; };
+      const sign = () => {
+        const html = document.documentElement.outerHTML;
+        let mark = 0;
+        for (let i = 0; i < html.length; i++) mark = (mark * 31 + html.charCodeAt(i)) | 0;
+        const shown = [...document.querySelectorAll("input[readonly], input[disabled], output, textarea[readonly]")].map(f => f.value).join("|");
+        return mark + "|" + shown;
+      };
+      const samples = { email: "sam@example.com", number: "3", tel: "5551234", url: "https://example.com", date: "2026-11-07", time: "09:30",
+                        "datetime-local": "2026-11-07T09:30", month: "2026-11", week: "2026-W45", color: "#3366ff", password: "secret123" };
+      let filled = 0, actions = 0, changed = false, last = sign();
+      const settle = count => { __frames(count); const now = sign(); if (now !== last) { changed = true; last = now; } };
+      const fill = () => {
+        for (const field of document.querySelectorAll("input, textarea, select")) {
+          if (field.disabled || field.readOnly || !visible(field)) continue;
+          const type = (field.getAttribute("type") || "text").toLowerCase();
+          if (field.tagName === "SELECT") {
+            if (field.options.length > 1 && field.selectedIndex <= 0) field.selectedIndex = 1;
+          } else if (["checkbox", "radio", "button", "submit", "reset", "file", "hidden", "image"].includes(type)) {
+            continue;
+          } else if (type === "range") {
+            field.value = String((Number(field.min || 0) + Number(field.max || 100)) / 2);
+          } else if (field.value) {
+            continue;
+          } else {
+            field.value = samples[type] || ("Sample item" + (filled ? " " + (filled + 1) : ""));
+          }
+          filled++;
+          field.dispatchEvent(new Event("input", { bubbles: true }));
+          field.dispatchEvent(new Event("change", { bubbles: true }));
+        }
+      };
+      const forms = new Set(), buttons = new Set();
+      for (let round = 0; round < 2; round++) {
+        fill();
+        settle(2);
+        for (const form of document.querySelectorAll("form")) {
+          if (forms.has(form) || !visible(form)) continue;
+          forms.add(form);
+          const submit = form.querySelector("button:not([type=button]):not([type=reset]), input[type=submit]");
+          if (submit && visible(submit) && !submit.disabled) submit.click();
+          else form.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true }));
+          actions++;
+          settle(3);
+          fill();
+        }
+        for (const button of document.querySelectorAll("button, [role=button], input[type=button]")) {
+          if (buttons.size >= 10) break;
+          if (buttons.has(button) || button.closest("form") || button.disabled || !visible(button)) continue;
+          buttons.add(button);
+          button.click();
+          actions++;
+          settle(3);
+        }
+      }
+      settle(10);
+      return JSON.stringify({ changed, actions, filled, shown: !!document.body && document.body.innerText.includes("Sample item") });
+    })()
+    """#
+
+    private struct Used: Decodable {
+        var changed: Bool
+        var actions: Int
+        var filled: Int
+        var shown = false
+    }
+
     /// Runs a script, giving up on a page stuck in a loop of its own, which would never answer.
     private static func evaluate(_ script: String, in host: DevPageHost, timeout: Double = 3) async -> String? {
         await withCheckedContinuation { continuation in
@@ -699,6 +808,11 @@ enum DevPageCheck {
     }
 
     static func run(folder: URL, page: String, game: Bool, picture: URL? = nil) async -> DevPageReport {
+        await run(folder: folder, page: page, kind: game ? .game : .page, picture: picture)
+    }
+
+    static func run(folder: URL, page: String, kind: DevPageKind, picture: URL? = nil) async -> DevPageReport {
+        let game = kind == .game
         var report = DevPageReport()
         func fail(_ kind: String, _ message: String) -> DevPageReport {
             report.failure = DevFailure(file: page, kind: kind, message: message, output: report.console.suffix(6).joined(separator: "\n"))
@@ -756,27 +870,57 @@ enum DevPageCheck {
 
         // Long enough for anything it fetched to arrive.
         try? await Task.sleep(for: .seconds(0.3))
+        report.offline = !log.blocked.contains { !$0.hasPrefix(DevWeb.scheme) }
         guard let first = await mark(host) else {
             if let failure = problem() { report.failure = failure; return report }
             return fail("Limit", "The page froze, so there's probably a loop that never ends.")
         }
+        report.styled = first.rules >= 5
+        report.fits = !first.wide
+        report.hasContent = first.text > 0 || first.elements > 0 || first.canvases.contains { $0.colors > 1 }
+        report.rawTemplate = first.template
+        report.controls = first.controls
         let ran = await evaluate("__frames(45)", in: host)
         let second = ran == nil ? nil : await mark(host)
         let played = second == nil ? nil : await evaluate(play, in: host)
         let third = played == nil ? nil : await mark(host)
+        // An app gets used as well as poked, once it has something to use.
+        var usedReport: Used?
+        if kind == .app, let third, third.controls > 0 {
+            let said = log.console.count
+            if let text = await evaluate(use, in: host, timeout: 5), let data = text.data(using: .utf8) {
+                usedReport = try? JSONDecoder().decode(Used.self, from: data)
+                report.used = (usedReport?.changed ?? false) || log.console.count > said
+                report.showsTyped = usedReport?.shown
+            }
+        }
+        let after = kind == .app && third != nil ? await mark(host) : third
+        report.offline = !log.blocked.contains { !$0.hasPrefix(DevWeb.scheme) }
+        // Whether it ran cleanly, apart from asking the internet for things, which counts on its own.
+        report.loaded = !log.crashed && log.errors.isEmpty && after != nil
         if let failure = problem() {
             report.failure = failure
             report.summary = failure.title
+            if let picture { await save(host, to: picture) }
             return report
         }
-        guard let second, let third else { return fail("Limit", "The page froze while it was being played, so there's probably a loop that never ends.") }
+        guard let second, let third, let after else {
+            if let picture { await save(host, to: picture) }
+            return fail("Limit", "The page froze while it was being played, so there's probably a loop that never ends.")
+        }
 
-        report.hasContent = third.text > 0 || third.elements > 0 || third.canvases.contains { $0.colors > 1 }
+        report.hasContent = after.text > 0 || after.elements > 0 || after.canvases.contains { $0.colors > 1 }
         report.listens = third.listens
         report.moved = first != second
         report.responded = second != third
+        report.fits = !first.wide && !after.wide
         if let picture { await save(host, to: picture) }
         guard report.hasContent else { return fail("Output", "The page is blank.") }
+        // A model asked for a web app often writes a server's template, which shows here as raw tags.
+        if report.rawTemplate || after.template {
+            report.rawTemplate = true
+            return fail("Output", "The page shows template tags, such as {{ name }} or {% for %}, that only a server fills in.")
+        }
         if game {
             // A garbled size, like width="80-than", which the browser reads as 80.
             if let main = third.canvases.max(by: { $0.width * $0.height < $1.width * $1.height }), main.width > 0, min(main.width, main.height) < 100 {
@@ -785,7 +929,14 @@ enum DevPageCheck {
             guard report.listens else { return fail("Output", "It's a game, but it doesn't listen to the keyboard or the mouse.") }
             guard report.moved || report.responded else { return fail("Output", "Nothing moves on the page, and pressing keys and clicking changes nothing.") }
         }
-        report.summary = [report.moved ? "It moves by itself." : nil, report.responded ? "It reacts to keys and clicks." : nil, report.moved || report.responded ? nil : "It shows a still page."]
+        if kind == .app, third.controls > 0, report.used == false, !report.responded {
+            let tried = usedReport.map { "I filled in \($0.filled) \($0.filled == 1 ? "field" : "fields") and pressed \($0.actions) \($0.actions == 1 ? "button" : "buttons")" } ?? "I filled in the fields and pressed the buttons"
+            return fail("Output", "\(tried), and nothing on the page changed.")
+        }
+        report.summary = [report.moved ? "It moves by itself." : nil,
+                          report.used == true ? "It answers when it's used." : report.responded ? "It reacts to keys and clicks." : nil,
+                          report.moved || report.responded || report.used == true ? nil : "It shows a still page.",
+                          report.fits ? nil : "Something on it is wider than the window."]
             .compactMap { $0 }.joined(separator: " ")
         return report
     }

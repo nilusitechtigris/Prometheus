@@ -25,6 +25,10 @@ struct DevMessage: Codable, Identifiable, Equatable {
     var failure: DevFailure?
     var undone = false
     var seconds: Double?
+    /// False for a reply made with the harness off. Nil in conversations from before the switch.
+    var harness: Bool?
+    /// How many times the model was asked something.
+    var calls: Int?
 }
 
 /// One program run in the Terminal, or one page opened in Preview.
@@ -51,6 +55,7 @@ struct DevJump: Equatable {
 @MainActor
 final class DevSession {
     private static let onKey = "devModeOn"
+    private static let harnessKey = "devHarnessOn"
     private static let recentsKey = "devRecentProjects"
     private static let maxRuns = 30
     /// Output the Terminal keeps on screen for one run.
@@ -89,6 +94,26 @@ final class DevSession {
     private(set) var runs: [DevTerminalRun] = []
     var failureText: String?
 
+    /// With the harness off, a request gets one reply from the model, saved as it came, which is what
+    /// the agent gets compared with.
+    var harnessOn = UserDefaults.standard.object(forKey: DevSession.harnessKey) as? Bool ?? true {
+        didSet { UserDefaults.standard.set(harnessOn, forKey: Self.harnessKey) }
+    }
+
+    /// Every comparison made, newest first.
+    private(set) var comparisons: [DevComparison] = DevCompare.load()
+    /// The comparison on screen, while the Compare view is showing.
+    var shownComparison: UUID?
+    var showsCompare = false
+    /// The comparison being made right now.
+    private(set) var comparing: DevComparison?
+    /// Which side is being built: false for the harness off, true for on.
+    private(set) var compareSide: Bool?
+    private(set) var compareStage: String?
+    private(set) var compareWriting = ""
+    private(set) var compareSteps: [DevStep] = []
+    private var compareTask: Task<Void, Never>?
+
     private let backends: BackendController
     private let settings: AppSettings
     private var process: DevProcess?
@@ -106,12 +131,18 @@ final class DevSession {
 
     var isDirty: Bool { openPath != nil && !unreadable && text != savedText }
     var isRunning: Bool { process != nil }
-    var isBusy: Bool { isWorking || isRunning }
+    var isBusy: Bool { isWorking || isRunning || isComparing }
+    var isComparing: Bool { compareTask != nil }
 
     /// The agent and a program in the Terminal never run at once. A program in the real folder could be
     /// changing it while the agent saves, swapping a folder for a link just after it was checked.
     var canSend: Bool {
-        project != nil && !isWorking && !isRunning && backends.status.isOnline && backends.selectedModel != nil && backends.activeTest == nil
+        project != nil && !isWorking && !isRunning && !isComparing && backends.status.isOnline && backends.selectedModel != nil && backends.activeTest == nil
+    }
+
+    /// A comparison needs no open project, since it makes folders of its own.
+    var canCompare: Bool {
+        !isWorking && !isRunning && !isComparing && backends.status.isOnline && backends.selectedModel != nil && backends.activeTest == nil
     }
 
     var testFiles: [String] {
@@ -128,6 +159,27 @@ final class DevSession {
     }
 
     // MARK: - The project
+
+    /// Makes a folder for a new project and opens it.
+    func newProject() {
+        let panel = NSSavePanel()
+        panel.title = "New Project"
+        panel.prompt = "Create"
+        panel.message = "Name a folder for the project. The agent and your programs can only change files inside it."
+        panel.nameFieldLabel = "Project:"
+        panel.nameFieldStringValue = "My App"
+        panel.canCreateDirectories = true
+        try? FileManager.default.createDirectory(at: DevCompare.projectsRoot, withIntermediateDirectories: true)
+        panel.directoryURL = DevCompare.projectsRoot
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+        do {
+            try FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
+            showsCompare = false
+            open(url)
+        } catch {
+            failureText = error.localizedDescription
+        }
+    }
 
     func chooseFolder() {
         let panel = NSOpenPanel()
@@ -468,6 +520,8 @@ final class DevSession {
         let id = reply.id
         let backends = backends
         let started = Date()
+        let harness = harnessOn
+        if let index = messages.firstIndex(where: { $0.id == id }) { messages[index].harness = harness }
         agentTask = Task { [weak self] in
             let details = await backends.capabilities(of: model)
             let setup = DevSetup(model: model.id, backend: backends.backend, context: details.context,
@@ -477,7 +531,10 @@ final class DevSession {
                 for await event in events { self?.handle(event, reply: id) }
             }
             let worker = Task.detached {
-                await DevAgent(project: project, setup: setup, emit: { continuation.yield($0) }).run(job)
+                guard harness else {
+                    return await DevOneReply.run(request: job.request, project: project, setup: setup, failure: job.failure, emit: { continuation.yield($0) })
+                }
+                return await DevAgent(project: project, setup: setup, emit: { continuation.yield($0) }).run(job)
             }
             let outcome = await withTaskCancellationHandler {
                 await worker.value
@@ -521,6 +578,7 @@ final class DevSession {
         messages[index].worked = outcome.worked
         messages[index].failure = outcome.failure
         messages[index].seconds = seconds
+        messages[index].calls = outcome.calls
         if let last = outcome.changes.last { lastChanged = last.path }
         refresh()
         if let change = outcome.changes.first(where: { $0.path == openPath }) ?? outcome.changes.last {
@@ -600,6 +658,162 @@ final class DevSession {
     func restoreForChecks(_ list: [DevMessage]) { messages = list }
     #endif
 
+    // MARK: - Comparing
+
+    /// The comparison the Compare view shows.
+    var shown: DevComparison? {
+        if let comparing, comparing.id == shownComparison { return comparing }
+        return comparisons.first { $0.id == shownComparison } ?? comparing ?? comparisons.first
+    }
+
+    /// Builds the same request twice on the same model, first with the harness off and then on, each in a
+    /// new folder, and scores both with the same checks. The model is loaded before either clock starts.
+    func compare(_ message: String? = nil) {
+        let request = (message ?? draft).trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !request.isEmpty, canCompare, let model = backends.selectedModel else { return }
+        save()
+        let date = Date()
+        let parent = DevCompare.comparisonsRoot.appendingPathComponent(DevCompare.folderName(for: request, date: date), isDirectory: true)
+        let off = parent.appendingPathComponent("harness-off", isDirectory: true)
+        let on = parent.appendingPathComponent("harness-on", isDirectory: true)
+        do {
+            try FileManager.default.createDirectory(at: off, withIntermediateDirectories: true)
+            try FileManager.default.createDirectory(at: on, withIntermediateDirectories: true)
+        } catch {
+            failureText = "Couldn't make the folders for the comparison: \(error.localizedDescription)"
+            return
+        }
+        if message == nil { draft = "" }
+        var record = DevComparison(request: request, date: date, model: model.id, framework: backends.kind.displayName, context: 0, folder: parent.path,
+                                   off: DevCompareSide(folder: off.path, harness: false), on: DevCompareSide(folder: on.path, harness: true))
+        comparing = record
+        shownComparison = record.id
+        showsCompare = true
+        compareSide = nil
+        compareStage = "Loading the model"
+        compareWriting = ""
+        compareSteps = []
+        backends.activeTest = "Dev compare"
+        let backends = backends
+        compareTask = Task { [weak self] in
+            let details = await backends.capabilities(of: model)
+            let setup = DevSetup(model: model.id, backend: backends.backend, context: details.context,
+                                 think: backends.kind.supportsThinkingControl && details.supportsThinking ? false : nil)
+            record.context = details.context
+            self?.comparing = record
+            await DevCompare.warmUp(setup)
+            for harness in [false, true] {
+                if Task.isCancelled { break }
+                self?.compareSide = harness
+                self?.compareSteps = []
+                self?.compareWriting = ""
+                let folder = harness ? on : off
+                let started = Date()
+                let outcome = await Self.streamed(onEvent: { self?.compareEvent($0) }) { emit in
+                    let project = DevProject(root: folder)
+                    if harness { return await DevAgent(project: project, setup: setup, emit: emit).run(DevJob(request: request)) }
+                    return await DevOneReply.run(request: request, project: project, setup: setup, emit: emit)
+                }
+                var side = harness ? record.on : record.off
+                side.seconds = Date().timeIntervalSince(started)
+                side.calls = outcome.calls
+                side.text = outcome.text
+                side.stopped = outcome.stopped
+                if !outcome.stopped {
+                    self?.compareStage = "Checking what it made"
+                    let graded = await DevCompare.grade(folder: folder, request: request, picture: URL(fileURLWithPath: side.picture))
+                    side.page = graded.page
+                    side.files = graded.files
+                    side.score = graded.score
+                }
+                side.finished = !outcome.stopped
+                if harness { record.on = side } else { record.off = side }
+                self?.comparing = record
+            }
+            self?.finishCompare(record)
+        }
+    }
+
+    /// Runs one side's work away from the main thread and passes its events back here.
+    private static func streamed(onEvent: @escaping @MainActor (DevEvent) -> Void,
+                                 work: @escaping @Sendable (@escaping @Sendable (DevEvent) -> Void) async -> DevOutcome) async -> DevOutcome {
+        let (events, continuation) = AsyncStream.makeStream(of: DevEvent.self, bufferingPolicy: .bufferingNewest(400))
+        let consumer = Task { @MainActor in
+            for await event in events { onEvent(event) }
+        }
+        let worker = Task.detached { await work { continuation.yield($0) } }
+        let outcome = await withTaskCancellationHandler {
+            await worker.value
+        } onCancel: {
+            worker.cancel()
+        }
+        continuation.finish()
+        await consumer.value
+        return outcome
+    }
+
+    private func compareEvent(_ event: DevEvent) {
+        switch event {
+        case .stage(let text):
+            compareStage = text
+            compareWriting = ""
+            if compareSteps.last?.text != text { compareSteps.append(DevStep(kind: .stage, text: text)) }
+        case .writing(let text):
+            compareWriting = text
+        case .note(let text):
+            compareSteps.append(DevStep(kind: .note, text: text))
+        case .ran(let command, let result):
+            compareSteps.append(DevStep(kind: .run, text: command, output: String(Self.plain(result.output).suffix(4_000)), passed: result.succeeded))
+        case .answer:
+            break
+        }
+    }
+
+    private func finishCompare(_ record: DevComparison) {
+        compareTask = nil
+        compareSide = nil
+        compareStage = nil
+        compareWriting = ""
+        if backends.activeTest == "Dev compare" { backends.activeTest = nil }
+        comparing = nil
+        comparisons.removeAll { $0.id == record.id }
+        comparisons.insert(record, at: 0)
+        DevCompare.save(comparisons)
+    }
+
+    func stopCompare() {
+        compareTask?.cancel()
+    }
+
+    func showComparison(_ id: UUID) {
+        shownComparison = id
+        showsCompare = true
+    }
+
+    func closeCompare() {
+        showsCompare = false
+    }
+
+    /// Takes a comparison off the list. Its folders stay where they are.
+    func removeComparison(_ id: UUID) {
+        guard comparing?.id != id else { return }
+        comparisons.removeAll { $0.id == id }
+        DevCompare.save(comparisons)
+        if shownComparison == id { shownComparison = comparisons.first?.id }
+        if comparisons.isEmpty, comparing == nil { showsCompare = false }
+    }
+
+    /// Opens one side's folder as the project, to look at its files or keep working on it.
+    func openSide(_ side: DevCompareSide) {
+        guard !isComparing || comparing?.on.folder != side.folder && comparing?.off.folder != side.folder else { return }
+        showsCompare = false
+        open(URL(fileURLWithPath: side.folder))
+    }
+
+    func revealComparison(_ comparison: DevComparison) {
+        NSWorkspace.shared.activateFileViewerSelecting([URL(fileURLWithPath: comparison.folder)])
+    }
+
     // MARK: - Saving
 
     private var conversationFile: URL? {
@@ -623,6 +837,7 @@ final class DevSession {
     func shutDown() {
         save()
         stopAgent()
+        stopCompare()
         stopRun()
         persist()
     }

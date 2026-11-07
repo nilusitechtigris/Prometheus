@@ -12,7 +12,7 @@ Prometheus runs open models such as Qwen, Llama and Gemma on your Mac, through O
 
 Small models are fast and private, but they get arithmetic wrong, misremember facts and break rules like "exactly three words". The **harness** is an optional layer that helps with this. It can run code in a sandbox, search trusted sites, and check replies in code before you see them. It's off by default, because its searches leave your Mac.
 
-**Dev mode** turns the chat into a Python workspace: open a project folder, and a coding agent writes, runs and fixes code in it, with a Terminal in the window.
+**Dev mode** turns the chat into a workspace for web apps and Python: open or start a project, and a coding agent writes, runs and fixes code in it, with a Terminal and a live Preview in the window. **Compare** builds the same request with the agent's harness off and on, side by side, to show what it adds.
 
 The app also measures all of this for you: how capable a model is, how fast your Mac is, and how much each version of the harness really helps.
 
@@ -104,13 +104,15 @@ If your copy doesn't have the Updates tab yet, quit the app and paste this into 
 
 ![Dev mode with a project open: files, editor, Terminal and the agent](docs/screenshots/dev.png)
 
-Press **Dev** (`</>`) under the message box and open a project folder. The window becomes a Python workspace, with a coding agent that runs on your own model:
+Press **Dev** (`</>`) under the message box, then start a **New Project** or open a folder. The window becomes a workspace, with a coding agent that runs on your own model:
 
 - **Files:** hover over a Python file and press ▶ to run it.
 - **Editor:** line numbers, Python colours, find (⌘F), save (⌘S) and run (⌘R).
 - **Terminal:** shows what a program prints. Type into it when a program asks for input, press Stop, or type a command like `python main.py 5`. After an error, click the file and line to jump there, or press **Fix with Agent**.
 - **Preview:** games, charts and web pages run here, with real graphics, keyboard and mouse. Ask for one and it opens by itself. Any errors show up in the Terminal, ready for **Fix with Agent**.
 - **Agent:** tell it what to build or change, or ask about the code. It shows each step and each file it changed, with **Undo** for every reply.
+- **Harness On / Off,** above the agent: off, the model gets one go at your request, and every file in its reply is saved as it came, with nothing run or checked. That's what using the model in a plain chat gives you.
+- **Compare** (⧉ beside Send, or the Compare page): builds a request twice on the same model, in two new folders under Documents › Prometheus Projects › Comparisons, first with the harness off and then on. Both apps run side by side, each with its time, its number of model calls and the same scorecard, checked by code: does it show something, open without errors, look styled, work offline, work when used and fit the window. Earlier comparisons stay in a list, and either side opens as a project.
 
 The agent is made for small models, which lose track when they drive a long loop of tools by themselves. So code runs the loop, and the model gets one small job at a time, with only what that job needs:
 
@@ -125,7 +127,17 @@ Nothing reaches your project until the agent finishes, and it tests in a throwaw
 
 ![Preview with a first-person shooter the agent wrote on Qwen3 4B, waiting for a click to start](docs/screenshots/preview.png)
 
-Anything you ask to see or play is written as a web page, since macOS has a browser engine built in and nothing needs installing. The agent starts a game from a working loop, then plays it before you do: it presses keys, clicks around, and sends it back if there's an error, or if nothing moves. A first-person shooter starts from a ready-made one that draws, shoots and counts lives, so even a 1.7B model gets a playable game, and the model decides how the enemies move. It waits for your click, so it hasn't been lost by the time you look at it.
+**Web apps.** Asked for a whole app in one reply, a small model forgets half the features, invents its styling as it goes, and links Bootstrap from the internet, which isn't there. By the time it writes the script, it has also lost track of the ids it gave the page. So the agent builds an app a file at a time:
+
+- **A plan first:** the app's name, its parts, its data and what the user can do, in four short lines.
+- **A style kit:** `kit.css` answers to Bootstrap's class names, which small models already know, with a cleaner look of its own, and works offline. The model writes the page's markup in those classes, and code writes the `<head>`, so the page is always linked to `kit.css`, `styles.css` and `app.js`.
+- **A script against the real page:** `app.js` is written from a skeleton that keeps all data in one place and draws the page from it, and the model is shown the page's actual elements and ids.
+- **Code checks how the files fit** before anything runs: a script that won't parse, an id the page doesn't have, a button calling a function it can't reach. A near miss such as `#taskInput` for `#task-input` is matched by code, with no model call.
+- **Then it uses the app:** it fills in every field, sends each form and presses the buttons, and sends the app back if nothing on the page changed.
+
+A change to an app with its own files goes to the files it needs, and each one hears what the others use, so a rewritten page keeps the ids the script looks up. A long script is edited a function at a time, as long Python files are.
+
+Anything else you ask to see or play is written as a web page too, since macOS has a browser engine built in and nothing needs installing. The agent starts a game from a working loop, then plays it before you do: it presses keys, clicks around, and sends it back if there's an error, or if nothing moves. A first-person shooter starts from a ready-made one that draws, shoots and counts lives, so even a 1.7B model gets a playable game, and the model decides how the enemies move. It waits for your click, so it hasn't been lost by the time you look at it.
 
 Python programs use the standard library and show text only, since they run in the sandbox. To get a text game instead, say so: "a text game in Python".
 
@@ -148,6 +160,8 @@ It keeps the same 21 of 24 on the 1.7B model in a 4K context window. The agent c
 | Qwen3 8B, Ollama, 4K context | 9 of 10, 1234 s | 6 of 10, 704 s |
 
 One reply mostly fails on things the agent fixes as it plays the page: a name that was never defined, a chart library or a picture from the internet, a game that never listens to the keyboard. Passing means it works, not that it's a good game, and small models make simple ones. The grading check was fixed after these runs (it missed small sprites on a big canvas), and the same pages were graded again with it. The ready-made shooter, and the repair for a canvas size the model garbles, came after these runs too.
+
+**Web apps** are twelve more tasks, such as a todo list, an expense tracker, a kanban board, a quiz and a timer. Each one is graded by using it out of sight, and one that keeps a list has to show what was typed into it, which is more than the agent checks for itself. Their one reply is saved file by file, as with the harness off. These tasks are new, so there are no scores for them yet.
 
 What it can't always catch is a program that runs cleanly and does the wrong thing, unless a test or a spelled-out command shows it. A game gets played with its own commands, and goes back if nothing changes as you play. Asking the model to review its own results was tried and left out: it took four times as long and scored no better. The tasks are in [scripts/dev_tasks.py](scripts/dev_tasks.py).
 
@@ -261,7 +275,7 @@ Sources/LocalAIAgent/
   Backends/                 Ollama + OpenAI-compatible clients (streaming)
   Services/                 Backend/chat controllers, persistence, model + hardware tests
   Services/Harness/         The harness versions, shared notes, trusted sites, web tools, calculator, injection guard and test
-  Services/Dev/             Dev mode: project files, sandboxed runs, Python parsing, the coding agent and its checks
+  Services/Dev/             Dev mode: project files, sandboxed runs, Python and JavaScript parsing, the coding agent, the web app builder and its style kit, comparisons, and the checks
   Telemetry/                CPU/GPU/memory/thermal sampling
   Models/                   Chat types, curated catalog, health thresholds
   Views/                    Forge layout and chats, chat, telemetry widgets, test dashboards, library, settings
