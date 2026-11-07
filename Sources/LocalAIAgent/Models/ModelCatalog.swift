@@ -22,6 +22,8 @@ struct QuantVariant: Identifiable, Hashable {
         case "FP16", "BF16": return "Full precision"
         case "Q4_0 QAT": return "Quantization-aware"
         case "MXFP4": return "Native 4-bit"
+        // Ollama's tag for models it has built for its MLX engine on Apple Silicon.
+        case "NVFP4": return "Runs on Ollama's MLX engine"
         default: return "Balanced"
         }
     }
@@ -33,10 +35,12 @@ struct QuantVariant: Identifiable, Hashable {
 }
 
 /// A hand-curated list of open-weight models from their original publishers.
-/// Every entry is distributed as GGUF weights (tensors only — no executable code), has been
-/// downloaded and evaluated by a very large community, and runs fully offline.
-/// Tags, sizes and quantization types were verified against the Ollama registry. The MLX versions were
-/// checked on Hugging Face: each repo is ungated and holds safetensors with no code files.
+/// Every entry is distributed as GGUF or safetensors weights (tensors only — no executable code), has
+/// been downloaded and evaluated by a very large community, and runs fully offline.
+/// Tags, sizes and quantization types were verified against the Ollama registry. On Apple Silicon, Ollama
+/// swaps some of its own tags for builds made for its MLX engine; those are listed as NVFP4, with the size
+/// a Mac downloads. The MLX versions were checked on Hugging Face: each repo is ungated and holds
+/// safetensors with no code files.
 struct CatalogModel: Identifiable, Hashable {
     enum Category: String, CaseIterable, Identifiable {
         case small = "Small & Fast"
@@ -272,23 +276,27 @@ enum ModelCatalog {
               variants: [q("gpt-oss:20b", "MXFP4", 13_793_441_427, by: "OpenAI", aliases: ["gpt-oss"], isDefault: true)],
               mlxVariants: [m("gpt-oss-20b-MXFP4-Q4", "MXFP4", 11_178_569_159, isDefault: true)]),
         // Only its 5 global layers grow with the context; the other 25 keep a fixed 1,024-token window.
-        // The Ollama builds need Ollama 0.30.9 or newer, and include a vision projector (and, for the default, a draft model).
+        // On a Mac, Ollama's own tag is a build for its MLX engine (needs Ollama 0.34.1 or newer, pulled on
+        // Ollama 0.40.15). The -it- tags are GGUF builds (0.30.9 or newer). Each includes a vision projector.
         .init(displayName: "Gemma 4 26B A4B", publisher: "Google DeepMind", license: "Apache 2.0",
               parameters: "25.2B (MoE)", maxContext: 262_144, kvKBPerToken: 20, category: .large,
               summary: "Mixture of experts: 26B of knowledge at close to 4B speed, with optional thinking. QAT fits a 24 GB Mac.", thinking: true,
               matchKeys: ["gemma426ba4b", "gemma426b"], huggingFaceHint: "google/gemma-4-26B-A4B-it",
-              variants: [q("gemma4:26b", "Q4_K_M", 18_731_025_387, aliases: ["gemma4:26b-a4b"], isDefault: true),
+              variants: [q("gemma4:26b", "NVFP4", 16_147_120_471, aliases: ["gemma4:26b-a4b"], isDefault: true),
+                         q("gemma4:26b-a4b-it-q4_K_M", "Q4_K_M", 17_987_580_741),
                          q("gemma4:26b-a4b-it-qat", "Q4_0 QAT", 15_634_199_400, by: "Google"),
                          q("gemma4:26b-a4b-it-q8_0", "Q8_0", 28_054_700_552)],
               mlxVariants: [m("gemma-4-26b-a4b-it-4bit", "4bit", 15_341_205_776, isDefault: true),
                             m("gemma-4-26b-a4b-it-8bit", "8bit", 27_953_641_429)]),
         // Only 16 of its 64 layers keep a per-token cache; the rest hold a fixed-size state, so the KV cost is low.
-        // The Ollama build needs Ollama 0.32.12 or newer. The download includes the vision projector, which MLX LM drops.
+        // On a Mac, Ollama's own tag is a build for its MLX engine and the -q tags are GGUF builds (checked on
+        // Ollama 0.40.15). All need Ollama 0.32.12 or newer and include the vision projector, which MLX LM drops.
         .init(displayName: "Qwen3.8 27B", publisher: "Alibaba Qwen", license: "Apache 2.0",
               parameters: "27B", maxContext: 262_144, kvKBPerToken: 64, category: .large,
               summary: "Qwen's newest dense model, strong at coding and long agent tasks. Thinks by default. Needs a 32 GB+ Mac.", thinking: true,
               matchKeys: ["qwen3827b"], huggingFaceHint: "Qwen/Qwen3.8-27B",
-              variants: [q("qwen3.8:27b", "Q4_K_M", 17_741_871_939, aliases: ["qwen3.8:27b-q4_K_M", "qwen3.8"], isDefault: true),
+              variants: [q("qwen3.8:27b", "NVFP4", 18_174_973_829, aliases: ["qwen3.8"], isDefault: true),
+                         q("qwen3.8:27b-q4_K_M", "Q4_K_M", 17_741_871_917),
                          q("qwen3.8:27b-q8_0", "Q8_0", 29_978_241_837)],
               mlxVariants: [m("Qwen3.8-27B-4bit", "4bit", 16_054_541_349, isDefault: true),
                             m("Qwen3.8-27B-8bit", "8bit", 29_501_218_479)]),
@@ -326,7 +334,7 @@ enum ModelCatalog {
 /// such as `lmstudio-community/Qwen3-8B-GGUF/Qwen3-8B-Q4_K_M.gguf` or `mlx-community/Qwen3-4B-4bit`.
 enum QuantParser {
     private static let pattern = try! NSRegularExpression(
-        pattern: #"(?i)(?<![a-z0-9])(iq\d_[a-z]+|q\d_k_[sml]|q\d_k|q\d_\d|mxfp4|bf16|fp16|f16|f32|\d{1,2}-?bit|qat)(?![a-z0-9])"#)
+        pattern: #"(?i)(?<![a-z0-9])(iq\d_[a-z]+|q\d_k_[sml]|q\d_k|q\d_\d|mxfp4|nvfp4|bf16|fp16|f16|f32|\d{1,2}-?bit|qat)(?![a-z0-9])"#)
 
     static func quant(in id: String) -> String? {
         let range = NSRange(id.startIndex..., in: id)
