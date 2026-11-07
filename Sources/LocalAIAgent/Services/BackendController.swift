@@ -185,23 +185,40 @@ final class BackendController {
     func refresh(light: Bool = false) async {
         let backend = self.backend
         let kindAtStart = kind
+        let version: String
         do {
-            let version = try await backend.ping()
-            guard kindAtStart == kind else { return }
-            status = .online(version)
-            availability[kind] = true
-            if !light || models.isEmpty {
-                models = try await backend.listModels()
-                ensureSelection()
-            }
-            loaded = (try? await backend.loadedModels()) ?? []
-            if detailsFor != settings.selectedModel { await refreshDetails() }
+            version = try await backend.ping()
         } catch {
             guard kindAtStart == kind else { return }
             status = .offline(error.localizedDescription)
             availability[kind] = false
             loaded = []
+            return
         }
+        guard kindAtStart == kind else { return }
+        availability[kind] = true
+        if !light || models.isEmpty {
+            if kind == .mlx { MLXRuntime.prepareCache() }
+            do {
+                let list = try await backend.listModels()
+                guard kindAtStart == kind else { return }
+                models = list
+                ensureSelection()
+            } catch {
+                guard kindAtStart == kind else { return }
+                // Status is set once per check, so a framework that answers but can't list its models
+                // stays in one state instead of flipping between online and offline. With a list from
+                // before, it keeps that one until the next check.
+                if models.isEmpty {
+                    status = .offline("\(kind.displayName) is running but couldn't list its models: \(error.localizedDescription)")
+                    loaded = []
+                    return
+                }
+            }
+        }
+        status = .online(version)
+        loaded = (try? await backend.loadedModels()) ?? []
+        if detailsFor != settings.selectedModel { await refreshDetails() }
     }
 
     func refreshAvailability() async {

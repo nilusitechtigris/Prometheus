@@ -26,6 +26,23 @@ enum MLXRuntime {
 
     static var isInstalled: Bool { tool(in: serverPaths) != nil }
 
+    /// Where the server and `hf` keep models, worked out the way they do it.
+    static var cache: URL {
+        let env = ProcessInfo.processInfo.environment
+        if let hub = env["HF_HUB_CACHE"], !hub.isEmpty { return URL(fileURLWithPath: hub) }
+        if let home = env["HF_HOME"], !home.isEmpty { return URL(fileURLWithPath: home).appendingPathComponent("hub") }
+        let base = env["XDG_CACHE_HOME"].flatMap { $0.isEmpty ? nil : URL(fileURLWithPath: $0) }
+            ?? FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent(".cache")
+        return base.appendingPathComponent("huggingface/hub")
+    }
+
+    /// The server's model list fails outright when the cache folder doesn't exist yet, which is the case
+    /// on a Mac that has never downloaded a model. It answers its health check fine, so without the
+    /// folder the app saw it come online and go offline again on every check.
+    static func prepareCache() {
+        try? FileManager.default.createDirectory(at: cache, withIntermediateDirectories: true)
+    }
+
     private static func environment(_ extra: [String: String]) -> [String: String] {
         ProcessInfo.processInfo.environment.merging(extra.merging(["HF_HUB_DISABLE_TELEMETRY": "1"]) { new, _ in new }) { _, new in new }
     }
@@ -34,6 +51,7 @@ enum MLXRuntime {
     /// Only downloads someone chose should go online.
     static func startServer(port: Int) -> Process? {
         guard let path = tool(in: serverPaths) else { return nil }
+        prepareCache()
         let process = Process()
         process.executableURL = URL(fileURLWithPath: path)
         process.arguments = ["--host", "127.0.0.1", "--port", "\(port)"]
@@ -109,8 +127,7 @@ enum MLXRuntime {
     /// How much of a repo is on disk. A file on its way in sits in the repo's folder, and a finished one
     /// is a link to the shared store, so following the links counts both.
     private static func onDisk(_ repo: String) -> Int64 {
-        let blobs = FileManager.default.homeDirectoryForCurrentUser
-            .appendingPathComponent(".cache/huggingface/hub/models--\(repo.replacingOccurrences(of: "/", with: "--"))/blobs")
+        let blobs = cache.appendingPathComponent("models--\(repo.replacingOccurrences(of: "/", with: "--"))/blobs")
         let names = (try? FileManager.default.contentsOfDirectory(atPath: blobs.path)) ?? []
         return names.reduce(0) { total, name in
             let file = blobs.appendingPathComponent(name).resolvingSymlinksInPath()

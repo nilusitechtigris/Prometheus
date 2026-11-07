@@ -101,6 +101,13 @@ private struct FrameworkSetupCard: View {
                 Text("The app talks to a local inference framework on this Mac. Start it, or pick another framework from the toolbar.")
                     .foregroundStyle(.secondary)
                     .multilineTextAlignment(.center)
+                if case .offline(let reason) = backends.status, !reason.isEmpty {
+                    Text(reason)
+                        .font(.uiCaption)
+                        .foregroundStyle(.secondary)
+                        .multilineTextAlignment(.center)
+                        .textSelection(.enabled)
+                }
             }
 
             if backends.canStartFramework {
