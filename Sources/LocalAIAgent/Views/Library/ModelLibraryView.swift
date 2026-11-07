@@ -130,7 +130,7 @@ private struct SafetyCallout: View {
     private var source: String {
         backends.kind == .mlx
             ? "They download from Hugging Face as safetensors weight files (tensors only, no executable code), converted for MLX by the mlx-community project, and run fully offline."
-            : "They download as GGUF weight files (tensors only, no executable code), are checksum-verified by Ollama, and run fully offline."
+            : "They download as GGUF or safetensors weight files (tensors only, no executable code), are checksum-verified by Ollama, and run fully offline."
     }
 
     var body: some View {
