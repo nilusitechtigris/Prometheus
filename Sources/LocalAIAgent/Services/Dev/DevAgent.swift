@@ -8,8 +8,8 @@ struct DevSetup: @unchecked Sendable {
     var context: Int
     var think: Bool?
     /// Opens a page out of sight and tries it.
-    var pageCheck: @Sendable (_ folder: URL, _ page: String, _ game: Bool) async -> DevPageReport = { folder, page, game in
-        await DevPageCheck.run(folder: folder, page: page, game: game)
+    var pageCheck: @Sendable (_ folder: URL, _ page: String, _ kind: DevPageKind) async -> DevPageReport = { folder, page, kind in
+        await DevPageCheck.run(folder: folder, page: page, kind: kind)
     }
 }
 
@@ -47,6 +47,8 @@ struct DevOutcome: Sendable {
     var rounds = 0
     /// A page that's ready to look at.
     var page: String?
+    /// How many times the model was asked something.
+    var calls = 0
 }
 
 /// The coding harness. A small model can't drive a loop of tools by itself: it loses the thread and
@@ -101,7 +103,7 @@ final class DevAgent: @unchecked Sendable {
 
     enum Intent { case ask, change }
 
-    private enum Verdict {
+    enum Verdict {
         case worked(String)
         /// It ran well until it asked for more than anyone had typed.
         case needsInput(String)
@@ -110,29 +112,35 @@ final class DevAgent: @unchecked Sendable {
         case notRun
     }
 
-    private struct Reply {
+    struct Reply {
         var text = ""
         var cutOff = false
         var error: String?
     }
 
-    private let project: DevProject
-    private let setup: DevSetup
-    private let emit: @Sendable (DevEvent) -> Void
+    let project: DevProject
+    let setup: DevSetup
+    let emit: @Sendable (DevEvent) -> Void
     /// What the agent has written so far, by path, in the order it wrote them.
-    private var versions: [String: String] = [:]
-    private var order: [String] = []
+    var versions: [String: String] = [:]
+    var order: [String] = []
     /// Each file as it was before this job. Nil for a file that didn't exist.
-    private var originals: [String: String?] = [:]
-    private var backendError: String?
+    var originals: [String: String?] = [:]
+    var backendError: String?
     /// Tests taken out of a new test file because they didn't hold, for the report.
     private var dropped: [String] = []
     /// Why the work didn't reach the project, when something stopped it at the end.
     private var saveProblem: String?
     /// Whether this job wants something to look at, which takes a display programs don't have here.
-    private var wantsDisplay = false
+    var wantsDisplay = false
     /// The page tried most recently, when the job is about one.
-    private var triedPage: String?
+    var triedPage: String?
+    /// How many times the model has been asked something in this job.
+    var calls = 0
+    /// Whether this job built a new app, which gets used as well as looked at.
+    var builtApp = false
+    /// Notes already shown, so a retry doesn't repeat them.
+    var noted: Set<String> = []
 
     init(project: DevProject, setup: DevSetup, emit: @escaping @Sendable (DevEvent) -> Void = { _ in }) {
         self.project = project
@@ -163,10 +171,13 @@ final class DevAgent: @unchecked Sendable {
     }
 
     func run(_ job: DevJob) async -> DevOutcome {
+        var outcome: DevOutcome
         switch Self.intent(of: job) {
-        case .ask: return await answer(job)
-        case .change: return await change(job)
+        case .ask: outcome = await answer(job)
+        case .change: outcome = await change(job)
         }
+        outcome.calls = calls
+        return outcome
     }
 
     // MARK: - Questions
@@ -207,7 +218,8 @@ final class DevAgent: @unchecked Sendable {
     /// asking for text keeps it a program.
     static func wantsPage(_ request: String) -> Bool {
         let lower = request.lowercased()
-        let isPage = wantsDisplay(lower) || lower.matches(#"\b(web ?page|website|web app|html|css|javascript|landing page)\b"#)
+        // An app with nothing to say it's for the terminal is something to see and click, which here is a page.
+        let isPage = wantsDisplay(lower) || lower.matches(#"\b(web ?page|website|web ?app|html|css|javascript|landing page|dashboard|user interface|ui|portfolio)\b|\bapps?\b(?!\.\w)"#)
         return isPage && !lower.matches(#"\b(python|terminal|text[- ]based|text game|text version|command line|cli|console|pygame|tkinter|turtle)\b"#)
     }
 
@@ -221,8 +233,14 @@ final class DevAgent: @unchecked Sendable {
             return DevOutcome(text: "\(unreadable) isn't text, or it's over 2 MB, so I left it alone.", worked: false)
         }
         for path in targets where originals[path] == nil { originals[path] = .some(project.read(path)) }
-        if let long = targets.first(where: { DevWeb.isWebFile($0) && project.read($0).map { Self.tokens($0) * 2 + 500 > setup.context } == true }) {
+        // A script can be edited a function at a time. A page or a style sheet has to come back whole.
+        if let long = targets.first(where: { DevWeb.isWebFile($0) && !$0.hasSuffix(".js") && project.read($0).map { Self.tokens($0) * 2 + 500 > setup.context } == true }) {
             return DevOutcome(text: "\(long) is too long to rewrite in this context window, so nothing changed. Try a larger context window.", worked: false)
+        }
+
+        // A new page that isn't a game is built as an app, a file at a time.
+        if job.failure == nil, targets.count == 1, let page = targets.first, DevWeb.isPage(page), !project.exists(page), !Self.isGame(job.request) {
+            return await buildApp(page: page, job: job)
         }
 
         if job.failure == nil, let rename = Self.renaming(job.request) {
@@ -235,7 +253,7 @@ final class DevAgent: @unchecked Sendable {
             return await finish(job, verdict: .failed(failure), rounds: 0)
         }
 
-        for path in targets {
+        for path in await webGroup(targets, job: job) {
             guard await author(path, job: job) else {
                 if Task.isCancelled { return DevOutcome(text: "Stopped. Nothing changed.", stopped: true) }
                 if let backendError { return DevOutcome(text: "The model couldn't answer: \(backendError)") }
@@ -248,7 +266,7 @@ final class DevAgent: @unchecked Sendable {
 
     /// The fixing loop, which ends with something saved and a report written by code rather than by the
     /// model. A model will say it worked either way.
-    private func finish(_ job: DevJob, verdict first: Verdict, rounds: Int) async -> DevOutcome {
+    func finish(_ job: DevJob, verdict first: Verdict, rounds: Int) async -> DevOutcome {
         var verdict = first
         var round = 0
         var seen: [String: Int] = [:]
@@ -415,15 +433,15 @@ final class DevAgent: @unchecked Sendable {
         return (lines + [ending]).joined(separator: " ")
     }
 
-    private func record(_ text: String, for path: String) {
+    func record(_ text: String, for path: String) {
         guard (try? project.url(for: path)) != nil else { return }
         if !order.contains(path) { order.append(path) }
         versions[path] = text
     }
 
-    private func source(_ path: String) -> String? { versions[path] ?? project.read(path) }
+    func source(_ path: String) -> String? { versions[path] ?? project.read(path) }
 
-    private func isPython(_ path: String) -> Bool { path.hasSuffix(".py") }
+    func isPython(_ path: String) -> Bool { path.hasSuffix(".py") }
 
     private func isTest(_ path: String) -> Bool {
         let name = (path as NSString).lastPathComponent
@@ -589,7 +607,7 @@ final class DevAgent: @unchecked Sendable {
 
     /// The project in as few words as will do: each file and what it defines, and the first lines of
     /// data files, since a program can't read a format it hasn't seen.
-    private func summary(excluding path: String?, budget: Int) async -> String {
+    func summary(excluding path: String?, budget: Int) async -> String {
         var lines: [String] = []
         var left = budget * 35 / 10
         for entry in project.entries() where !entry.isFolder && entry.path != path {
@@ -611,7 +629,31 @@ final class DevAgent: @unchecked Sendable {
         return lines.isEmpty ? "The project is empty." : "Project files:\n" + lines.joined(separator: "\n")
     }
 
-    private func rules(_ path: String, partial: Bool = false) -> String {
+    func rules(_ path: String, partial: Bool = false) -> String {
+        if path.hasSuffix(".js") {
+            let page = pageLinking(path) ?? "the page"
+            var lines = ["You write \(path), the JavaScript behind \(page). Rules:"]
+            lines.append(partial ? "- Reply with one ```javascript block holding only the functions you change or add, each one complete, and any new addEventListener lines, and nothing else."
+                                 : "- Reply with one ```javascript block holding the whole file, and nothing else.")
+            lines.append("- Plain JavaScript for a browser: no libraries, imports or modules, and nothing from the internet.")
+            lines.append("- Use only the element ids \(page) has. Keep the file's shape: state, render() and the event listeners.")
+            lines.append("- Write every line. Never leave a placeholder or TODO.")
+            return lines.joined(separator: "\n")
+        }
+        if path.hasSuffix(".css") {
+            return "You write \(path), a style sheet. Reply with one ```css block holding the whole file, and nothing else. Nothing from the internet: no fonts or images."
+        }
+        if DevWeb.isPage(path), let page = source(path), !DevWebLinks.linkedFiles(in: page).scripts.isEmpty || !DevWebLinks.linkedFiles(in: page).styles.isEmpty {
+            let files = DevWebLinks.linkedFiles(in: page)
+            var lines = ["You write \(path), one page of a web app. Rules:", "- Reply with one ```html block holding the whole file, and nothing else."]
+            lines.append("- Keep its <link> and <script src> tags. Its styles live in \((files.styles + files.scripts).joined(separator: " and ")), not in this file.")
+            if files.styles.contains(where: { project.read($0)?.hasPrefix(DevKit.marker) == true || versions[$0]?.hasPrefix(DevKit.marker) == true }) {
+                lines.append("- Style with the Bootstrap 5 classes kit.css has, such as \(DevKit.vocabulary.prefix(260))…")
+            }
+            lines.append("- Keep the ids the script uses. Give any new element the script needs an id.")
+            lines.append("- Nothing from the internet. Write every line. Never leave a placeholder or TODO.")
+            return lines.joined(separator: "\n")
+        }
         if DevWeb.isPage(path) {
             return """
             You write one complete web page. Rules:
@@ -644,13 +686,13 @@ final class DevAgent: @unchecked Sendable {
         return lines.joined(separator: "\n")
     }
 
-    private func fence(_ text: String, path: String) -> String {
+    func fence(_ text: String, path: String) -> String {
         let language = isPython(path) ? "python" : DevWeb.isPage(path) ? "html" : path.hasSuffix(".js") ? "javascript" : path.hasSuffix(".css") ? "css" : ""
         return "```\(language)\n\(text.trimmingCharacters(in: .newlines))\n```"
     }
 
     /// Whether a file can be retyped whole in the room this model has.
-    private func fitsWhole(_ text: String) -> Bool {
+    func fitsWhole(_ text: String) -> Bool {
         let tokens = Self.tokens(text)
         return tokens <= Self.wholeFileTokens && tokens * 2 + 500 <= setup.context
     }
@@ -672,6 +714,7 @@ final class DevAgent: @unchecked Sendable {
                 }
             }
         }
+        parts += webContext(for: path)
         if let recent = job.history.last { parts.append("Last thing done: \(recent)") }
         return (parts + extra).joined(separator: "\n\n")
     }
@@ -690,6 +733,8 @@ final class DevAgent: @unchecked Sendable {
             let text: String?
             if let existing, isPython(path), !fitsWhole(existing) {
                 text = await editPieces(of: existing, path: path, task: job.request, job: job, note: problem, temperature: temperature)
+            } else if let existing, path.hasSuffix(".js"), !fitsWhole(existing) {
+                text = await editScriptPieces(of: existing, path: path, task: job.request, job: job, note: problem, temperature: temperature)
             } else {
                 var extra: [String] = []
                 if let existing { extra.append("\(path) now:\n\(fence(existing, path: path))") }
@@ -717,13 +762,19 @@ final class DevAgent: @unchecked Sendable {
                     continue
                 }
                 text = DevWeb.isPage(path) ? DevWeb.page(from: reply.text, current: existing).map { page in
-                    skeleton.map { DevWeb.restoringCanvas(in: page, from: $0) } ?? page
-                } : usable(reply.text, path: path)
+                    tidied(skeleton.map { DevWeb.restoringCanvas(in: page, from: $0) } ?? page, was: existing)
+                } : webCode(reply.text, path: path)
                 if text == nil { problem = "Your last reply had no usable code. Reply with one code block." }
             }
             guard let text else { continue }
-            if DevWeb.isPage(path), DevWeb.hasPlaceholders(text) {
+            if DevWeb.isWebFile(path), DevWeb.hasPlaceholders(text) {
                 problem = "Your last reply left parts out. Write every line."
+                continue
+            }
+            if path.hasSuffix(".js"), let error = DevJS.syntaxError(in: text) {
+                problem = "Your last reply had this error on line \(error.line): \(error.message)."
+                broken = Self.tokens(text) * 2 + 500 <= setup.context ? text : nil
+                emit(.note("The reply had a syntax error, so I asked again."))
                 continue
             }
             if isPython(path) {
@@ -931,16 +982,18 @@ final class DevAgent: @unchecked Sendable {
             return .failed(DevFailure(kind: "Exit", message: "Couldn't make a copy of the project to try.", output: ""))
         }
         defer { try? FileManager.default.removeItem(at: folder) }
-        let game = Self.isGame(job.request) || source(page)?.contains("requestAnimationFrame") == true
-        let report = await setup.pageCheck(folder, page, game)
+        let report = await setup.pageCheck(folder, page, pageKind(page, job: job))
         let output = ([report.summary] + report.console.suffix(6)).filter { !$0.isEmpty }.joined(separator: "\n")
         emit(.ran("preview \(page)", DevRunResult(output: output, exitCode: report.failure == nil ? 0 : 1, seconds: 0)))
         if let failure = report.failure { return .failed(failure) }
         return .worked(report.summary)
     }
 
-    private func verify(_ job: DevJob) async -> Verdict {
-        if let page = pageToTry(job) { return await tryPage(page, job: job) }
+    func verify(_ job: DevJob) async -> Verdict {
+        if let page = pageToTry(job) {
+            if let failure = linkCheck(page) { return .failed(failure) }
+            return await tryPage(page, job: job)
+        }
         emit(.stage("Running it"))
         var verdict = Verdict.notRun
         for command in await entries(job) {
@@ -1008,13 +1061,28 @@ final class DevAgent: @unchecked Sendable {
         case "Exit":
             return "It ended with an error but printed no traceback."
         case "Resource":
+            if pageLinking(path) != nil || path.hasSuffix(".js") {
+                return "Everything has to be in the project. Nothing can load from the internet: no libraries, fonts or images. Do it with plain JavaScript and the page's own files."
+            }
             return "Everything has to be in the project. Draw with the canvas instead of loading anything, and put all the code in this one file."
+        case "Link" where failure.message.hasPrefix("render() adds"):
+            return "Add that listener once, outside render(), next to the other event listeners. render() should only draw the page from state."
+        case "Link":
+            return "\(failure.message) Use only what's there.\(failure.output.isEmpty ? "" : " The page's elements:\n\(failure.output)")"
+        case "SyntaxError" where path.hasSuffix(".js"):
+            return "It doesn't parse, so nothing in it runs. Check the brackets, quotes and commas around that line."
         case "Output" where DevWeb.isWebFile(path):
             if failure.message.hasPrefix("Nothing moves") {
                 return "A game needs things that change by themselves: create enemies or objects in update(), move them every frame, and make the keys or mouse change what's drawn."
             }
             if failure.message.contains("doesn't listen") {
                 return "Add addEventListener calls for the keyboard or the mouse, and use them to control the game."
+            }
+            if failure.message.contains("template tags") {
+                return "Nothing here runs a server, so there's no Flask, Jinja, PHP or Node. Write plain HTML, and fill it in with JavaScript in the browser."
+            }
+            if failure.message.contains("nothing on the page changed") {
+                return "When a form is submitted or a button is clicked, change state, then call save() and render(), and make render() show state on the page. Listen for a form's submit, not its button's click, and call event.preventDefault() first."
             }
             return "Something has to be drawn on the page when it opens."
         case "Output":
@@ -1105,7 +1173,16 @@ final class DevAgent: @unchecked Sendable {
     /// The same job for a web page, where the whole file comes back, since nothing here can yet fit a
     /// piece of JavaScript into a page the way Python's parser fits a function into a file.
     private func fixPage(_ path: String, source current: String, failure: DevFailure, job: DevJob, round: Int, repeats: Int) async -> String? {
+        let temperature = [0.2, 0.3, 0.5, 0.7][min(repeats - 1 + (round > 3 ? 1 : 0), 3)]
+        if path.hasSuffix(".js"), !fitsWhole(current) {
+            var note: String?
+            if repeats > 1 { note = "Cause: \(await diagnose(current, failure: failure, path: path))\nThe code you gave before still fails, so this time it has to be different." }
+            let task = job.failure == nil ? job.request : "Fix this error: \(failure.title)"
+            let edited = await editScriptPieces(of: current, path: path, task: task, job: job, note: [hint(for: failure, path: path), note].compactMap { $0 }.joined(separator: "\n"), temperature: temperature, failure: failure)
+            return edited == current ? nil : edited
+        }
         var parts = ["\(path):\n\(fence(current, path: path))"]
+        parts += webContext(for: path)
         parts.append("Trying it gives:\n```\n\(Self.quoted(failure.title))\n\(Self.quoted(String(failure.output.suffix(500))))\n```")
         if let line = failure.line, failure.file == path {
             let lines = current.components(separatedBy: "\n")
@@ -1117,10 +1194,10 @@ final class DevAgent: @unchecked Sendable {
             parts.append("Cause: \(await diagnose(current, failure: failure, path: path))\nThe code you gave before still fails, so this time it has to be different.")
         }
         parts.append("Fix it and keep everything else the same. Reply with the whole corrected \(path).")
-        let reply = await complete(system: rules(path), user: parts.joined(separator: "\n\n"), temperature: [0.2, 0.3, 0.5, 0.7][min(repeats - 1 + (round > 3 ? 1 : 0), 3)])
+        let reply = await complete(system: rules(path), user: parts.joined(separator: "\n\n"), temperature: temperature)
         if Task.isCancelled { return nil }
         if let error = reply.error { backendError = error; return nil }
-        guard !reply.cutOff, let text = DevWeb.isPage(path) ? DevWeb.page(from: reply.text, current: current) : usable(reply.text, path: path), !DevWeb.hasPlaceholders(text) else { return nil }
+        guard !reply.cutOff, let text = DevWeb.isPage(path) ? DevWeb.page(from: reply.text, current: current).map({ tidied($0, was: current) }) : webCode(reply.text, path: path), !DevWeb.hasPlaceholders(text) else { return nil }
         if text == current { return repeats == 1 ? await fixPage(path, source: current, failure: failure, job: job, round: round, repeats: 2) : nil }
         return text
     }
@@ -1170,8 +1247,9 @@ final class DevAgent: @unchecked Sendable {
         return lines.suffix(10).allSatisfy { $0 == last }
     }
 
-    private func complete(system: String, user: String, temperature: Double, limit: Int = 4_096, quiet: Bool = false, think: Bool?? = .none,
-                          onText: (String) -> Void = { _ in }) async -> Reply {
+    func complete(system: String, user: String, temperature: Double, limit: Int = 4_096, quiet: Bool = false, think: Bool?? = .none,
+                  onText: (String) -> Void = { _ in }) async -> Reply {
+        calls += 1
         let prompt = Self.tokens(system) + Self.tokens(user) + 16
         let room = max(min(limit, setup.context - prompt - 16), 96)
         let request = ChatRequest(model: setup.model, messages: [ChatTurn(role: "system", content: system), ChatTurn(role: "user", content: user)],

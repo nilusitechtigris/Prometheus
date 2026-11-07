@@ -101,6 +101,9 @@ enum DevChecks {
         await processChecks(log)
         await agentChecks(log)
         await pageChecks(log)
+        webCodeChecks(log)
+        await appPageChecks(log)
+        await appAgentChecks(log)
         try? log.report.write(toFile: path, atomically: true, encoding: .utf8)
     }
 
@@ -1308,8 +1311,9 @@ enum DevChecks {
         outcome = await agent(root, replies: ["CHANGE", fenced2(good.replacingOccurrences(of: "#fff", with: "#0f0"))]).run(DevJob(request: "Make a boss appear"))
         log.check(read(root, "index.html")?.contains("#0f0") == true && read(root, "main.py") == nil, "a change to a page-only project stays on the page", outcome.text)
         root = folder(["index.html": good])
-        outcome = await agent(root, replies: ["NEW", "calculator.html", fenced2(good.replacingOccurrences(of: "#fff", with: "#00f"))]).run(DevJob(request: "Make a calculator web page", openFile: "index.html"))
-        log.check(read(root, "index.html") == good && read(root, "calculator.html")?.contains("#00f") == true, "something new leaves the page alone", outcome.text)
+        outcome = await agent(root, replies: ["NEW", "calculator.html"] + calculatorReplies).run(DevJob(request: "Make a calculator web page", openFile: "index.html"))
+        log.check(read(root, "index.html") == good && read(root, "calculator.html")?.contains("calculator.js") == true && read(root, "calculator.js")?.contains("display") == true,
+                  "something new leaves the page alone", outcome.text)
 
         // Python stays Python, and a page that's too long for the context says so.
         root = folder()
@@ -1321,6 +1325,321 @@ enum DevChecks {
     }
 
     private static func fenced2(_ code: String) -> String { "```html\n\(code)\n```" }
+    private static func fencedJS(_ code: String) -> String { "```javascript\n\(code)\n```" }
+
+    // MARK: - Web apps
+
+    private static let todoPlan = "NAME: Todo List\nPARTS: header; form to add a task; task list; count\n**DATA:** tasks: text, done\nACTIONS: add a task; delete a task"
+
+    private static let todoBody = """
+    <!doctype html><html><head><link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet"></head>
+    <body>
+    <nav class="navbar bg-white border-bottom px-4"><span class="navbar-brand">✅ Todo</span><span id="count" class="badge text-bg-primary"></span></nav>
+    <main class="container py-4">
+    <form id="task-form" class="input-group mb-3"><input id="task-input" class="form-control" placeholder="New task"><button class="btn btn-primary" type="submit">Add</button></form>
+    <ul id="task-list" class="list-group"></ul>
+    </main>
+    <style>.done { text-decoration: line-through; }</style>
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    </body></html>
+    """
+
+    private static let todoStyles = "```css\nbody { display: flex; justify-content: center; height: 100vh; background: #fafafa; }\n.navbar-brand { color: #4f46e5; }\n@import url('https://fonts.googleapis.com/css?family=Inter');\n```"
+
+    /// A todo script that looks up one id by a near miss, #taskInput, which code should mend.
+    private static let todoScript = """
+    const $ = (selector) => document.querySelector(selector);
+    const STORAGE_KEY = "todo-list";
+    let state = load({ tasks: [] });
+    function load(fallback) { try { return Object.assign(fallback, JSON.parse(localStorage.getItem(STORAGE_KEY)) || {}); } catch (error) { return fallback; } }
+    function save() { try { localStorage.setItem(STORAGE_KEY, JSON.stringify(state)); } catch (error) {} }
+    function escapeHtml(text) { return String(text).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c])); }
+    function render() {
+      $("#task-list").innerHTML = state.tasks.map((task, i) => `<li class="list-group-item d-flex justify-content-between"><span class="${task.done ? "done" : ""}">${escapeHtml(task.text)}</span><button class="btn btn-sm btn-outline-danger" data-id="${i}">Delete</button></li>`).join("");
+      $("#count").textContent = state.tasks.length + " tasks";
+    }
+    $("#task-form").addEventListener("submit", (event) => {
+      event.preventDefault();
+      const text = $("#taskInput").value.trim();
+      if (!text) return;
+      state.tasks.push({ text, done: false });
+      $("#taskInput").value = "";
+      save();
+      render();
+    });
+    $("#task-list").addEventListener("click", (event) => {
+      const id = event.target.dataset.id;
+      if (id === undefined) return;
+      state.tasks.splice(Number(id), 1);
+      save();
+      render();
+    });
+    render();
+    """
+
+    private static var calculatorReplies: [String] {
+        ["NAME: Calculator\nPARTS: display; keys\nDATA: the expression\nACTIONS: press a key; clear; work it out",
+         fenced2("<main class=\"container py-4\"><input id=\"display\" class=\"form-control mb-3\" readonly><div id=\"keys\" class=\"d-grid gap-2\"><button class=\"btn btn-light\" data-key=\"1\">1</button><button class=\"btn btn-light\" data-key=\"+\">+</button><button class=\"btn btn-primary\" data-key=\"=\">=</button></div></main>"),
+         "```css\n#display { font-size: 2rem; }\n```",
+         fencedJS("""
+         const $ = (selector) => document.querySelector(selector);
+         let state = { text: "" };
+         function render() { $("#display").value = state.text; }
+         $("#keys").addEventListener("click", (event) => {
+           const key = event.target.dataset.key;
+           if (!key) return;
+           state.text = key === "=" ? String(Function("return " + (state.text || "0"))()) : state.text + key;
+           render();
+         });
+         render();
+         """)]
+    }
+
+    /// Reading pages and scripts without running them.
+    private static func webCodeChecks(_ log: Log) {
+        // Syntax.
+        log.check(DevJS.syntaxError(in: "let a = 1;\nfunction f() { return a; }") == nil, "good JavaScript parses")
+        let broken = DevJS.syntaxError(in: "let a = 1;\nfunction f( {\n  return a;\n}")
+        log.check(broken != nil && (broken?.line ?? 0) >= 2, "a JavaScript syntax error has its line", "\(String(describing: broken))")
+        log.check(DevJS.syntaxError(in: "import x from 'y';") != nil, "an import isn't a plain script")
+
+        // Pieces of a script, past strings, templates, comments and regular expressions full of brackets.
+        let script = """
+        const $ = (selector) => document.querySelector(selector);
+        // a comment with a { brace
+        let state = { items: [] };
+
+        /* a block comment
+           with } braces */
+        function render() {
+          const list = state.items.map(item => `<li data-id="${item.id}">${item.text.replace(/[{}]/g, "")}</li>`).join("");
+          $("#list").innerHTML = list;
+        }
+
+        const add = (text) => {
+          state.items.push({ id: Date.now(), text: "a } in a string" });
+          render();
+        };
+
+        $("#form").addEventListener("submit", (event) => {
+          event.preventDefault();
+          add($("#text").value);
+        });
+        render();
+        """
+        let pieces = DevJS.outline(script) ?? []
+        log.check(pieces.compactMap(\.name) == ["$", "state", "render", "add"] && pieces.filter { !$0.isDeclaration }.count == 2, "a script's top-level pieces",
+                  "\(pieces.map { "\($0.name ?? "-") \($0.start)-\($0.end)" })")
+        log.check(pieces.first { $0.name == "render" }?.text.hasPrefix("/* a block comment") == true, "a comment above a function goes with it",
+                  pieces.first { $0.name == "render" }?.text ?? "")
+        log.check(pieces.first { $0.name == "add" }?.kind == "function" && pieces.first { $0.name == "state" }?.kind == "variable", "arrow functions are functions")
+        log.check(DevJS.outline("function f() {\n  if (x) {\n") == nil, "uneven brackets give no outline")
+        let reply = """
+        function render() {
+          $("#list").innerHTML = state.items.map(item => `<li>${escapeHtml(item.text)}</li>`).join("");
+          $("#count").textContent = state.items.length;
+        }
+
+        function clearAll() {
+          state.items = [];
+          render();
+        }
+
+        $("#clear").addEventListener("click", clearAll);
+        """
+        let merged = DevJS.merge(reply, into: script) ?? ""
+        let clearAt = merged.range(of: "function clearAll")?.lowerBound, listenAt = merged.range(of: "$(\"#clear\")")?.lowerBound
+        let lastRender = merged.range(of: "\nrender();", options: .backwards)?.lowerBound
+        log.check(merged.contains("$(\"#count\")") && !merged.contains("replace(/[{}]/g") && merged.contains("const add = (text)"), "a function is replaced in place", merged)
+        log.check(clearAt != nil && listenAt != nil && lastRender != nil && clearAt! < lastRender! && listenAt! < lastRender!, "new code goes in before the page starts", merged)
+        log.check(DevJS.syntaxError(in: merged) == nil, "the merged script parses")
+        log.check(DevJS.merge("function render() {\n  oops(\n}", into: script) == nil, "a merge that wouldn't parse is refused")
+
+        // Pages and the scripts they use.
+        let body = todoBody
+        let elements = DevWebLinks.elements(in: body)
+        let described = DevWebLinks.describe(elements)
+        log.check(elements.map(\.id) == ["count", "task-form", "task-input", "task-list"], "a page's elements", "\(elements.map(\.id))")
+        log.check(described.contains("#task-input: input class=\"form-control\" placeholder=\"New task\"") && described.contains("#task-list: ul class=\"list-group\" (empty: app.js fills it)"),
+                  "elements described for a script", described)
+        let references = DevWebLinks.idReferences(in: "document.getElementById('a');\n$(\"#b .x\");\n// $(\"#gone\")\ndocument.querySelector(`#c`);\n$(`#d-${x}`);")
+        log.check(references.map(\.id) == ["a", "b", "c"] && references.map(\.line) == [1, 2, 4], "ids a script looks up, not in comments", "\(references)")
+        log.check(DevWebLinks.idsMade(by: "list.innerHTML = `<li id=\"item-made\">`; el.id = 'set';").isSuperset(of: ["item-made", "set"]), "ids a script makes")
+
+        var shell = DevKit.shell(title: "Todo", body: body, styles: "styles.css", script: "app.js")
+        var result = DevWebLinks.check(page: "index.html", files: ["index.html": shell, "app.js": todoScript])
+        log.check(result.failure == nil && result.files["app.js"]?.contains("#task-input") == true && result.files["app.js"]?.contains("taskInput") == false && !result.notes.isEmpty,
+                  "a near-miss id is mended", "\(String(describing: result.failure)) \(result.notes)")
+        result = DevWebLinks.check(page: "index.html", files: ["index.html": shell, "app.js": todoScript.replacingOccurrences(of: "#task-list", with: "#todo-items")])
+        log.check(result.failure?.kind == "Link" && result.failure?.file == "app.js" && result.failure?.message.contains("#todo-items") == true && result.failure?.line == 8
+                  && result.failure?.output.contains("#task-input") == true, "a missing id is reported with the page's elements", "\(String(describing: result.failure))")
+        result = DevWebLinks.check(page: "index.html", files: ["index.html": shell, "app.js": "let a = ;"])
+        log.check(result.failure?.kind == "SyntaxError" && result.failure?.file == "app.js" && result.failure?.line == 1, "a script that won't parse", "\(String(describing: result.failure))")
+        shell = DevKit.shell(title: "x", body: "<button onclick=\"addTask()\">Add</button>", styles: "styles.css", script: "app.js")
+        result = DevWebLinks.check(page: "index.html", files: ["index.html": shell, "app.js": "document.addEventListener('DOMContentLoaded', () => {\n  function addTask() {}\n});"])
+        log.check(result.failure?.kind == "Link" && result.failure?.message.contains("inside another function") == true, "a button calling a function it can't reach", "\(String(describing: result.failure))")
+        result = DevWebLinks.check(page: "index.html", files: ["index.html": shell, "app.js": "function addTask() {}"])
+        log.check(result.failure == nil, "a button calling a top-level function")
+        let piling = "const $ = (s) => document.querySelector(s);\nfunction render() {\n  const list = $(\"#task-list\");\n  list.innerHTML = \"\";\n  list.addEventListener(\"click\", () => {});\n}\nrender();"
+        let pile = DevWebLinks.listenerInRender(piling)
+        log.check(pile?.target == "#task-list" && pile?.event == "click" && pile?.line == 5, "a listener render() adds again on every draw", "\(String(describing: pile))")
+        log.check(DevWebLinks.listenerInRender("function render() {\n  const item = document.createElement('li');\n  item.addEventListener('click', () => {});\n  $('#list').append(item);\n}") == nil,
+                  "a listener on an element render() just made is fine")
+        log.check(DevWebLinks.listenerInRender("function render() {\n  document.addEventListener('keydown', go);\n}")?.target == "document", "a listener on the document from render()")
+        result = DevWebLinks.check(page: "index.html", files: ["index.html": DevKit.shell(title: "x", body: "<ul id=\"task-list\"></ul>", styles: "s.css", script: "app.js"), "app.js": piling])
+        log.check(result.failure?.kind == "Link" && result.failure?.line == 5 && result.failure?.message.hasPrefix("render() adds a click listener to #task-list") == true, "the check reports it", "\(String(describing: result.failure))")
+        let inline = "<html><body><p id=a></p>\n<script>\nlet x = ;\n</script></body></html>"
+        log.check(DevWebLinks.check(page: "index.html", files: ["index.html": inline]).failure?.line == 3, "a syntax error inside a page has the page's line")
+
+        let offline = DevWebLinks.offline(body + "<link rel=\"preconnect\" href=\"https://fonts.gstatic.com\"><link href=\"https://fonts.googleapis.com/css2?family=Inter\" rel=\"stylesheet\">")
+        log.check(offline.usesKit && offline.html.contains("href=\"kit.css\"") && !offline.html.contains("googleapis") && !offline.html.contains("gstatic") && !offline.html.contains("bootstrap.bundle"),
+                  "Bootstrap from the internet becomes the kit, and fonts go", offline.html)
+        let wired = DevWebLinks.keepingLinks(from: "<html><head><link rel=\"stylesheet\" href=\"styles.css\"></head><body><script src=\"app.js\"></script></body></html>", in: "<html><head></head><body><p>new</p></body></html>")
+        log.check(wired.contains("href=\"styles.css\"") && wired.contains("src=\"app.js\""), "a rewrite keeps the page's own files", wired)
+
+        // What the builder makes of replies.
+        let plan = DevAgent.AppPlan.parse(todoPlan)
+        log.check(plan.name == "Todo List" && plan.data == "tasks: text, done" && plan.actions.contains("delete"), "a plan is read", "\(plan)")
+        let extracted = DevAgent.appBody(from: fenced2(todoBody)) ?? ""
+        log.check(extracted.hasPrefix("<nav") && !extracted.contains("<script") && !extracted.contains("<link") && extracted.contains("<style>"), "only the body is kept", extracted)
+        log.check(DevAgent.uniqueIds("<a id=\"x\"></a><b id=\"x\"></b><i id='y'></i>") == "<a id=\"x\"></a><b id=\"x-2\"></b><i id='y'></i>", "repeated ids get numbers")
+        let safer = DevAgent.saferStyles("body { display: flex; justify-content: center; height: 100vh; background: #fafafa; }\n.card { height: 100px; background: url(https://x.com/a.png); }\n@import url('https://fonts.googleapis.com/x');")
+        log.check(!safer.contains("display") && !safer.contains("100vh") && safer.contains("#fafafa") && safer.contains("height: 100px") && !safer.contains("x.com") && !safer.contains("@import"),
+                  "styles that squeeze the page, or reach the internet, go", safer)
+        log.check(DevKit.css.hasPrefix(DevKit.marker) && DevKit.css.contains(".col-md-6{flex:0 0 auto;width:50%}") && DevKit.css.contains(".mb-3{margin-bottom:1rem!important}")
+                  && DevKit.css.contains(".btn-primary{"), "the kit has Bootstrap's names")
+        log.check(DevAgent.wantsPage("Make a habit tracker app") && DevAgent.wantsPage("build me a dashboard for my sales") && !DevAgent.wantsPage("write a python app that prints totals")
+                  && !DevAgent.wantsPage("Create shapes.py with functions circle_area(r) and square_area(s), and app.py which imports them"), "apps are pages unless they're Python")
+
+        // One reply with the harness off.
+        let files = DevOneReply.files(in: """
+        Here is the app.
+
+        **index.html**
+        ```html
+        <!doctype html><html><head><link rel="stylesheet" href="style.css"></head><body><script src="main.js"></script></body></html>
+        ```
+
+        ```css
+        body { color: red; }
+        ```
+
+        ```javascript
+        // main.js
+        console.log(1);
+        ```
+
+        Run it with:
+        ```bash
+        open index.html
+        ```
+        """)
+        log.check(files.map(\.path) == ["index.html", "main.js", "style.css"], "files in one reply, named every way models name them", "\(files.map(\.path))")
+        log.check(DevOneReply.files(in: "```python\nprint(1)\n```").map(\.path) == ["main.py"] && DevOneReply.files(in: "No code here.").isEmpty, "a lone program, and none")
+        log.check(DevOneReply.files(in: "```js title=\"src/app.js\"\nlet a;\n```").first?.path == "src/app.js", "a name in the opening line")
+    }
+
+    /// Using a page the way someone trying an app would.
+    @MainActor
+    private static func appPageChecks(_ log: Log) async {
+        func report(_ files: [String: String]) async -> DevPageReport {
+            await DevPageCheck.run(folder: folder(files), page: "index.html", kind: .app)
+        }
+        let todo = page("""
+        <form id="f"><input id="t"><button>Add</button></form><ul id="l"></ul>
+        <script>document.getElementById("f").addEventListener("submit", e => { e.preventDefault(); const li = document.createElement("li"); li.textContent = document.getElementById("t").value; document.getElementById("l").append(li); });</script>
+        """)
+        var result = await report(["index.html": todo])
+        log.check(result.failure == nil && result.used == true && result.loaded && result.controls >= 2, "an app that adds what you type", "\(String(describing: result.failure)) \(result)")
+        result = await report(["index.html": page("<form id=\"f\"><input id=\"t\"><button>Add</button></form><ul id=\"l\"></ul>")])
+        log.check(result.failure?.message.contains("nothing on the page changed") == true && result.used == false, "an app that does nothing", "\(String(describing: result.failure))")
+        result = await report(["index.html": page("<input id=\"d\" readonly><button onclick=\"document.getElementById('d').value += '7'\">7</button>")])
+        log.check(result.failure == nil && result.used == true, "a calculator whose display is a read-only field", "\(String(describing: result.failure))")
+        result = await report(["index.html": page("<button onclick=\"alert('Saved')\">Save</button>")])
+        log.check(result.failure == nil && result.used == true, "a message box counts as an answer", "\(String(describing: result.failure))")
+        result = await report(["index.html": page("<div id=\"panel\" style=\"display:none\"><form id=\"f\"><input id=\"t\"><button>Save</button></form></div><p id=\"out\"></p><button onclick=\"document.getElementById('panel').style.display='block'\">New</button><script>document.getElementById('f').onsubmit = e => { e.preventDefault(); document.getElementById('out').textContent = document.getElementById('t').value; };</script>")])
+        log.check(result.failure == nil && result.used == true, "a form that only shows after a button", "\(String(describing: result.failure))")
+        result = await report(["index.html": page("<h1>Plain</h1><p>Nothing to use.</p>")])
+        log.check(result.failure == nil && result.used == nil && !result.styled, "a page with nothing to use, and no styles", "\(String(describing: result.failure)) \(result)")
+        result = await report(["index.html": DevKit.shell(title: "Kit", body: "<main class=\"container\"><h1>Hi</h1></main>", styles: "styles.css", script: "app.js"), "kit.css": DevKit.css,
+                               "styles.css": "", "app.js": ""])
+        log.check(result.failure == nil && result.styled && result.offline, "the kit loads and styles a page", "\(String(describing: result.failure)) \(result)")
+        result = await report(["index.html": page("<link rel=\"stylesheet\" href=\"https://cdn.jsdelivr.net/npm/bootstrap@5/dist/css/bootstrap.min.css\"><p>x</p>")])
+        log.check(!result.offline && result.failure?.kind == "Resource", "Bootstrap from the internet isn't offline", "\(String(describing: result.failure))")
+        result = await report(["index.html": page("<h1>Habits</h1><ul>{% for habit in habits %}<li>{{ habit.name }}</li>{% endfor %}</ul>")])
+        log.check(result.rawTemplate && result.failure?.message.contains("template tags") == true, "a server's template isn't a page", "\(String(describing: result.failure))")
+        result = await report(["index.html": page("<p>Use {braces} and 50% off {a} {b}</p>")])
+        log.check(!result.rawTemplate && result.failure == nil, "braces in plain text are fine", "\(String(describing: result.failure))")
+        result = await report(["index.html": page("<div style=\"width:2000px\">wide</div>")])
+        log.check(!result.fits, "a page wider than the window", "\(result)")
+        let graded = await DevCompare.grade(folder: folder(["index.html": todo]), request: "a todo app", picture: nil)
+        log.check(graded.page == "index.html" && graded.score.first { $0.name == "Works when used" }?.passed == true && graded.score.first { $0.name == "Styled" }?.passed == false,
+                  "the comparison's scorecard", "\(graded.score)")
+    }
+
+    /// The agent building and changing a web app, with a scripted model.
+    private static func appAgentChecks(_ log: Log) async {
+        func read(_ root: URL, _ path: String) -> String? { try? String(contentsOf: root.appendingPathComponent(path), encoding: .utf8) }
+        var seen: [String] = []
+        var root = folder()
+        let events = Events()
+        var outcome = await agent(root, replies: [todoPlan, fenced2(todoBody), todoStyles, fencedJS(todoScript)], requests: { seen.append($0.messages.last?.content ?? "") }, events: events)
+            .run(DevJob(request: "Make a todo list web app"))
+        let built = read(root, "index.html") ?? ""
+        log.check(outcome.worked == true && outcome.page == "index.html" && outcome.calls == 4, "a web app is built a file at a time", "\(outcome.calls) \(outcome.text)")
+        log.check(built.contains("href=\"kit.css\"") && built.contains("href=\"styles.css\"") && built.contains("src=\"app.js\" defer") && !built.contains("cdn.jsdelivr") && built.contains("<title>Todo List</title>"),
+                  "code writes the page's head", built)
+        log.check(read(root, "kit.css")?.hasPrefix(DevKit.marker) == true, "the kit goes in with the app")
+        let styles = read(root, "styles.css") ?? ""
+        log.check(styles.contains(".done") && styles.contains("#4f46e5") && !styles.contains("display: flex") && !styles.contains("googleapis"), "the styles keep what's safe", styles)
+        log.check(read(root, "app.js")?.contains("#taskInput") == false, "the script's near miss was mended", read(root, "app.js") ?? "")
+        log.check(seen.count == 4 && seen[0].contains("App: Make a todo list web app") && seen[1].contains("PARTS: header") && seen[1].contains("Reading List")
+                  && seen[3].contains("#task-input: input") && seen[3].contains("function render()"), "each step sees what it needs", seen.joined(separator: "\n====\n"))
+        log.check(events.notes.contains { $0.hasPrefix("Plan: Todo List") } && events.notes.contains { $0.contains("matched them") }, "the plan and the mend are shown", "\(events.notes)")
+
+        // An id the page doesn't have, which only the model can fix.
+        root = folder()
+        seen = []
+        let wrong = todoScript.replacingOccurrences(of: "#taskInput", with: "#task-input").replacingOccurrences(of: "#task-list", with: "#todo-items")
+        outcome = await agent(root, replies: [todoPlan, fenced2(todoBody), todoStyles, fencedJS(wrong), fencedJS(todoScript.replacingOccurrences(of: "#taskInput", with: "#task-input"))],
+                              requests: { seen.append($0.messages.last?.content ?? "") }).run(DevJob(request: "Make a todo list web app"))
+        log.check(outcome.worked == true && outcome.rounds == 1 && read(root, "app.js")?.contains("#todo-items") == false, "a missing id gets fixed", outcome.text)
+        log.check(seen.last?.contains("has no element with that id") == true && seen.last?.contains("#task-list: ul") == true, "the fix hears which ids there are", seen.last ?? "")
+
+        // A change to an app that has its own files: the model picks the files, and each sees the others.
+        root = folder()
+        _ = await agent(root, replies: [todoPlan, fenced2(todoBody), todoStyles, fencedJS(todoScript)]).run(DevJob(request: "Make a todo list web app"))
+        let page = read(root, "index.html") ?? ""
+        let withButton = page.replacingOccurrences(of: "</main>", with: "<button id=\"clear-all\" class=\"btn btn-outline-secondary\">Clear all</button>\n</main>")
+            .replacingOccurrences(of: "<link rel=\"stylesheet\" href=\"styles.css\">\n", with: "")
+        let script = (read(root, "app.js") ?? "").replacingOccurrences(of: "\nrender();", with: "\n$(\"#clear-all\").addEventListener(\"click\", () => { state.tasks = []; save(); render(); });\nrender();")
+        seen = []
+        outcome = await agent(root, replies: ["index.html\napp.js", fenced2(withButton), fencedJS(script)], requests: { seen.append($0.messages.last?.content ?? "") })
+            .run(DevJob(request: "Add a clear all button", lastChanged: "index.html"))
+        log.check(outcome.worked == true && outcome.changes.map(\.path) == ["index.html", "app.js"], "a change across two files", "\(outcome.changes.map(\.path)) \(outcome.text)")
+        log.check(read(root, "index.html")?.contains("href=\"styles.css\"") == true, "a dropped link to the page's own styles comes back")
+        log.check(seen.count == 3 && seen[1].contains("app.js uses these ids, so keep them") && seen[2].contains("#clear-all: button"), "each file hears about the others", seen.joined(separator: "\n====\n"))
+
+        // A long script is edited a function at a time.
+        var filler = ""
+        for index in 1...45 { filler += "\nfunction helper\(index)(value) {\n  const doubled = value * 2;\n  const shifted = doubled + \(index);\n  return shifted > 100 ? shifted - 100 : shifted;\n}\n" }
+        let long = todoScript.replacingOccurrences(of: "#taskInput", with: "#task-input").replacingOccurrences(of: "\nrender();", with: filler + "\nrender();")
+        try? long.write(to: root.appendingPathComponent("app.js"), atomically: true, encoding: .utf8)
+        seen = []
+        let newRender = "```javascript\nfunction render() {\n  $(\"#task-list\").innerHTML = state.tasks.map((task, i) => `<li class=\"list-group-item\">${escapeHtml(task.text)} <button data-id=\"${i}\">x</button></li>`).join(\"\");\n  $(\"#count\").textContent = state.tasks.length + \" left\";\n  document.title = state.tasks.length + \" tasks\";\n}\n```"
+        outcome = await agent(root, replies: [newRender], requests: { seen.append($0.messages.last?.content ?? "") }).run(DevJob(request: "In app.js, make render show the count in the window title"))
+        let edited = read(root, "app.js") ?? ""
+        log.check(outcome.worked == true && edited.contains("document.title") && edited.contains("function helper45") && edited.contains("addEventListener(\"submit\""), "a long script edited a function at a time", outcome.text)
+        log.check(seen.count == 1 && seen[0].contains("app.js defines:") && !seen[0].contains("function helper30(value) {"), "only the function that matters is sent", seen.first ?? "")
+
+        // The harness off: one reply, saved as it came.
+        root = folder()
+        let reply = "Here you go.\n\nindex.html\n```html\n<!doctype html><html><head><link rel=\"stylesheet\" href=\"style.css\"></head><body><h1>Hi</h1><script src=\"script.js\"></script></body></html>\n```\n\n```css\nh1 { color: red; }\n```\n\n```javascript\nconsole.log('hi');\n```"
+        let setup = DevSetup(model: "scripted", backend: scripted([reply]), context: 8_192, think: false)
+        outcome = await DevOneReply.run(request: "Make a hello page", project: DevProject(root: root), setup: setup, emit: { _ in })
+        log.check(outcome.page == "index.html" && outcome.calls == 1 && outcome.changes.count == 3 && read(root, "style.css") == "h1 { color: red; }\n" && outcome.worked == nil,
+                  "the harness off saves one reply as it came", outcome.text)
+    }
 
     /// Page processes using most of a core, a moment after everything closed.
     @MainActor
@@ -1568,6 +1887,10 @@ enum DevChecks {
         /// Set for a page, which gets played rather than run.
         var page: String?
         var game: Bool?
+        /// A web app, which gets used. Its one reply is saved file by file, as with the harness off.
+        var app: Bool?
+        /// An app that keeps a list, where what's typed in has to show up.
+        var lists: Bool?
     }
 
     /// Runs coding tasks on a real model, then grades the folder each one leaves with checks the model
@@ -1583,7 +1906,13 @@ enum DevChecks {
             for task in tasks where only.isEmpty || only.contains(task.id) {
                 let root = folder(task.files ?? [:])
                 let started = Date()
-                let story = mode == "oneshot" ? await oneShot(task, root: root, setup: setup) : await harness(task, root: root, setup: setup)
+                let story: String
+                if mode == "oneshot", task.app == true {
+                    let outcome = await DevOneReply.run(request: task.steps.joined(separator: "\n"), project: DevProject(root: root), setup: setup, emit: { _ in })
+                    story = "\(outcome.changes.count) files: \(outcome.text.prefix(160))"
+                } else {
+                    story = mode == "oneshot" ? await oneShot(task, root: root, setup: setup) : await harness(task, root: root, setup: setup)
+                }
                 let seconds = Date().timeIntervalSince(started)
                 let picture = URL(fileURLWithPath: out).deletingLastPathComponent().appendingPathComponent("\(mode)-\(task.id).png")
                 let verdict = await grade(task, root: root, picture: picture)
@@ -1622,6 +1951,16 @@ enum DevChecks {
         guard let copy = copied(root) else { return (false, "no copy") }
         if let page = task.page {
             guard FileManager.default.fileExists(atPath: copy.appendingPathComponent(page).path) else { return (false, "no page") }
+            if task.app == true {
+                // Used the way a person would, then held to more than the agent's own check: what was typed has
+                // to show up in an app that keeps a list.
+                let report = await DevPageCheck.run(folder: copy, page: page, kind: .app, picture: picture)
+                let extras = "styled \(report.styled), offline \(report.offline), fits \(report.fits), used \(report.used.map(String.init) ?? "-"), typed shown \(report.showsTyped.map(String.init) ?? "-")"
+                if let failure = report.failure { return (false, "\(failure.title) | \(extras)") }
+                if report.controls > 0, report.used != true, !report.responded { return (false, "nothing changed when used | \(extras)") }
+                if task.lists == true, report.showsTyped != true { return (false, "what was typed never showed | \(extras)") }
+                return (true, extras)
+            }
             let report = await DevPageCheck.run(folder: copy, page: page, game: task.game ?? false, picture: picture)
             return (report.failure == nil, report.failure?.title ?? report.summary)
         }

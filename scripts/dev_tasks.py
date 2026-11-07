@@ -455,5 +455,26 @@ TASKS += [
     {"id": "calculator", "target": "index.html", "page": "index.html", "game": False, "steps": ["Make a calculator web page with buttons."]},
 ]
 
+# Web apps, which get used rather than played: every field filled in, every form sent and button pressed.
+# One that keeps a list has to show what was typed. Their one reply is saved file by file, as Dev mode does
+# with the harness off.
+def app(id, request, lists=False):
+    return {"id": id, "target": "index.html", "page": "index.html", "game": False, "app": True, "lists": lists, "steps": [request]}
+
+TASKS += [
+    app("todo_app", "Make a todo list web app where I can add tasks, tick them off and delete them.", lists=True),
+    app("habits_app", "Make a habit tracker web app: I add habits and tick off today for each one.", lists=True),
+    app("expenses_app", "Make an expense tracker web app with a form for the item and the amount, a list of expenses and the total.", lists=True),
+    app("notes_app", "Make a notes web app where I write a note, save it, and see all my notes.", lists=True),
+    app("kanban_app", "Make a kanban board web app with To do, Doing and Done columns, where I add cards and move them along.", lists=True),
+    app("recipes_app", "Make a recipe box web app where I add recipes and search them by name.", lists=True),
+    app("tip_app", "Make a tip calculator web app: the bill, the tip percent, and the tip and total."),
+    app("converter_app", "Make a web app that converts kilometres to miles and back."),
+    app("quiz_app", "Make a quiz web app with three multiple choice questions and a score at the end."),
+    app("timer_app", "Make a pomodoro timer web app with start, pause and reset."),
+    app("contact_app", "Make a contact form web app that checks the email address and shows a thank-you message."),
+    app("weather_app", "Make a weather dashboard web app for five cities, with made-up data and a city picker."),
+]
+
 json.dump(TASKS, open(sys.argv[1], "w"), indent=1)
 print(len(TASKS), "tasks")
