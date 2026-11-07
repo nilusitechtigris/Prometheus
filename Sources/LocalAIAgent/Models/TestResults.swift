@@ -117,6 +117,9 @@ struct ModelTestResult: Codable, Identifiable, Equatable {
     var toolsAvailable: Bool?
     /// Rounds the harness's loop could take on each question. Nil for runs from before the loop.
     var harnessRounds: Int?
+    /// True for Harness - Normal, which asks only some of the questions. Its scores don't compare with a
+    /// full run's. A plain flag rather than a name, so a later build's new size can't fail the whole file.
+    var quick: Bool?
     var injectionWithout: [InjectionResult]?
     var injectionWith: [InjectionResult]?
     var date = Date()
@@ -160,6 +163,7 @@ struct ModelTestResult: Codable, Identifiable, Equatable {
     }
 
     var usesHarness: Bool { harness == true }
+    var isQuick: Bool { quick == true }
 
     /// Which version of the harness ran, if any. Older runs are told apart by what they logged: the loop
     /// saved its rounds, and only the pipeline and the loop write down what they understood.
@@ -211,6 +215,8 @@ struct ModelTestItemResult: Codable, Equatable, Identifiable {
     var guardRemoved: Int?
     /// Tools the model called by itself. Nil in runs from before this was counted.
     var modelToolCalls: Int?
+    /// The end of what the model thought, which is where it decides. Nil in runs from before this was kept.
+    var thinking: String?
 
     var weight: Int { level?.weight ?? 1 }
     /// The model hit the test's token limit before it finished.

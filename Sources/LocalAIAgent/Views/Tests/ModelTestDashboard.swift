@@ -301,7 +301,7 @@ struct ModelTestDashboard: View {
     }
 
     private func history(selected: ModelTestResult) -> some View {
-        TestRunList(runs: lab.modelResults) { run in
+        TestRunList(runs: lab.fullRuns) { run in
             TestRunRow(level: TestScoring.modelScore.level(run.score), date: run.date,
                        title: "\(run.displayName) · \(run.quant)\(run.setupLabel)", tag: run.isCurrentSuite ? nil : "Old test",
                        result: "\(run.isCurrentSuite ? TestFormat.score(run.score) : Format.percent(run.score)) · \(Format.rate(run.tokensPerSecond)) tok/s",

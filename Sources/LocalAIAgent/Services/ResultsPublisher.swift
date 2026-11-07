@@ -51,17 +51,46 @@ enum ResultsPublisher {
         return (words + [Substring(formatter.string(from: date))]).joined(separator: "-") + ".json"
     }
 
-    static func write(_ results: PublishedResults) throws -> URL {
+    /// Writes the JSON and the readable report beside it, and returns both.
+    static func write(_ results: PublishedResults) throws -> [URL] {
         let encoder = JSONEncoder()
         encoder.dateEncodingStrategy = .iso8601
-        encoder.outputFormatting = [.prettyPrinted, .sortedKeys, .withoutEscapingSlashes]
-        let text = String(decoding: try encoder.encode(results), as: UTF8.self)
-            // Nothing saved today has a path in it, but a tool's log could one day.
-            .replacingOccurrences(of: NSHomeDirectory(), with: "~")
+        let details = try withTotals(encoder.encode(results), results: results)
+        let json = String(decoding: details, as: UTF8.self)
         try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
         let file = folder.appendingPathComponent(fileName(for: results.machine, date: results.createdAt))
-        try text.write(to: file, atomically: true, encoding: .utf8)
-        return file
+        let report = file.deletingPathExtension().appendingPathExtension("md")
+        // Nothing saved today has a path in it, but a tool's log could one day.
+        try clean(json).write(to: file, atomically: true, encoding: .utf8)
+        try clean(ResultsReport.markdown(for: results)).write(to: report, atomically: true, encoding: .utf8)
+        return [file, report]
+    }
+
+    private static func clean(_ text: String) -> String {
+        text.replacingOccurrences(of: NSHomeDirectory(), with: "~")
+    }
+
+    /// Adds what a reader would otherwise have to work out from each run and task.
+    private static func withTotals(_ data: Data, results: PublishedResults) throws -> Data {
+        guard var root = try JSONSerialization.jsonObject(with: data) as? [String: Any],
+              var runs = root["modelRuns"] as? [[String: Any]] else { return data }
+        for (index, run) in results.modelRuns.enumerated() where index < runs.count {
+            runs[index]["score"] = run.score
+            runs[index]["points"] = run.points
+            runs[index]["maxPoints"] = run.maxPoints
+            runs[index]["passedTasks"] = run.passed
+            guard var items = runs[index]["items"] as? [[String: Any]] else { continue }
+            for (position, item) in run.items.enumerated() where position < items.count {
+                items[position]["points"] = item.passed ? item.weight : 0
+                items[position]["maxPoints"] = item.weight
+                items[position]["totalTokens"] = (item.outputTokens ?? 0) + (item.thinkingTokens ?? 0)
+                items[position]["ranOutOfTokens"] = item.ranOutOfTokens
+                items[position]["finalAnswer"] = ModelTestSuite.finalAnswer(item.answer)
+            }
+            runs[index]["items"] = items
+        }
+        root["modelRuns"] = runs
+        return try JSONSerialization.data(withJSONObject: root, options: [.prettyPrinted, .sortedKeys, .withoutEscapingSlashes])
     }
 
     /// The report also holds the serial number, so only this one field is read from it.

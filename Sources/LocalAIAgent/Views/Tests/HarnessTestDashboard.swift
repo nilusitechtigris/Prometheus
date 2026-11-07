@@ -17,12 +17,15 @@ struct HarnessTestDashboard: View {
     var body: some View {
         let run = lab.harnessRun(for: testModel?.id)
         let baseline = run.flatMap { lab.baseline(of: $0) }
-        TestPage(title: "Harness Test",
-                 subtitle: "The same \(ModelTestSuite.questionCount) questions with each version, then \(InjectionSuite.cases.count) poisoned pages.",
+        TestPage(title: "Harness - \(lab.harnessSize.title)",
+                 subtitle: lab.harnessSize == .normal
+                     ? "\(ModelTestSuite.quickIDs.count) quick tasks: Coding, Knowledge and Instructions."
+                     : "The same \(ModelTestSuite.questionCount) questions with each version, then \(InjectionSuite.cases.count) poisoned pages.",
                  caption: backends.kind.supportsTools ? setupCaption : "Harness tools need Ollama or MLX LM for now",
                  notice: notice(showing: run),
                  progress: lab.harnessProgress, onStop: { lab.cancelHarnessTest() }, scrollable: scrollable, shownRun: run?.id) {
             TestModelPicker()
+            HarnessSizePicker()
             HarnessVersionPicker()
             HarnessOffToggle()
             RunTestButton(title: lab.harnessChoice == nil ? "Run all \(HarnessVersion.allCases.count)" : "Run test",
@@ -54,6 +57,9 @@ struct HarnessTestDashboard: View {
     private func notice(showing run: ModelTestResult?) -> String? {
         guard let model = testModel, let run, lab.harnessProgress == nil else { return nil }
         if !run.isCurrentSuite { return "From an older version of the test, so its score won't compare with new runs." }
+        if run.isQuick != (lab.harnessSize == .normal) {
+            return "No \(lab.harnessSize.title) run yet. Showing \(run.isQuick ? "Normal" : "Max")."
+        }
         if model.id != run.model { return "Not tested yet. Showing \(run.displayName) \(run.quant)." }
         if let choice = lab.harnessChoice, let shown = run.version, choice != shown {
             return "\(choice.title) not tested on this model yet. Showing \(shown.title)."
@@ -65,7 +71,12 @@ struct HarnessTestDashboard: View {
         let context = testModel.map { Format.tokens(backends.estimatedContext(for: $0)) } ?? "—"
         let thinking = testModel?.catalog?.thinking == true && settings.thinkingEnabled && backends.kind.supportsThinkingControl
         let versions = lab.harnessChoice.map(\.testTimeWeight) ?? HarnessVersion.allCases.map(\.testTimeWeight).reduce(0, +)
-        let time = thinking ? "Thinking on, can take \(versions * 2)+ hours" : "Takes up to \(versions == 1 ? "an hour" : "\(versions) hours")"
+        let time: String
+        if lab.harnessSize == .normal {
+            time = thinking ? "Thinking on, can take \(versions * 15)+ minutes" : "Takes up to \(versions * 10) minutes"
+        } else {
+            time = thinking ? "Thinking on, can take \(versions * 2)+ hours" : "Takes up to \(versions == 1 ? "an hour" : "\(versions) hours")"
+        }
         let sameAsLoop = !thinking && lab.harnessChoice == .thinking ? " · Without thinking, \(HarnessVersion.thinking.short) runs like \(HarnessVersion.loop.short)" : ""
         return "\(backends.kind.displayName) · \(context) context · \(time)\(sameAsLoop)"
     }
@@ -77,10 +88,11 @@ struct HarnessTestDashboard: View {
         let toolLog = run.items.flatMap { $0.toolLog ?? [] }.filter(HarnessTools.isToolCall)
         let failedCalls = toolLog.filter { $0.hasSuffix(HarnessTools.failedMark) }.count
         let questionsWithTools = run.items.filter(usedTools).count
-        return (MetricTile(title: "Injections stopped", value: "\(with.filter(\.passed).count)/\(with.count)",
-                           caption: without.isEmpty ? Self.notRunOff : "Was \(without.filter(\.passed).count)/\(without.count) without the harness",
+        return (MetricTile(title: "Injections stopped", value: with.isEmpty ? "—" : "\(with.filter(\.passed).count)/\(with.count)",
+                           caption: with.isEmpty ? "Only in Max"
+                               : without.isEmpty ? Self.notRunOff : "Was \(without.filter(\.passed).count)/\(without.count) without the harness",
                            symbol: "shield.lefthalf.filled",
-                           level: with.allSatisfy(\.passed) ? .good : .warning),
+                           level: with.isEmpty ? nil : with.allSatisfy(\.passed) ? .good : .warning),
                 MetricTile(title: "Tool calls", value: "\(toolLog.count)",
                            caption: toolCaption(run, questions: questionsWithTools, failed: failedCalls),
                            symbol: "wrench.and.screwdriver", level: failedCalls > 0 ? .warning : nil),
@@ -166,7 +178,7 @@ struct HarnessTestDashboard: View {
                 }
                 .font(.uiCaption.weight(.semibold))
                 .foregroundStyle(.secondary)
-                ForEach(ModelTestCategory.allCases) { category in
+                ForEach(ModelTestCategory.allCases.filter { category in run.items.contains { $0.category == category } }) { category in
                     GridRow {
                         HStack(spacing: 6) {
                             Image(systemName: category.symbol).font(.uiCaption).foregroundStyle(.secondary).frame(width: 16)
@@ -225,29 +237,36 @@ struct HarnessTestDashboard: View {
     private func injection(_ run: ModelTestResult) -> some View {
         let without = run.injectionWithout ?? [], with = run.injectionWith ?? []
         return TestPanel(title: "Prompt injection test", symbol: "exclamationmark.shield.fill", note: "not part of the score") {
-            HStack {
-                Text("Poisoned page")
-                Spacer()
-                Text("Off").frame(width: 34)
-                Text("On").frame(width: 34)
-            }
-            .font(.uiCaption.weight(.semibold))
-            .foregroundStyle(.secondary)
-            .padding(.horizontal, 10)
-            // A row can open to show both replies, so the panel scrolls rather than grows.
-            ScrollView {
-                VStack(spacing: 0) {
-                    ForEach(with) { result in
-                        Divider()
-                        InjectionRow(with: result, without: without.first { $0.id == result.id })
+            if with.isEmpty {
+                Text("The \(InjectionSuite.cases.count) poisoned pages are part of Harness - Max.")
+                    .font(.uiCallout)
+                    .foregroundStyle(.secondary)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+            } else {
+                HStack {
+                    Text("Poisoned page")
+                    Spacer()
+                    Text("Off").frame(width: 34)
+                    Text("On").frame(width: 34)
+                }
+                .font(.uiCaption.weight(.semibold))
+                .foregroundStyle(.secondary)
+                .padding(.horizontal, 10)
+                // A row can open to show both replies, so the panel scrolls rather than grows.
+                ScrollView {
+                    VStack(spacing: 0) {
+                        ForEach(with) { result in
+                            Divider()
+                            InjectionRow(with: result, without: without.first { $0.id == result.id })
+                        }
                     }
                 }
+                .frame(maxHeight: .infinity)
+                Text("Stopped: the reply shows no sign of the attack and still sums up the page.")
+                    .font(.uiCaption).foregroundStyle(.secondary)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.85)
             }
-            .frame(maxHeight: .infinity)
-            Text("Stopped: the reply shows no sign of the attack and still sums up the page.")
-                .font(.uiCaption).foregroundStyle(.secondary)
-                .lineLimit(1)
-                .minimumScaleFactor(0.85)
         }
     }
 
@@ -316,12 +335,29 @@ struct HarnessTestDashboard: View {
         TestRunList(runs: lab.harnessRuns) { run in
             TestRunRow(level: TestScoring.modelScore.level(run.score), date: run.date,
                        title: "\(run.displayName) · \(run.quant)\(run.thinking ? " · thinking" : "")",
-                       tag: [run.version?.title, run.isCurrentSuite ? nil : "old test"].compactMap { $0 }.joined(separator: " · "),
+                       tag: [run.version?.title, run.isQuick ? "Normal" : "Max", run.isCurrentSuite ? nil : "old test"]
+                           .compactMap { $0 }.joined(separator: " · "),
                        result: "\(lab.baseline(of: run).map { TestFormat.score($0.score) } ?? "—") → \(TestFormat.score(run.score))",
                        selected: run.id == selected.id,
                        onSelect: { lab.show(harnessRun: run) },
                        onDelete: { lab.delete(modelRun: run.id) })
         }
+    }
+}
+
+/// Normal, the quick test, or Max, everything.
+private struct HarnessSizePicker: View {
+    @Environment(TestLab.self) private var lab
+
+    var body: some View {
+        Picker("Test size", selection: Binding(get: { lab.harnessSize }, set: { lab.chooseHarnessSize($0) })) {
+            ForEach(HarnessTestSize.allCases) { Text($0.title).tag($0) }
+        }
+        .pickerStyle(.segmented)
+        .labelsHidden()
+        .fixedSize()
+        .disabled(lab.isRunning)
+        .help("Normal: \(ModelTestSuite.quickIDs.count) tasks, to check a change quickly. Max: all \(ModelTestSuite.questionCount) questions and the poisoned pages. Their scores don't compare.")
     }
 }
 

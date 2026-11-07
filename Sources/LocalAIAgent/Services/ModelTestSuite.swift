@@ -52,6 +52,14 @@ struct ModelTestQuestion: Identifiable {
     }
 }
 
+/// How much of the Harness Test runs.
+enum HarnessTestSize: String, CaseIterable, Identifiable {
+    case normal, max
+
+    var id: String { rawValue }
+    var title: String { rawValue.capitalized }
+}
+
 /// The model test: six topics, each with four levels of difficulty. A question is worth twice the
 /// one below it, so most of the score sits in the expert questions and only a frontier-class model
 /// reaches 100.
@@ -65,6 +73,10 @@ enum ModelTestSuite {
     /// Repeat it when the questions change (LOCALAI_DUMP_SUITE and LOCALAI_GRADE in DebugHooks).
     static let scaleNote = "100 is \(referenceModel) at max effort, which scored 90 of 90 points in a blind run of these questions."
     static let questionCount = 24
+    /// Harness - Normal: the topics where the harness gained most and that run fastest, one for each thing
+    /// it adds (the code sandbox, web search and the rule checks), without the basic questions nearly
+    /// everything passes. Harness - Max is every question.
+    static let quickIDs: Set<String> = ["code-2", "code-3", "code-4", "know-2", "know-3", "know-4", "follow-2", "follow-3", "follow-4"]
 
     static let systemPrompt = "You are a helpful assistant. Follow the instructions in each question exactly, including the requested answer format."
 

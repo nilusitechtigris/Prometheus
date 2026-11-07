@@ -113,6 +113,7 @@ struct ComposerView: View {
                 HarnessPill(compact: compact)
                 temperaturePill(compact: compact)
                 TelemetryPill(compact: compact)
+                DevPill(compact: compact)
             }
             if narrow {
                 controls

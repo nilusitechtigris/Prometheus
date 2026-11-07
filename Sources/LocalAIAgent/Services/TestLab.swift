@@ -11,6 +11,8 @@ final class TestLab {
     private(set) var modelProgress: TestProgress?
     private(set) var hardwareProgress: TestProgress?
     private(set) var harnessProgress: TestProgress?
+    /// Which Harness Test to run and show.
+    private(set) var harnessSize = HarnessTestSize.normal
     private(set) var lastError: String?
 
     /// Questions open in the dashboard's list.
@@ -56,10 +58,13 @@ final class TestLab {
         testModelID = run.model
     }
 
+    /// Runs of the whole question set. Harness - Normal stays out of the Model Test's scores and lists.
+    var fullRuns: [ModelTestResult] { modelResults.filter { !$0.isQuick } }
+
     var selectedModelRun: ModelTestResult? {
         modelResults.first { $0.id == selectedModelRunID }
-            ?? modelResults.first { $0.isCurrentSuite && !$0.usesHarness }
-            ?? modelResults.first { !$0.usesHarness }
+            ?? fullRuns.first { $0.isCurrentSuite && !$0.usesHarness }
+            ?? fullRuns.first { !$0.usesHarness }
     }
 
     var selectedHardwareRun: HardwareTestResult? {
@@ -67,13 +72,13 @@ final class TestLab {
     }
 
     func latestModelResult(for modelID: String?) -> ModelTestResult? {
-        modelResults.first { $0.model == modelID && $0.isCurrentSuite && !$0.usesHarness }
+        fullRuns.first { $0.model == modelID && $0.isCurrentSuite && !$0.usesHarness }
     }
 
     /// Newest run of each model + quant + framework on the current questions, best score first.
     var leaderboard: [ModelTestResult] {
         var seen = Set<String>()
-        return modelResults.filter { $0.isCurrentSuite && seen.insert($0.configurationKey).inserted }
+        return fullRuns.filter { $0.isCurrentSuite && seen.insert($0.configurationKey).inserted }
             .sorted { ($0.score, $0.tokensPerSecond ?? 0) > ($1.score, $1.tokensPerSecond ?? 0) }
     }
 
@@ -189,12 +194,24 @@ final class TestLab {
     /// The run to show: the one picked, else the newest of the chosen version on this model, else whatever
     /// this model has, else any model's. Runs from an older test come last, so they stay in view.
     func harnessRun(for modelID: String?) -> ModelTestResult? {
-        modelResults.first { $0.id == selectedHarnessRunID }
-            ?? modelResults.first { $0.usesHarness && $0.isCurrentSuite && $0.model == modelID && (harnessChoice == nil || $0.version == harnessChoice) }
-            ?? modelResults.first { $0.usesHarness && $0.isCurrentSuite && $0.model == modelID }
-            ?? modelResults.first { $0.usesHarness && $0.isCurrentSuite }
-            ?? modelResults.first { $0.usesHarness && $0.model == modelID }
-            ?? modelResults.first { $0.usesHarness }
+        let quick = harnessSize == .normal
+        return modelResults.first { $0.id == selectedHarnessRunID }
+            ?? newestHarnessRun(in: modelResults.filter { $0.isQuick == quick }, for: modelID)
+            ?? newestHarnessRun(in: modelResults, for: modelID)
+    }
+
+    private func newestHarnessRun(in runs: [ModelTestResult], for modelID: String?) -> ModelTestResult? {
+        runs.first { $0.usesHarness && $0.isCurrentSuite && $0.model == modelID && (harnessChoice == nil || $0.version == harnessChoice) }
+            ?? runs.first { $0.usesHarness && $0.isCurrentSuite && $0.model == modelID }
+            ?? runs.first { $0.usesHarness && $0.isCurrentSuite }
+            ?? runs.first { $0.usesHarness && $0.model == modelID }
+            ?? runs.first { $0.usesHarness }
+    }
+
+    /// Picks how much of the test to run and shows that size's newest run, if it has one.
+    func chooseHarnessSize(_ size: HarnessTestSize) {
+        harnessSize = size
+        selectedHarnessRunID = nil
     }
 
     /// Picks the version to test and shows its newest run, if it has one.
@@ -208,12 +225,13 @@ final class TestLab {
         selectedHarnessRunID = run.id
         testModelID = run.model
         harnessChoice = run.version
+        harnessSize = run.isQuick ? .normal : .max
     }
 
-    /// The newest run of each version that compares with this one: same questions, model, context and thinking.
+    /// The newest run of each version that compares with this one: same questions, size, model, context and thinking.
     func comparableRuns(to run: ModelTestResult) -> [HarnessVersion: ModelTestResult] {
         var runs: [HarnessVersion: ModelTestResult] = [:]
-        for candidate in modelResults where candidate.suiteVersion == run.suiteVersion && candidate.model == run.model
+        for candidate in modelResults where candidate.suiteVersion == run.suiteVersion && candidate.isQuick == run.isQuick && candidate.model == run.model
             && candidate.contextLength == run.contextLength && candidate.thinking == run.thinking {
             if let version = candidate.version, runs[version] == nil { runs[version] = candidate }
         }
@@ -228,9 +246,9 @@ final class TestLab {
     var harnessRuns: [ModelTestResult] { modelResults.filter(\.usesHarness) }
 
     /// The run to compare against, if this exact setup has already been tested without the harness.
-    private func existingBaseline(_ setup: TestSetup) -> ModelTestResult? {
+    private func existingBaseline(_ setup: TestSetup, quick: Bool) -> ModelTestResult? {
         modelResults.first {
-            $0.isCurrentSuite && !$0.usesHarness && $0.model == setup.model.id
+            $0.isCurrentSuite && !$0.usesHarness && $0.isQuick == quick && $0.model == setup.model.id
                 && $0.thinking == (setup.think ?? false) && $0.contextLength == setup.context
         }
     }
@@ -238,10 +256,12 @@ final class TestLab {
     /// The same questions on the same model without the harness, the poisoned pages both ways, then the
     /// questions through each chosen version. A matching run without the harness is reused rather than
     /// repeated, and with `harnessTestRunsOff` turned off nothing runs without the harness at all.
-    /// The pages run once, since every version guards them the same way.
+    /// The pages run once, since every version guards them the same way. Harness - Normal asks only
+    /// `ModelTestSuite.quickIDs` and leaves the pages out.
     func runHarnessTest(backends: BackendController, settings: AppSettings) {
         guard !isRunning, backends.activeTest == nil, let model = testModel(in: backends) else { return }
         let versions = harnessChoice.map { [$0] } ?? HarnessVersion.allCases
+        let quick = harnessSize == .normal
         let start = Date()
         lastError = nil
         harnessProgress = TestProgress(step: "Loading \(model.displayName)…", startedAt: start)
@@ -252,7 +272,7 @@ final class TestLab {
             var setup = await Self.prepare(model, backends: backends, settings: settings)
             // A version that always thinks, tested on its own, compares with a run that thinks too.
             if versions.allSatisfy(\.alwaysThinks), setup.think != nil { setup.think = true }
-            var baseline = existingBaseline(setup)
+            var baseline = existingBaseline(setup, quick: quick)
             let runsOff = settings.harnessTestRunsOff
             let needsOffRun = runsOff && baseline == nil
 
@@ -260,12 +280,12 @@ final class TestLab {
                 self.harnessProgress = TestProgress(step: step, detail: detail, fraction: fraction, startedAt: start)
             }
             // Every set of questions gets the same share of the bar, and the poisoned pages a tenth.
-            let pagesShare = 0.1
+            let pagesShare = quick ? 0 : 0.1
             let suiteShare = (1 - pagesShare) / Double(versions.count + (needsOffRun ? 1 : 0))
             let withoutShare = needsOffRun ? suiteShare : 0
 
             if needsOffRun {
-                baseline = await runSuite(setup, harness: nil) { index, total, question in
+                baseline = await runSuite(setup, harness: nil, quick: quick) { index, total, question in
                     report("Without the harness", "Question \(index + 1) of \(total) · \(question.title)",
                            withoutShare * Double(index) / Double(total))
                 }
@@ -278,7 +298,7 @@ final class TestLab {
             // The run without the harness comes back empty if it was stopped or failed.
             let ready = baseline != nil || !runsOff
             var without: [InjectionResult] = [], with: [InjectionResult] = []
-            if ready {
+            if ready && !quick {
                 let cases = InjectionSuite.cases
                 for (i, attack) in cases.enumerated() where !Task.isCancelled {
                     report("Injection test", "Page \(i + 1) of \(cases.count) · \(attack.title)",
@@ -293,7 +313,7 @@ final class TestLab {
                     let began = Date()
                     let step = versions.count > 1 ? "\(version.title), \(position + 1) of \(versions.count)" : "With \(version.title)"
                     let done = withoutShare + pagesShare + suiteShare * Double(position)
-                    guard var run = await runSuite(setup, harness: version, report: { index, total, question in
+                    guard var run = await runSuite(setup, harness: version, quick: quick, report: { index, total, question in
                         report(step, "Question \(index + 1) of \(total) · \(question.title)", done + suiteShare * Double(index) / Double(total))
                     }) else { break }
                     run.baselineRunID = baseline?.id
@@ -336,15 +356,16 @@ final class TestLab {
     // MARK: - Running the questions
 
     /// Runs every question once. Returns nil if it was stopped or failed.
-    private func runSuite(_ setup: TestSetup, harness: HarnessVersion?,
+    private func runSuite(_ setup: TestSetup, harness: HarnessVersion?, quick: Bool = false,
                           report: @MainActor (Int, Int, ModelTestQuestion) -> Void) async -> ModelTestResult? {
         let start = Date()
-        let questions = ModelTestSuite.questions(contextLength: setup.context)
+        let questions = ModelTestSuite.questions(contextLength: setup.context).filter { !quick || ModelTestSuite.quickIDs.contains($0.id) }
         var result = ModelTestResult(suiteVersion: ModelTestSuite.version, harness: harness == nil ? nil : true, harnessVersion: harness.map(SavedHarnessVersion.init),
                                      model: setup.model.id, displayName: setup.model.displayName, quant: setup.model.quantLabel,
                                      quantProvider: setup.model.quantProvider, backend: setup.backend.kind.displayName,
                                      thinking: harness?.alwaysThinks == true ? setup.think != nil : setup.think ?? false,
                                      contextLength: setup.context)
+        result.quick = quick ? true : nil
         var generated = 0, generationSeconds = 0.0
         var firstTokens: [Double] = []
         var promptReadTokens = 0
@@ -404,6 +425,7 @@ final class TestLab {
         item.summary = question.summary
         item.prompt = question.shortPrompt ?? question.prompt
         item.stopReason = stats?.stopReason
+        item.thinking = reply.thinking.isEmpty ? nil : String(reply.thinking.suffix(6_000))
         if harness != nil {
             item.toolLog = reply.toolLog
             item.guardRemoved = reply.guardRemoved

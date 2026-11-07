@@ -118,7 +118,12 @@ enum CodeRunner {
         }
     }
 
-    private static func footprint(of pid: pid_t) -> UInt64 {
+    /// Where the sandbox's Python lives, for running a project's own files.
+    static var pythonRuntime: (executable: String, home: String)? {
+        python.flatMap { interpreter in interpreter.readable.first.map { (interpreter.executable, $0) } }
+    }
+
+    static func footprint(of pid: pid_t) -> UInt64 {
         var info = rusage_info_v4()
         let result = withUnsafeMutablePointer(to: &info) { pointer in
             pointer.withMemoryRebound(to: rusage_info_t?.self, capacity: 1) { proc_pid_rusage(pid, RUSAGE_INFO_V4, $0) }

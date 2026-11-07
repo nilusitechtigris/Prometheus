@@ -8,7 +8,7 @@ struct PublishPage: View {
     @Environment(SystemMonitor.self) private var monitor
     @State private var picked: Set<UUID> = []
     @State private var machine: PublishedResults.Machine?
-    @State private var savedFile: URL?
+    @State private var savedFiles: [URL] = []
     @State private var failure: String?
 
     var body: some View {
@@ -26,7 +26,7 @@ struct PublishPage: View {
             if let failure {
                 ErrorBanner(text: failure) { self.failure = nil }
             }
-            if let savedFile { nextSteps(savedFile) }
+            if !savedFiles.isEmpty { nextSteps(savedFiles) }
             runList
             contents
         }
@@ -56,10 +56,10 @@ struct PublishPage: View {
         let results = PublishedResults(app: AppUpdater.commit, machine: machine, modelRuns: chosenModelRuns,
                                        hardwareRuns: lab.hardwareResults.filter { picked.contains($0.id) })
         do {
-            let file = try ResultsPublisher.write(results)
-            savedFile = file
+            let files = try ResultsPublisher.write(results)
+            savedFiles = files
             failure = nil
-            NSWorkspace.shared.activateFileViewerSelecting([file])
+            NSWorkspace.shared.activateFileViewerSelecting(files)
             NSWorkspace.shared.open(ResultsPublisher.uploadPage)
         } catch {
             failure = "Couldn't save the file: \(error.localizedDescription)"
@@ -100,7 +100,7 @@ struct PublishPage: View {
 
     private func row(_ run: ModelTestResult) -> PublishRow {
         let setup = "\(run.displayName) · \(run.quant) · \(Format.tokens(run.contextLength))\(run.setupLabel)"
-        return PublishRow(id: run.id, date: run.date, title: setup, tag: run.isCurrentSuite ? nil : "old test",
+        return PublishRow(id: run.id, date: run.date, title: setup, tag: run.isCurrentSuite ? (run.isQuick ? "Normal" : nil) : "old test",
                           result: TestFormat.score(run.score), isOn: binding(run.id))
     }
 
@@ -121,11 +121,11 @@ struct PublishPage: View {
     private var contents: some View {
         PanelWidget(title: "What goes in the file", symbol: "doc.text.magnifyingglass") { EmptyView() } content: {
             VStack(alignment: .leading, spacing: 8) {
-                Label("Each chosen run: its scores, questions, replies, timing and setup. A harness run brings the harness-off run it's compared with.",
+                Label("Each chosen run, task by task: the question, the reply, the end of the model's thinking, tokens for thinking and output, time, points and the harness's steps. A harness run brings the harness-off run it's compared with.",
                       systemImage: "checkmark.circle")
                 Label("This Mac's kind, chip, core counts, memory and macOS version.", systemImage: "checkmark.circle")
                 Label("Never your chats, your name, your computer's name or its serial number.", systemImage: "lock.shield")
-                Text("Publish saves the file and opens GitHub. Nothing leaves this Mac unless you upload it there, and what you upload is public.")
+                Text("Publish saves a JSON file and a readable report, then opens GitHub. Nothing leaves this Mac unless you upload them there, and what you upload is public.")
                     .foregroundStyle(.secondary)
             }
             .font(.uiCallout)
@@ -133,14 +133,14 @@ struct PublishPage: View {
         }
     }
 
-    private func nextSteps(_ file: URL) -> some View {
+    private func nextSteps(_ files: [URL]) -> some View {
         PanelWidget(title: "Saved. Now add it on GitHub", symbol: "checkmark.circle.fill") { EmptyView() } content: {
             VStack(alignment: .leading, spacing: 8) {
-                Text(file.lastPathComponent).font(.geistMono(13)).textSelection(.enabled)
-                Text("1. Drag the file from Finder onto the GitHub page that just opened.")
+                ForEach(files, id: \.self) { Text($0.lastPathComponent).font(.geistMono(13)).textSelection(.enabled) }
+                Text("1. Drag both files from Finder onto the GitHub page that just opened.")
                 Text("2. Press **Propose changes**, then **Create pull request**.")
                 HStack(spacing: 8) {
-                    Button("Show File") { NSWorkspace.shared.activateFileViewerSelecting([file]) }
+                    Button("Show Files") { NSWorkspace.shared.activateFileViewerSelecting(files) }
                     Button("Open GitHub") { NSWorkspace.shared.open(ResultsPublisher.uploadPage) }
                 }
                 .padding(.top, 4)

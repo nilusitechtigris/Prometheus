@@ -12,6 +12,8 @@ Prometheus runs open models such as Qwen, Llama and Gemma on your Mac, through O
 
 Small models are fast and private, but they get arithmetic wrong, misremember facts and break rules like "exactly three words". The **harness** is an optional layer that helps with this. It can run code in a sandbox, search trusted sites, and check replies in code before you see them. It's off by default, because its searches leave your Mac.
 
+**Dev mode** turns the chat into a Python workspace: open a project folder, and a coding agent writes, runs and fixes code in it, with a Terminal in the window.
+
 The app also measures all of this for you: how capable a model is, how fast your Mac is, and how much each version of the harness really helps.
 
 ## Start it
@@ -98,6 +100,57 @@ If your copy doesn't have the Updates tab yet, quit the app and paste this into 
 - Framework, model and quantization, context window, Think, Harness and temperature under the message box
 - Live hardware telemetry along the bottom (⌥⌘1): GPU, memory and CPU load and temperatures, with no admin rights needed
 
+### Dev mode
+
+![Dev mode with a project open: files, editor, Terminal and the agent](docs/screenshots/dev.png)
+
+Press **Dev** (`</>`) under the message box and open a project folder. The window becomes a Python workspace, with a coding agent that runs on your own model:
+
+- **Files:** hover over a Python file and press ▶ to run it.
+- **Editor:** line numbers, Python colours, find (⌘F), save (⌘S) and run (⌘R).
+- **Terminal:** shows what a program prints. Type into it when a program asks for input, press Stop, or type a command like `python main.py 5`. After an error, click the file and line to jump there, or press **Fix with Agent**.
+- **Preview:** games, charts and web pages run here, with real graphics, keyboard and mouse. Ask for one and it opens by itself. Any errors show up in the Terminal, ready for **Fix with Agent**.
+- **Agent:** tell it what to build or change, or ask about the code. It shows each step and each file it changed, with **Undo** for every reply.
+
+The agent is made for small models, which lose track when they drive a long loop of tools by themselves. So code runs the loop, and the model gets one small job at a time, with only what that job needs:
+
+- **Code picks the file** and reads the traceback. In a long file the model only sees the function that matters.
+- **Code fits the reply in.** Small models often send back only what changed, or leave a comment standing in for the rest. The reply is merged by function, using Python's own parser, so the rest of the file survives.
+- **Code fixes what it can:** a missing import, a `main()` nobody calls, tabs. A rename is done by code in every file, with no model at all.
+- **A stuck model gets a smaller job.** Shown a whole file and asked to fix it, a small model often types it back unchanged. So a second try asks for the cause in plain words, then for a rewrite of just that function.
+- **It runs and checks everything.** It runs the program and any tests, reads the error, fixes it and tries again. If your request spells out commands such as `python todo.py add milk`, it tries those too, and a program you asked to print something has to print it.
+- **The report comes from code,** from what really happened, so it can't claim something worked when it didn't.
+
+Nothing reaches your project until the agent finishes, and it tests in a throwaway copy, so code it wrote can't damage your files. Stop leaves everything as it was. Unless you pressed **Fix with Agent** on a failure, code you already have is only replaced by code that runs. The agent never runs anything in your real folder: that only happens when you press Run.
+
+![Preview with a first-person shooter the agent wrote on Qwen3 4B, waiting for a click to start](docs/screenshots/preview.png)
+
+Anything you ask to see or play is written as a web page, since macOS has a browser engine built in and nothing needs installing. The agent starts a game from a working loop, then plays it before you do: it presses keys, clicks around, and sends it back if there's an error, or if nothing moves. A first-person shooter starts from a ready-made one that draws, shoots and counts lives, so even a 1.7B model gets a playable game, and the model decides how the enemies move. It waits for your click, so it hasn't been lost by the time you look at it.
+
+Python programs use the standard library and show text only, since they run in the sandbox. To get a text game instead, say so: "a text game in Python".
+
+**How much it helps.** 24 coding tasks, each graded by checks the model never saw: new programs, edits, crashes to fix, a long file, tests, and two steps in a row. Think was off. "One reply" is the same model with one try and no harness. Each number is one run on a MacBook Air M4, so treat small gaps as noise.
+
+| Model | Dev agent | One reply |
+| --- | --- | --- |
+| Qwen3 1.7B, Ollama | 21 of 24, 83 s | 14 of 24, 164 s |
+| Qwen3 4B Instruct, Ollama | 22 of 24, 204 s | 19 of 24, 337 s |
+| Qwen3 1.7B 4-bit, MLX LM | 17 of 24, 128 s | 13 of 24, 115 s |
+
+It keeps the same 21 of 24 on the 1.7B model in a 4K context window. The agent can be faster than one reply because it doesn't retype a long file to change one function. Two text game tasks came later and aren't in these numbers.
+
+**Pages and games.** Ten more tasks ask for something to look at: six small games (a first-person shooter, Pong, Snake, Breakout, a clicker and a memory game) and four pages (a drawing app, a bar chart, a bakery site and a calculator). Each one is graded by opening it out of sight and playing it. It has to load without errors and without asking for anything from the internet, and a game has to react to keys or clicks.
+
+| Model | Dev agent | One reply |
+| --- | --- | --- |
+| Qwen3 1.7B, Ollama | 9 of 10, 517 s | 4 of 10, 232 s |
+| Qwen3 4B Instruct, Ollama | 10 of 10, 572 s | 7 of 10, 907 s |
+| Qwen3 8B, Ollama, 4K context | 9 of 10, 1234 s | 6 of 10, 704 s |
+
+One reply mostly fails on things the agent fixes as it plays the page: a name that was never defined, a chart library or a picture from the internet, a game that never listens to the keyboard. Passing means it works, not that it's a good game, and small models make simple ones. The grading check was fixed after these runs (it missed small sprites on a big canvas), and the same pages were graded again with it. The ready-made shooter, and the repair for a canvas size the model garbles, came after these runs too.
+
+What it can't always catch is a program that runs cleanly and does the wrong thing, unless a test or a spelled-out command shows it. A game gets played with its own commands, and goes back if nothing changes as you play. Asking the model to review its own results was tried and left out: it took four times as long and scored no better. The tasks are in [scripts/dev_tasks.py](scripts/dev_tasks.py).
+
 ### Models
 
 ![The Model Library](docs/screenshots/models.png)
@@ -110,9 +163,9 @@ One page with three tabs, all laid out the same way:
 
 - **Model Test** (⌥⌘3): 24 auto-graded questions across math, reasoning, knowledge, instructions, code and long context. Each topic has four levels worth 1, 2, 4 and 8 points. A score of 100 is the level of Claude Opus 5.5 at max effort, from a blind run of the same questions.
 - **Hardware Test** (⌥⌘4, about 30 seconds): CPU, GPU, memory bandwidth and disk speed, plus 15 seconds of sustained GPU load to check for throttling.
-- **Harness Test** (⌥⌘5): the same 24 questions with the harness off and on, then 7 poisoned web pages both ways. Turn off **Harness off too** to run them with the harness on only.
+- **Harness Test** (⌥⌘5) comes in two sizes. **Normal** is a quick check: 9 tasks across Coding, Knowledge and Instructions, which show the code sandbox, web search and the rule checks at work. **Max** is the full test: the same 24 questions with the harness off and on, then 7 poisoned web pages both ways. Their scores don't compare. Turn off **Harness off too** to run with the harness on only.
 
-**Publish** (⌥⌘6) shares your results. Tick the runs you want and press **Publish**. The app saves a JSON file named after your Mac and the date, then opens GitHub, where you drag the file in to make a pull request. People's results are in [results](results/README.md), which also describes the file.
+**Publish** (⌥⌘6) shares your results. Tick the runs you want and press **Publish**. The app saves a JSON file and a readable report named after your Mac and the date, then opens GitHub, where you drag them in to make a pull request. Each task shows its reply, the end of the model's thinking, its token counts, time and points. People's results are in [results](results/README.md), which also describes the files.
 
 ## The harness
 
@@ -188,6 +241,8 @@ Yes. All six Qwen3 models tried so far (1.7B, 4B and 8B, in several quantization
 - **Harness on:** search terms go to Wikipedia, Stack Overflow, arXiv and MDN, and pages come only from a list of 100 trusted sites. Every search and page is listed above the reply.
 - **Publishing:** the app sends nothing itself. The file holds the runs you chose and your Mac's kind, chip, core counts, memory and macOS version, but never your chats, your name, your computer's name or its serial number. It only goes online if you upload it to GitHub, and it's public once you do.
 - **Code** runs in a deny-by-default macOS sandbox with no internet, no other programs and no access to your files, limited to 10 seconds, 1 GB of memory and 10 MB of files.
+- **Dev mode** stays on this Mac: your code only goes to the model running here. The agent can only touch files inside the folder you opened. It tests in a copy of the folder that leaves out hidden files such as `.env`, for up to 15 seconds a run. Programs you start in the Terminal run in the folder itself, so they can change its files, but the same sandbox keeps them from the internet, other programs and everything outside it, for up to 10 minutes and 2 GB of memory. They can't write hidden files either, so a program can't plant a Git hook that would later run outside the sandbox. The agent and a program in the Terminal take turns, so nothing changes the folder while the agent saves.
+- **Preview** is held tighter still. A page sees the project's own files, read-only, and can't change anything on disk. Nothing leaves the view: WebRTC is switched off in the engine, a rule list and the page's own policy block connections, links and page changes are stopped, and in case something gets past those, its web traffic goes to a proxy that doesn't exist. The app checks that WebRTC really is off before it opens any page, and refuses if not. That setting isn't a public macOS one, so an update could change it. Local addresses skip the proxy, so a page could at most reach something on this Mac if it got past everything else. Its storage is thrown away when it closes, it can't open windows, and it has no camera or microphone.
 - **Prompt injection:** hidden text and text aimed at the assistant are removed before the model reads a page, and links to untrusted sites are removed from its replies. This is basic protection: it blocks common attacks, not every possible one.
 - **Tools in chat:** from v2 on only the harness uses them, so a web page can't steer one. In v5, once the web has been read, each agent's note gets the same cleaning as a page before the others read it. In v1 the model holds them, so once it has read the web it can't search again and can only open links it was given.
 - **Models:** The catalog (`Sources/LocalAIAgent/Models/ModelCatalog.swift`) only lists official open-weight models from Meta, Google, Microsoft, Alibaba Qwen, Mistral AI, IBM, DeepSeek and OpenAI. These are widely used models, and the app verified each Ollama tag against the registry. They download as GGUF files: tensors only, no executable code, checksum-verified. MLX versions come from the mlx-community project on Hugging Face, as safetensors files with no code in them: Phi-4 Mini is left out because its MLX version has code files. Models outside the catalog are disabled unless you turn on **Settings › Safety › Allow unverified models**.
@@ -206,11 +261,13 @@ Sources/LocalAIAgent/
   Backends/                 Ollama + OpenAI-compatible clients (streaming)
   Services/                 Backend/chat controllers, persistence, model + hardware tests
   Services/Harness/         The harness versions, shared notes, trusted sites, web tools, calculator, injection guard and test
+  Services/Dev/             Dev mode: project files, sandboxed runs, Python parsing, the coding agent and its checks
   Telemetry/                CPU/GPU/memory/thermal sampling
   Models/                   Chat types, curated catalog, health thresholds
   Views/                    Forge layout and chats, chat, telemetry widgets, test dashboards, library, settings
 results/                    Test results people have published, and the file format
 scripts/build-app.sh        Builds and ad-hoc signs the .app bundle
+scripts/dev_tasks.py        The coding tasks Dev mode's agent is measured on
 scripts/setup-mac.sh        Takes a new Mac from nothing to the running app
 scripts/update-app.sh       Updates the app to the newest code; the Update button runs this too
 ```

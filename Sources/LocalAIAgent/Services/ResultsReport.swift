@@ -1,0 +1,102 @@
+import Foundation
+
+/// The readable side of a publish: a Markdown page GitHub shows as tables, with one row for each task and
+/// every reply folded away below. The JSON beside it holds the same runs for tools.
+enum ResultsReport {
+    static func markdown(for results: PublishedResults) -> String {
+        let machine = results.machine
+        var lines = ["# \(machine.name) · \(machine.chip) · \(machine.memoryGB) GB", ""]
+        lines.append("macOS \(machine.macOS) · \(machine.cpuCores) CPU cores\(machine.gpuCores.map { " · \($0) GPU cores" } ?? "")")
+        lines.append("Published with Prometheus\(results.app.map { " `\($0.prefix(7))`" } ?? "") on \(day(results.createdAt)).")
+        lines.append("")
+        if results.modelRuns.count > 1 { lines += overview(results.modelRuns) }
+        for run in results.modelRuns { lines += section(run) }
+        for run in results.hardwareRuns { lines += section(run) }
+        return lines.joined(separator: "\n") + "\n"
+    }
+
+    private static func day(_ date: Date) -> String {
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.dateFormat = "yyyy-MM-dd HH:mm"
+        return formatter.string(from: date)
+    }
+
+    private static func title(_ run: ModelTestResult) -> String {
+        var parts = ["\(run.displayName) \(run.quant)", run.backend, "\(run.contextLength / 1_024)K context"]
+        parts.append(run.thinking ? "thinking on" : "thinking off")
+        parts.append(run.version.map { "harness \($0.short)" } ?? "harness off")
+        if run.isQuick { parts.append("Normal") }
+        return parts.joined(separator: " · ")
+    }
+
+    private static func overview(_ runs: [ModelTestResult]) -> [String] {
+        var lines = ["## Runs", "", "| Run | Test version | Score | Points | Time |", "| --- | --- | --- | --- | --- |"]
+        for run in runs {
+            lines.append("| \(cell(title(run))) | \(run.suiteVersion.map(String.init) ?? "old") | \(Int(run.score)) | \(run.points)/\(run.maxPoints) | \(Format.seconds(run.duration)) |")
+        }
+        return lines + [""]
+    }
+
+    private static func section(_ run: ModelTestResult) -> [String] {
+        var lines = ["## \(title(run))", ""]
+        var summary = ["Score **\(Int(run.score))**", "\(run.points) of \(run.maxPoints) points", "\(run.passed) of \(run.items.count) tasks", Format.seconds(run.duration)]
+        if let speed = run.tokensPerSecond { summary.append(String(format: "%.1f tokens/s", speed)) }
+        lines += [summary.joined(separator: " · "), ""]
+        lines.append("| Task | Level | Result | Points | Seconds | Thinking tokens | Output tokens | Stopped | Expected | Answer |")
+        lines.append("| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |")
+        for item in run.items {
+            let row: [String] = [
+                item.title, item.level?.name ?? "—", item.passed ? "✅" : "❌", "\(item.passed ? item.weight : 0)/\(item.weight)",
+                String(format: "%.1f", item.seconds), item.thinkingTokens.map(String.init) ?? "0", item.outputTokens.map(String.init) ?? "—",
+                item.ranOutOfTokens ? "ran out of tokens" : (item.stopReason ?? "—"), item.expected, short(ModelTestSuite.finalAnswer(item.answer)),
+            ]
+            lines.append("| " + row.map(cell).joined(separator: " | ") + " |")
+        }
+        lines.append("")
+        lines += pages(run)
+        lines += ["<details>", "<summary>Every reply</summary>", ""]
+        for item in run.items {
+            lines += ["### \(item.title)", ""]
+            if let log = item.toolLog, !log.isEmpty { lines += ["Harness steps:", ""] + log.map { "- \($0)" } + [""] }
+            if let thinking = item.thinking, !thinking.isEmpty { lines += ["Thinking, the end of it:", "", fence(thinking), ""] }
+            lines += ["Reply:", "", fence(item.answer.isEmpty ? "(no reply)" : item.answer), ""]
+        }
+        return lines + ["</details>", ""]
+    }
+
+    private static func pages(_ run: ModelTestResult) -> [String] {
+        guard let with = run.injectionWith, !with.isEmpty else { return [] }
+        let without = run.injectionWithout ?? []
+        var lines = ["Poisoned pages:", "", "| Page | Harness off | Harness on |", "| --- | --- | --- |"]
+        for page in with {
+            let off = without.first { $0.id == page.id }
+            lines.append("| \(cell(page.title)) | \(off.map { $0.passed ? "✅" : "❌" } ?? "—") | \(page.passed ? "✅" : "❌") |")
+        }
+        return lines + [""]
+    }
+
+    private static func section(_ run: HardwareTestResult) -> [String] {
+        func value(_ number: Double?, _ unit: String) -> String { number.map { String(format: "%.1f %@", $0, unit) } ?? "—" }
+        return ["## Hardware Test, \(day(run.date))", "", "| Measure | Result |", "| --- | --- |",
+                "| CPU, one core | \(value(run.cpuSingle, "M iterations/s")) |", "| CPU, all cores | \(value(run.cpuMulti, "M iterations/s")) |",
+                "| GPU | \(value(run.gpuTFLOPS, "TFLOPS")) |", "| Memory, CPU | \(value(run.cpuBandwidth, "GB/s")) |",
+                "| Memory, GPU | \(value(run.gpuBandwidth, "GB/s")) |", "| Disk read | \(value(run.diskRead, "GB/s")) |",
+                "| Disk write | \(value(run.diskWrite, "GB/s")) |", "| Sustained GPU | \(value(run.sustainedPercent, "%")) |", ""]
+    }
+
+    private static func short(_ text: String) -> String {
+        text.count > 80 ? String(text.prefix(79)) + "…" : text
+    }
+
+    private static func cell(_ text: String) -> String {
+        text.replacingOccurrences(of: "|", with: "\\|").split(whereSeparator: \.isNewline).joined(separator: " ")
+    }
+
+    /// A code block long enough that nothing in a reply can close it early.
+    private static func fence(_ text: String) -> String {
+        var ticks = "```"
+        while text.contains(ticks) { ticks += "`" }
+        return "\(ticks)text\n\(text)\n\(ticks)"
+    }
+}

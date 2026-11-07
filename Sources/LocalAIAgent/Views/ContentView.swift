@@ -12,6 +12,7 @@ struct ContentView: View {
 struct MainPage: View {
     @Environment(UIState.self) private var ui
     @Environment(AppSettings.self) private var settings
+    @Environment(DevSession.self) private var dev
 
     /// Telemetry belongs to the Chat page, where the model is working.
     private var showsTelemetry: Bool { settings.telemetryOpen && ui.destination == .chat }
@@ -19,7 +20,7 @@ struct MainPage: View {
     var body: some View {
         VStack(spacing: 0) {
             HStack(spacing: 0) {
-                if ui.destination == .chat && settings.chatsOpen {
+                if ui.destination == .chat && settings.chatsOpen && !dev.isOn {
                     HStack(spacing: 0) {
                         ChatsColumn()
                         Forge.rule(vertical: true)
@@ -29,7 +30,8 @@ struct MainPage: View {
                 PageSwap(value: ui.destination) {
                     switch ui.destination {
                     case .home: HomePage()
-                    case .chat: ChatView()
+                    case .chat:
+                        if dev.isOn { DevWorkspaceView() } else { ChatView() }
                     case .tests: TestsPage()
                     case .library: ModelLibraryView()
                     case .settings: SettingsView()
@@ -44,5 +46,6 @@ struct MainPage: View {
         .animation(Motion.page, value: ui.destination)
         .animation(Motion.quick, value: settings.chatsOpen)
         .animation(Motion.quick, value: settings.telemetryOpen)
+        .animation(Motion.quick, value: dev.isOn)
     }
 }

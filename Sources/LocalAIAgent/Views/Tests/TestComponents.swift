@@ -40,7 +40,7 @@ struct PageHeader<Controls: View>: View {
     var body: some View {
         HStack(alignment: .center, spacing: 14) {
             VStack(alignment: .leading, spacing: 4) {
-                Text(title).font(Brand.display(26))
+                Text(title).font(Brand.display(26)).lineLimit(1).fixedSize()
                 // Always two lines' worth, so the blocks below start at the same height on every page.
                 Text(subtitle)
                     .font(.uiCallout)

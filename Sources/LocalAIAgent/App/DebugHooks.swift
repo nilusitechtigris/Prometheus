@@ -1,6 +1,7 @@
 #if DEBUG
 import AppKit
 import SwiftUI
+import WebKit
 
 /// Debug-build-only automation used for UI verification without Screen Recording permission.
 ///   LOCALAI_SNAPSHOT_DIR=/path      write window snapshots (snap-N.png) every LOCALAI_SNAPSHOT_INTERVAL seconds
@@ -12,6 +13,18 @@ import SwiftUI
 ///   LOCALAI_DATA_DIR=/path          keep chats in this folder instead of the user's
 ///   LOCALAI_DESTINATION=model|hardware|harness|publish|library   open that page after launch
 ///   LOCALAI_PUBLISH_ALL=1           write the file Publish makes, with every saved run
+///   LOCALAI_DEV_CHECK=/path         check Dev mode's parsing, sandbox and agent with a scripted model
+///   LOCALAI_DEV_SESSION_CHECK=/path  check the Dev workspace's controller, in a folder with an awkward name
+///   LOCALAI_DEV_PROJECT=/path       open this folder in Dev mode; LOCALAI_DEV_OPEN=file shows a file,
+///                                   LOCALAI_DEV_RUN=command runs one, LOCALAI_DEV_SEND=text asks the agent ("fix" fixes
+///                                   the last run), and LOCALAI_DEV_STOP_AFTER=2 presses Stop that many seconds later
+///   LOCALAI_DEV_TASKS=/path.json    measure the agent on coding tasks; LOCALAI_DEV_OUT=/path gets the report, with
+///                                   LOCALAI_DEV_MODES=harness,oneshot, LOCALAI_DEV_ONLY=id,id, LOCALAI_DEV_CONTEXT=8192,
+///                                   LOCALAI_DEV_THINK=1 and LOCALAI_DEV_TRACE=/path for every prompt
+///   LOCALAI_DEV_REGRADE=/path       play pages a measuring run left behind again (lines: label, folder, game|page,
+///                                   split by tabs); LOCALAI_DEV_OUT=/path gets the verdicts
+///   LOCALAI_HARNESS_SIZE=max        which Harness Test the Tests page uses
+///   LOCALAI_PROGRESS_LOG=/path      write each step of a running Harness Test
 ///   LOCALAI_REMOVE=tag              remove this model after launch
 ///   LOCALAI_PULL=tag                download this model after launch; LOCALAI_PULL_LOG=/path gets its progress
 ///   LOCALAI_AUTOTEST=model|hardware|harness      run that test after launch
@@ -39,8 +52,21 @@ import SwiftUI
 @MainActor
 enum DebugHooks {
     static func install(chat: ChatController, ui: UIState, lab: TestLab, backends: BackendController,
-                        monitor: SystemMonitor, settings: AppSettings, updater: AppUpdater) {
+                        monitor: SystemMonitor, settings: AppSettings, updater: AppUpdater, dev: DevSession) {
         let env = ProcessInfo.processInfo.environment
+        if let size = HarnessTestSize(rawValue: env["LOCALAI_HARNESS_SIZE"] ?? "") { lab.chooseHarnessSize(size) }
+        if let path = env["LOCALAI_PROGRESS_LOG"] {
+            Task {
+                var steps: [String] = []
+                while !Task.isCancelled {
+                    if let progress = lab.harnessProgress, steps.last != "\(progress.step) | \(progress.detail)" {
+                        steps.append("\(progress.step) | \(progress.detail)")
+                        try? steps.joined(separator: "\n").write(toFile: path, atomically: true, encoding: .utf8)
+                    }
+                    try? await Task.sleep(for: .milliseconds(250))
+                }
+            }
+        }
         if let tag = env["LOCALAI_REMOVE"] {
             Task { await backends.delete(tag) }
         }
@@ -180,6 +206,77 @@ enum DebugHooks {
             Task {
                 let report = await harnessCheck()
                 try? report.write(toFile: path, atomically: true, encoding: .utf8)
+            }
+        }
+        if let folder = env["LOCALAI_DEV_PROJECT"] {
+            dev.isOn = true
+            ui.destination = .chat
+            dev.open(URL(fileURLWithPath: folder))
+            if let file = env["LOCALAI_DEV_OPEN"] { dev.openFile(file) }
+            if let code = UInt16(env["LOCALAI_DEV_PRESS"] ?? "") {
+                // A real key and click, through the Preview pane the way a person's would go.
+                Task {
+                    try? await Task.sleep(for: .seconds(5))
+                    func find(_ view: NSView) -> WKWebView? {
+                        (view as? WKWebView) ?? view.subviews.lazy.compactMap(find).first
+                    }
+                    guard let window = NSApp.windows.first(where: { $0.contentView.flatMap(find) != nil }), let web = window.contentView.flatMap(find) else { return }
+                    let point = web.convert(NSPoint(x: web.bounds.midX, y: web.bounds.midY), to: nil)
+                    for type in [NSEvent.EventType.keyDown, .keyUp] {
+                        if let event = NSEvent.keyEvent(with: type, location: .zero, modifierFlags: [], timestamp: 0, windowNumber: window.windowNumber, context: nil,
+                                                        characters: "a", charactersIgnoringModifiers: "a", isARepeat: false, keyCode: code) {
+                            if type == .keyDown { web.keyDown(with: event) } else { web.keyUp(with: event) }
+                        }
+                    }
+                    for type in [NSEvent.EventType.leftMouseDown, .leftMouseUp] {
+                        if let event = NSEvent.mouseEvent(with: type, location: point, modifierFlags: [], timestamp: 0, windowNumber: window.windowNumber, context: nil,
+                                                          eventNumber: 0, clickCount: 1, pressure: 1) {
+                            if type == .leftMouseDown { web.mouseDown(with: event) } else { web.mouseUp(with: event) }
+                        }
+                    }
+                }
+            }
+            if let command = env["LOCALAI_DEV_RUN"] {
+                Task {
+                    try? await Task.sleep(for: .seconds(2))
+                    dev.runCommand(command)
+                }
+            }
+            if let request = env["LOCALAI_DEV_SEND"] {
+                Task {
+                    for _ in 0..<80 where !dev.canSend { try? await Task.sleep(for: .milliseconds(250)) }
+                    try? await Task.sleep(for: .seconds(4))
+                    if request == "fix", let run = dev.runs.last { dev.fix(run) } else { dev.send(request) }
+                    if let stop = Double(env["LOCALAI_DEV_STOP_AFTER"] ?? "") {
+                        try? await Task.sleep(for: .seconds(stop))
+                        dev.stopAgent()
+                    }
+                }
+            }
+        }
+        if let path = env["LOCALAI_DEV_SESSION_CHECK"] {
+            Task { await DevChecks.session(dev, path: path) }
+        }
+        if let path = env["LOCALAI_DEV_CHECK"] {
+            Task { await DevChecks.run(path: path) }
+        }
+        if let spec = env["LOCALAI_DEV_REGRADE"], let out = env["LOCALAI_DEV_OUT"] {
+            Task { await DevChecks.regrade(spec: spec, out: out) }
+        }
+        if let spec = env["LOCALAI_DEV_TASKS"], let out = env["LOCALAI_DEV_OUT"] {
+            Task {
+                for _ in 0..<80 where !chat.canSend { try? await Task.sleep(for: .milliseconds(250)) }
+                guard let model = lab.testModel(in: backends) else {
+                    try? "no model".write(toFile: out, atomically: true, encoding: .utf8)
+                    return
+                }
+                let details = await backends.capabilities(of: model)
+                let think = env["LOCALAI_DEV_THINK"].map { $0 == "1" } ?? false
+                let setup = DevSetup(model: model.id, backend: backends.backend, context: env["LOCALAI_DEV_CONTEXT"].flatMap(Int.init) ?? details.context,
+                                     think: backends.kind.supportsThinkingControl && details.supportsThinking ? think : nil)
+                let modes = (env["LOCALAI_DEV_MODES"] ?? "harness").split(separator: ",").map(String.init)
+                await DevChecks.evaluate(spec: spec, out: out, setup: setup, modes: modes,
+                                         only: Set((env["LOCALAI_DEV_ONLY"] ?? "").split(separator: ",").map(String.init)))
             }
         }
         lab.testModelID = env["LOCALAI_TEST_MODEL"]
@@ -413,6 +510,9 @@ enum DebugHooks {
         }
         // The loop's parts that need no model.
         let suite = ModelTestSuite.questions(contextLength: 4_096)
+        let quick = Dictionary(grouping: suite.filter { ModelTestSuite.quickIDs.contains($0.id) }, by: \.category)
+        expect("Normal asks every task on its list", quick.values.reduce(0) { $0 + $1.count } == ModelTestSuite.quickIDs.count)
+        expect("Normal has three tasks in each of three topics", quick.count == 3 && quick.values.allSatisfy { $0.count == 3 })
         func prompt(_ id: String) -> String { suite.first { $0.id == id }?.prompt ?? "" }
         let kinds: [String: TestLab.TaskKind] = ["math": .calculation, "reason": .other, "know": .fact, "follow": .writing, "code": .code, "long": .document]
         for question in suite {
@@ -745,7 +845,7 @@ enum DebugHooks {
 }
 
 /// A model that replies from a script and keeps what it was asked.
-private final class ScriptedBackend: LLMBackend, @unchecked Sendable {
+final class ScriptedBackend: LLMBackend, @unchecked Sendable {
     let kind = BackendKind.ollama
     let baseURL = URL(string: "http://localhost")!
     private let script: (ChatRequest) -> [StreamEvent]

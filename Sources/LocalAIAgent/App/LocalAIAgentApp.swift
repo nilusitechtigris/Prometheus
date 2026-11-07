@@ -106,6 +106,7 @@ struct LocalAIAgentApp: App {
     @State private var ui = UIState()
     @State private var lab: TestLab
     @State private var updater: AppUpdater
+    @State private var dev: DevSession
 
     init() {
         AppFonts.register()
@@ -113,19 +114,31 @@ struct LocalAIAgentApp: App {
         let backends = BackendController(settings: settings)
         let chat = ChatController(settings: settings, backends: backends)
         let lab = TestLab()
-        let updater = AppUpdater(isBusy: { lab.isRunning || chat.isGenerating || !backends.pulls.isEmpty })
+        let dev = DevSession(backends: backends, settings: settings)
+        let updater = AppUpdater(isBusy: { lab.isRunning || chat.isGenerating || !backends.pulls.isEmpty || dev.isBusy })
         _settings = State(initialValue: settings)
         _backends = State(initialValue: backends)
         _chat = State(initialValue: chat)
         _lab = State(initialValue: lab)
         _updater = State(initialValue: updater)
+        _dev = State(initialValue: dev)
         AppDelegate.isBusy = { MainActor.assumeIsolated { lab.isRunning } }
         AppDelegate.onTerminate = {
             MainActor.assumeIsolated {
                 chat.saveNow()
+                dev.shutDown()
                 backends.stopMLX()
             }
         }
+    }
+
+    private var inDev: Bool { ui.destination == .chat && dev.isOn }
+
+    /// Opens the editor's find bar, which AppKit reads from the sender's tag.
+    private func findInEditor() {
+        let sender = NSMenuItem()
+        sender.tag = NSTextFinder.Action.showFindInterface.rawValue
+        NSApp.sendAction(#selector(NSResponder.performTextFinderAction(_:)), to: nil, from: sender)
     }
 
     var body: some Scene {
@@ -138,13 +151,14 @@ struct LocalAIAgentApp: App {
                 .environment(ui)
                 .environment(lab)
                 .environment(updater)
+                .environment(dev)
                 // With the telemetry panel open the window stays tall enough for the page above it.
                 .frame(minWidth: 1100, minHeight: settings.telemetryOpen ? max(640, 400 + settings.telemetryHeight) : 640)
                 .task {
                     backends.start()
                     monitor.start()
                     #if DEBUG
-                    DebugHooks.install(chat: chat, ui: ui, lab: lab, backends: backends, monitor: monitor, settings: settings, updater: updater)
+                    DebugHooks.install(chat: chat, ui: ui, lab: lab, backends: backends, monitor: monitor, settings: settings, updater: updater, dev: dev)
                     #endif
                 }
         }
@@ -171,6 +185,7 @@ struct LocalAIAgentApp: App {
             }
             CommandGroup(replacing: .newItem) {
                 Button("New Chat") {
+                    dev.isOn = false
                     ui.destination = .chat
                     chat.newConversation()
                     ui.composerFocusRequest += 1
@@ -188,6 +203,11 @@ struct LocalAIAgentApp: App {
                     .keyboardShortcut("4")
                 Divider()
             }
+            CommandGroup(replacing: .saveItem) {
+                Button("Save") { dev.save() }
+                    .keyboardShortcut("s")
+                    .disabled(!inDev || !dev.isDirty)
+            }
             CommandGroup(after: .sidebar) {
                 Picker("Theme", selection: Binding(get: { ThemeStore.shared.theme },
                                                    set: { ThemeStore.shared.theme = $0 })) {
@@ -199,9 +219,17 @@ struct LocalAIAgentApp: App {
                 Button("Stop Generating") { chat.stop() }
                     .keyboardShortcut(".")
                     .disabled(!chat.isGenerating)
-                Button("Regenerate Response") { chat.regenerate() }
-                    .keyboardShortcut("r")
-                    .disabled(!chat.canSend || chat.selected?.messages.isEmpty != false)
+                Button(inDev ? "Run File" : "Regenerate Response") {
+                    if inDev, let page = dev.previewPath {
+                        dev.preview(page)
+                    } else if inDev {
+                        dev.runOpenFile()
+                    } else {
+                        chat.regenerate()
+                    }
+                }
+                .keyboardShortcut("r")
+                .disabled(inDev ? !(dev.previewPath != nil || dev.openPath?.hasSuffix(".py") == true || dev.openPath.map(DevWeb.isPage) == true) : !chat.canSend || chat.selected?.messages.isEmpty != false)
                 Divider()
                 Button("Choose Model…") { ui.showModelPicker = true }
                     .keyboardShortcut("m", modifiers: [.command, .shift])
@@ -214,6 +242,10 @@ struct LocalAIAgentApp: App {
                 Button(ui.destination == .chat && settings.chatsOpen ? "Hide Chats" : "Show Chats") { ui.toggleChats(in: settings) }
                     .keyboardShortcut("2", modifiers: [.command, .option])
                 Button("Search Chats") {
+                    if inDev {
+                        findInEditor()
+                        return
+                    }
                     ui.destination = .chat
                     settings.chatsOpen = true
                     ui.wantsChatSearchFocus = true
