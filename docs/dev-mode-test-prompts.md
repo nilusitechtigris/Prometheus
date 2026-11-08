@@ -26,7 +26,40 @@ A small model gives a different answer each time, so run a prompt two or three t
 
 ## The prompt
 
-One request, written to get a finished-looking web UI from a small model, and to test everything the harness does. Paste it into Compare as it is.
+One request, written to get a lively, finished-looking web UI from a small model, with colour and animation, and to test everything the harness does. Paste it into Compare as it is.
+
+```text
+Build a smoothie bar ordering web app called Juicy, with a bright, colourful look and lively animations.
+
+Layout: a header with a colourful gradient, the app's name, and a cart button showing how many drinks are in the cart. Under it, filter buttons for All, Fruity, Green and Protein, and a Surprise me button. Below them, two columns: a grid of drink cards on the left, and the cart with the order form on the right.
+
+Drinks: six cards, each in its own colour: Mango Sunrise (orange, Fruity, $5.50), Berry Blast (purple, Fruity, $6.00), Tropical Kiss (pink, Fruity, $6.50), Green Machine (green, Green, $6.00), Matcha Glow (teal, Green, $6.50) and Peanut Power (brown, Protein, $7.00). Each card shows a big emoji, the name, a one-line description, the price, a choice of Small, Medium or Large with Medium chosen to start with (Small is $1 less, Large $1 more), and an Add button. Surprise me picks a random drink, highlights its card and adds it to the cart.
+
+Cart: each line shows the drink in its colour, its size, the quantity with minus and plus buttons, the line price and a remove button. Below the lines, show the subtotal, 10% off once the subtotal reaches $20, and the total. When the cart is empty, show a friendly message instead.
+
+Order form: a name field, a pickup time (As soon as possible, In 15 minutes or In 30 minutes) and a Place order button. Don't place an order with an empty cart or an empty name, and say why next to the field. Placing an order empties the cart, shows a thank-you message with an order number, and adds the order to a Recent orders list, newest first.
+
+Behaviour: the filters, the cart and the totals update straight away, and the cart and the recent orders are still there after a reload.
+
+Motion: cards rise and fade into place when the page opens and when the filter changes; a card lifts with a deeper shadow on hover; the cart count pops when a drink is added; the total counts up to its new value; the highlighted card pulses; and a placed order sets off a burst of confetti in a fixed layer that covers the window, hides anything outside it and is removed when the burst ends. Keep each animation under a second, and only fade when the system asks for reduced motion.
+
+Look: rounded cards with soft shadows, each drink's colour on its card and its cart line, white text on strong colours, one font, clear labels on every field, and a layout that stacks into one column in a narrow window.
+```
+
+How it's written, and why:
+
+- **It's built like the budget dashboard below, with more to get right:** prices that follow rules (the size changes the price, 10% off from $20), a random action, and a second list that the first one feeds.
+- **Colour carries meaning.** Each drink keeps its colour from its card to its cart line, which shows at a glance whether the markup, the styles and the script agree on names across files.
+- **Every animation is named, with when it happens and how long it takes.** That gets CSS transitions and keyframes from a model, rather than a reach for an animation library from the internet, which the page can't load.
+- **The motion stays inside the window.** Cards rise into place instead of sliding in from the side, and the confetti lives in a fixed layer that hides anything outside the window and goes away when it ends. Otherwise a page fails **Fits the window** in the middle of an animation, or keeps hundreds of confetti pieces.
+- **It asks for reduced motion to be respected,** which is easy to leave out and quick to check in System Settings › Accessibility › Display.
+- **Each part is still something the scorecard can see:** filters, size choices, fields, a form, quantity buttons, totals that change, and two lists that grow.
+
+Afterwards, open the harness-on side as a project and send the follow-ups below, to test changes across its files.
+
+## The budget dashboard
+
+The main prompt before the smoothie bar: calmer, with one accent colour and no animation. Earlier comparisons used it, so run it again to compare with them.
 
 ```text
 Build a personal budget web app with a clean, modern dashboard look.
@@ -42,15 +75,13 @@ Behaviour: the cards and the list update straight away, and everything is still 
 Look: plenty of white space, rounded cards with soft shadows, one accent colour, clear labels on every field, and a layout that stacks into one column in a narrow window.
 ```
 
-How it's written, and why:
+How it's written, and why (the smoothie bar builds on the same ideas):
 
 - **The layout is spelled out top to bottom.** A small model follows a plan far better than it designs one, and a fixed layout gives both sides the same target.
 - **Every name is given:** the cards, the categories, the buttons. Nothing is left for the model to invent, and you can check the result at a glance.
 - **It asks for the parts that make a UI feel finished:** a default choice, checks on the form with a reason next to the field, colour that carries meaning, an empty state, and saving across a reload. These are where small models cut corners.
 - **The look is described in words a model turns into classes:** cards, soft shadows, one accent colour and a layout that stacks. No library or framework is named, so neither side is pushed toward the internet.
 - **Each part is something the scorecard can see:** fields to fill in, a form to send, a list that grows, totals that change, buttons to press.
-
-Afterwards, open the harness-on side as a project and send the follow-ups below, to test changes across its files.
 
 ## More to try
 

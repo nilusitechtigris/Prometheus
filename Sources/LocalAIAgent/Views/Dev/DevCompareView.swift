@@ -10,17 +10,23 @@ struct DevCompareView: View {
     var body: some View {
         VStack(spacing: 0) {
             if let comparison = dev.shown {
-                DevCompareHeader(comparison: comparison)
-                Forge.rule()
-                HStack(spacing: 0) {
-                    DevCompareColumn(comparison: comparison, side: comparison.off)
-                    Forge.rule(vertical: true)
-                    DevCompareColumn(comparison: comparison, side: comparison.on)
+                // A side that fills the window keeps its place here, so its page carries on instead of starting over.
+                let fills = dev.compareFills
+                if fills == nil {
+                    DevCompareHeader(comparison: comparison)
+                    Forge.rule()
                 }
-                Forge.rule()
-                DevCompareStarter(request: $request, compact: true)
-                    .padding(.horizontal, 16)
-                    .padding(.vertical, 10)
+                HStack(spacing: 0) {
+                    if fills != true { DevCompareColumn(comparison: comparison, side: comparison.off) }
+                    if fills == nil { Forge.rule(vertical: true) }
+                    if fills != false { DevCompareColumn(comparison: comparison, side: comparison.on) }
+                }
+                if fills == nil {
+                    Forge.rule()
+                    DevCompareStarter(request: $request, compact: true)
+                        .padding(.horizontal, 16)
+                        .padding(.vertical, 10)
+                }
             } else {
                 VStack(spacing: 14) {
                     Image(systemName: "square.split.2x1")
@@ -176,17 +182,30 @@ private struct DevCompareColumn: View {
     private var isLive: Bool { dev.comparing?.id == comparison.id }
     private var isRunning: Bool { isLive && dev.compareSide == side.harness }
     private var isWaiting: Bool { isLive && !side.finished && !isRunning && !side.stopped }
+    /// This side has the whole window.
+    private var fills: Bool { dev.compareFills == side.harness }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             HStack(alignment: .firstTextBaseline, spacing: 8) {
-                Text(side.harness ? "Harness on" : "Harness off")
-                    .font(.uiHeadline)
-                    .foregroundStyle(side.harness ? Palette.accent : Forge.ink)
-                Text(side.harness ? "plans, writes each file, tries it and fixes it" : "one reply, saved as it came")
-                    .font(.uiCaption)
-                    .foregroundStyle(Forge.faint)
-                    .lineLimit(1)
+                if fills {
+                    DevCompareSideSwitch()
+                        .alignmentGuide(.firstTextBaseline) { $0[VerticalAlignment.center] + 4 }
+                    Text(comparison.request)
+                        .font(.uiCaption)
+                        .foregroundStyle(Forge.faint)
+                        .lineLimit(1)
+                        .truncationMode(.tail)
+                        .help(comparison.request)
+                } else {
+                    Text(side.harness ? "Harness on" : "Harness off")
+                        .font(.uiHeadline)
+                        .foregroundStyle(side.harness ? Palette.accent : Forge.ink)
+                    Text(side.harness ? "plans, writes each file, tries it and fixes it" : "one reply, saved as it came")
+                        .font(.uiCaption)
+                        .foregroundStyle(Forge.faint)
+                        .lineLimit(1)
+                }
                 Spacer(minLength: 4)
                 if side.page != nil, side.finished {
                     Button {
@@ -202,15 +221,25 @@ private struct DevCompareColumn: View {
                     Text("\(side.passed)/\(side.total)")
                         .font(.geistMono(15).weight(.semibold))
                         .foregroundStyle(side.passed == side.total ? Palette.good : side.passed * 2 >= side.total ? Palette.warning : Palette.critical)
-                        .help("Checks passed")
+                        .help(fills ? side.score.map { "\($0.passed == true ? "✓" : $0.passed == false ? "✗" : "–") \($0.name)" }.joined(separator: "\n") : "Checks passed")
                 }
+                Button {
+                    withAnimation(Motion.quick) { dev.compareFills = fills ? nil : side.harness }
+                } label: {
+                    Image(systemName: fills ? "arrow.down.right.and.arrow.up.left" : "arrow.up.left.and.arrow.down.right")
+                        .font(.system(size: 11, weight: .semibold))
+                }
+                .buttonStyle(.plain)
+                .foregroundStyle(fills ? Palette.accent : Forge.dim)
+                .help(fills ? "Show both sides" : "Fill the window with this side")
+                .accessibilityLabel(fills ? "Show both sides" : "Fill the window")
             }
             .padding(.horizontal, 14)
-            .padding(.vertical, 10)
+            .padding(.vertical, fills ? 7 : 10)
             Forge.rule()
             content
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
-            if side.finished || !side.score.isEmpty {
+            if !fills, side.finished || !side.score.isEmpty {
                 Forge.rule()
                 scorecard
                     .padding(.horizontal, 14)
@@ -315,5 +344,41 @@ private struct DevCompareLive: View {
             .onChange(of: dev.compareWriting.count) { proxy.scrollTo("end", anchor: .bottom) }
             .onChange(of: dev.compareSteps.count) { proxy.scrollTo("end", anchor: .bottom) }
         }
+    }
+}
+
+/// While one side fills the window, flips to the other one at the same size.
+private struct DevCompareSideSwitch: View {
+    @Environment(DevSession.self) private var dev
+
+    var body: some View {
+        HStack(spacing: 4) {
+            Text("Harness").font(.uiCaption2).foregroundStyle(Forge.faint)
+            HStack(spacing: 0) {
+                segment("Off", on: false)
+                segment("On", on: true)
+            }
+            .padding(2)
+            .background(Color.white.opacity(0.05), in: Capsule())
+            .overlay(Capsule().strokeBorder(Forge.line, lineWidth: 1))
+        }
+        .help("Show the other side at the same size")
+    }
+
+    private func segment(_ title: String, on: Bool) -> some View {
+        let selected = dev.compareFills == on
+        return Button {
+            withAnimation(Motion.quick) { dev.compareFills = on }
+        } label: {
+            Text(title)
+                .font(.uiCaption.weight(selected ? .semibold : .regular))
+                .foregroundStyle(selected ? (on ? Palette.onAccent : Forge.ink) : Forge.dim)
+                .padding(.horizontal, 10)
+                .padding(.vertical, 3)
+                .background(Capsule().fill(selected ? (on ? AnyShapeStyle(Palette.accent) : AnyShapeStyle(Color.white.opacity(0.16))) : AnyShapeStyle(Color.clear)))
+                .contentShape(Capsule())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("Harness \(title)")
     }
 }

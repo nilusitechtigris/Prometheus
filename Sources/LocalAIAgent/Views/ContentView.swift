@@ -14,8 +14,9 @@ struct MainPage: View {
     @Environment(AppSettings.self) private var settings
     @Environment(DevSession.self) private var dev
 
-    /// Telemetry belongs to the Chat page, where the model is working.
-    private var showsTelemetry: Bool { settings.telemetryOpen && ui.destination == .chat }
+    /// Telemetry belongs to the Chat page, where the model is working. It steps aside while one side of a
+    /// comparison has the whole window, and comes back with the other side.
+    private var showsTelemetry: Bool { settings.telemetryOpen && ui.destination == .chat && !(dev.isOn && dev.compareFillsWindow) }
 
     var body: some View {
         VStack(spacing: 0) {
