@@ -8,6 +8,7 @@ One well-designed prompt for testing what Dev mode's harness adds when a small m
 2. Open the Compare page (⧉ beside Send, or **Compare** in the top bar), paste a prompt and press **Compare**.
 3. The app builds it twice in new folders: first with the harness off (one reply, saved as it came), then on. The model loads before either clock starts.
 4. Both apps open side by side. Try them yourself, and read the scorecard under each.
+5. To look closer, press the arrow beside a side's score: that app fills the window, and **Off / On** at the top flips to the other one at the same size. **Fit** zooms a long app out until all of it shows. The camera button saves one picture of both apps at full length, with nothing cut off, in the comparison's folder, and copies it.
 
 Both sides get the same facts: the code runs offline, a page opens in a browser with no internet, and Python has no display. The only difference is the harness.
 

@@ -10,17 +10,19 @@ struct DevCompareView: View {
     var body: some View {
         VStack(spacing: 0) {
             if let comparison = dev.shown {
-                // A side that fills the window keeps its place here, so its page carries on instead of starting over.
                 let fills = dev.compareFills
                 if fills == nil {
                     DevCompareHeader(comparison: comparison)
                     Forge.rule()
                 }
-                HStack(spacing: 0) {
-                    if fills != true { DevCompareColumn(comparison: comparison, side: comparison.off) }
-                    if fills == nil { Forge.rule(vertical: true) }
-                    if fills != false { DevCompareColumn(comparison: comparison, side: comparison.on) }
+                // Both sides stay put while one fills the window, so neither page starts over and both can be
+                // in a screenshot.
+                CompareSplit(fills: fills) {
+                    DevCompareColumn(comparison: comparison, side: comparison.off)
+                    Forge.rule(vertical: true)
+                    DevCompareColumn(comparison: comparison, side: comparison.on)
                 }
+                .clipped()
                 if fills == nil {
                     Forge.rule()
                     DevCompareStarter(request: $request, compact: true)
@@ -152,6 +154,7 @@ private struct DevCompareHeader: View {
             .menuStyle(.borderlessButton)
             .fixedSize()
             .disabled(dev.comparisons.isEmpty)
+            DevCompareShotButton(comparison: comparison)
             Button {
                 dev.revealComparison(comparison)
             } label: {
@@ -184,6 +187,8 @@ private struct DevCompareColumn: View {
     private var isWaiting: Bool { isLive && !side.finished && !isRunning && !side.stopped }
     /// This side has the whole window.
     private var fills: Bool { dev.compareFills == side.harness }
+    /// Whether a side filling the window zooms its page out to show all of it.
+    @AppStorage("devCompareFit") private var fit = true
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -223,6 +228,25 @@ private struct DevCompareColumn: View {
                         .foregroundStyle(side.passed == side.total ? Palette.good : side.passed * 2 >= side.total ? Palette.warning : Palette.critical)
                         .help(fills ? side.score.map { "\($0.passed == true ? "✓" : $0.passed == false ? "✗" : "–") \($0.name)" }.joined(separator: "\n") : "Checks passed")
                 }
+                if fills {
+                    Button {
+                        fit.toggle()
+                    } label: {
+                        Text("Fit")
+                            .font(.uiCaption.weight(fit ? .semibold : .regular))
+                            .foregroundStyle(fit ? Palette.onAccent : Forge.dim)
+                            .padding(.horizontal, 9)
+                            .padding(.vertical, 2)
+                            .background(Capsule().fill(fit ? AnyShapeStyle(Palette.accent) : AnyShapeStyle(Color.white.opacity(0.06))))
+                            .overlay(Capsule().strokeBorder(fit ? Color.clear : Forge.line, lineWidth: 1))
+                            .contentShape(Capsule())
+                    }
+                    .buttonStyle(.plain)
+                    .help(fit ? "Showing all of the page, zoomed out to fit. Click for full size." : "Zoom the page out until all of it fits, for a screenshot")
+                    .accessibilityLabel("Fit the page to the window")
+                    .accessibilityValue(fit ? "On" : "Off")
+                    DevCompareShotButton(comparison: comparison)
+                }
                 Button {
                     withAnimation(Motion.quick) { dev.compareFills = fills ? nil : side.harness }
                 } label: {
@@ -261,7 +285,8 @@ private struct DevCompareColumn: View {
         } else if side.stopped {
             Text("Stopped before it finished.").font(.uiCallout).foregroundStyle(Forge.faint)
         } else if let page = side.page {
-            DevPreviewView(project: DevProject(root: URL(fileURLWithPath: side.folder)), path: page, loadID: reload, onMessage: { _ in }, onCrash: {})
+            DevPreviewView(project: DevProject(root: URL(fileURLWithPath: side.folder)), path: page, loadID: reload, onMessage: { _ in }, onCrash: {},
+                           fitsPage: fills && fit, handle: side.harness ? dev.comparePages.on : dev.comparePages.off)
                 .id("\(comparison.id)-\(side.harness)")
         } else if side.finished {
             ScrollView {
@@ -380,5 +405,66 @@ private struct DevCompareSideSwitch: View {
         }
         .buttonStyle(.plain)
         .accessibilityLabel("Harness \(title)")
+    }
+}
+
+/// Takes one picture of both sides at full length, saves it with the comparison and copies it.
+private struct DevCompareShotButton: View {
+    @Environment(DevSession.self) private var dev
+    @Environment(UIState.self) private var ui
+    let comparison: DevComparison
+    @State private var working = false
+
+    private var isLive: Bool { dev.comparing?.id == comparison.id }
+
+    var body: some View {
+        Button {
+            working = true
+            Task {
+                if await dev.screenshotComparison() != nil {
+                    ui.showToast("Screenshot copied, and saved in the comparison's folder", symbol: "camera")
+                }
+                working = false
+            }
+        } label: {
+            if working {
+                ProgressView().controlSize(.mini)
+            } else {
+                Image(systemName: "camera")
+            }
+        }
+        .buttonStyle(.plain)
+        .foregroundStyle(Forge.dim)
+        .disabled(working || isLive)
+        .help(isLive ? "Wait for the comparison to finish" : "One picture of both apps at full length, nothing cut off: copied, and saved in the comparison's folder")
+        .accessibilityLabel("Screenshot both apps")
+    }
+}
+
+/// Both sides side by side, or one filling the space while the other waits out of sight at the same size.
+/// Keeping both in place means neither page starts over when the view changes.
+private struct CompareSplit: Layout {
+    /// The side filling the space: false for the harness off, true for on. Nil for both.
+    var fills: Bool?
+
+    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
+        proposal.replacingUnspecifiedDimensions()
+    }
+
+    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
+        guard subviews.count == 3 else { return }
+        let (off, rule, on) = (subviews[0], subviews[1], subviews[2])
+        guard let side = fills else {
+            let half = ((bounds.width - 1) / 2).rounded(.down)
+            off.place(at: bounds.origin, proposal: ProposedViewSize(width: half, height: bounds.height))
+            rule.place(at: CGPoint(x: bounds.minX + half, y: bounds.minY), proposal: ProposedViewSize(width: 1, height: bounds.height))
+            on.place(at: CGPoint(x: bounds.minX + half + 1, y: bounds.minY), proposal: ProposedViewSize(width: bounds.width - half - 1, height: bounds.height))
+            return
+        }
+        let full = ProposedViewSize(width: bounds.width, height: bounds.height)
+        let away = CGPoint(x: bounds.maxX + bounds.width + 200, y: bounds.minY)
+        (side ? on : off).place(at: bounds.origin, proposal: full)
+        (side ? off : on).place(at: away, proposal: full)
+        rule.place(at: away, proposal: ProposedViewSize(width: 1, height: bounds.height))
     }
 }

@@ -109,6 +109,8 @@ final class DevSession {
     var compareFills: Bool?
     /// Whether one side of a comparison has the window, so nothing else shows.
     var compareFillsWindow: Bool { showsCompare && compareFills != nil && shownComparison != nil }
+    /// The pages both sides of the comparison on screen are running, for a picture of them.
+    @ObservationIgnored let comparePages = (off: DevPageHandle(), on: DevPageHandle())
     /// The comparison being made right now.
     private(set) var comparing: DevComparison?
     /// Which side is being built: false for the harness off, true for on.
@@ -821,6 +823,30 @@ final class DevSession {
 
     func revealComparison(_ comparison: DevComparison) {
         NSWorkspace.shared.activateFileViewerSelecting([URL(fileURLWithPath: comparison.folder)])
+    }
+
+    /// One picture of both sides of the comparison on screen, each page at its full length so nothing is cut
+    /// off, saved in the comparison's folder and copied. Returns where it went.
+    func screenshotComparison() async -> URL? {
+        guard let comparison = shown else { return nil }
+        let off = comparison.off.page == nil ? nil : await comparePages.off.picture()
+        let on = comparison.on.page == nil ? nil : await comparePages.on.picture()
+        guard let png = DevCompareShot.png(comparison: comparison, off: off, on: on) else {
+            failureText = "Couldn't make the screenshot."
+            return nil
+        }
+        let format = DateFormatter()
+        format.dateFormat = "yyyy-MM-dd 'at' HH.mm.ss"
+        let url = URL(fileURLWithPath: comparison.folder).appendingPathComponent("Screenshot \(format.string(from: Date())).png")
+        do {
+            try png.write(to: url, options: .atomic)
+        } catch {
+            failureText = "Couldn't save the screenshot: \(error.localizedDescription)"
+            return nil
+        }
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setData(png, forType: .png)
+        return url
     }
 
     // MARK: - Saving
