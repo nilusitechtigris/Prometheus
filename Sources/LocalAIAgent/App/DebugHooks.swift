@@ -20,6 +20,7 @@ import WebKit
 ///                                   the last run), and LOCALAI_DEV_STOP_AFTER=2 presses Stop that many seconds later
 ///   LOCALAI_DEV_SHOW_COMPARE=1      with LOCALAI_DEV_PROJECT, open the Compare view on the newest comparison;
 ///                                   LOCALAI_DEV_COMPARE_FILL=on,off,both gives a side the window, one step every 3 s;
+///                                   LOCALAI_DEV_COMPARE_SHOT=8 takes the Compare screenshot that many seconds in;
 ///                                   LOCALAI_DEV_HARNESS=off turns the agent's harness off, and
 ///                                   LOCALAI_DEV_COMPARE=text builds that request with the harness off and on
 ///   LOCALAI_DEV_TASKS=/path.json    measure the agent on coding tasks; LOCALAI_DEV_OUT=/path gets the report, with
@@ -218,6 +219,12 @@ enum DebugHooks {
             dev.open(URL(fileURLWithPath: folder))
             if let file = env["LOCALAI_DEV_OPEN"] { dev.openFile(file) }
             if env["LOCALAI_DEV_SHOW_COMPARE"] != nil, let first = dev.comparisons.first { dev.showComparison(first.id) }
+            if let delay = Double(env["LOCALAI_DEV_COMPARE_SHOT"] ?? "") {
+                Task {
+                    try? await Task.sleep(for: .seconds(delay))
+                    print("compare screenshot:", await dev.screenshotComparison()?.path ?? "none")
+                }
+            }
             if let steps = env["LOCALAI_DEV_COMPARE_FILL"]?.split(separator: ",") {
                 Task {
                     for step in steps {
