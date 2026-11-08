@@ -190,6 +190,7 @@ final class BackendController {
             version = try await backend.ping()
         } catch {
             guard kindAtStart == kind else { return }
+            if case BackendError.serverStopped = error { replaceStoppedMLX() }
             status = .offline(error.localizedDescription)
             availability[kind] = false
             loaded = []
@@ -365,14 +366,47 @@ final class BackendController {
     private func startMLXIfNeeded() {
         guard MLXRuntime.isInstalled else { return }
         Task { [weak self] in
-            guard let self, self.kind == .mlx, (try? await self.backend.ping()) == nil else { return }
-            self.startFramework()
+            guard let self, self.kind == .mlx else { return }
+            do {
+                _ = try await self.backend.ping()
+            } catch BackendError.serverStopped {
+                self.replaceStoppedMLX()
+            } catch {
+                self.startFramework()
+            }
         }
     }
 
+    private var mlxPort: Int { URL(string: settings.baseURL(for: .mlx))?.port ?? 8081 }
+
     private func startMLX() {
         guard mlxServer?.isRunning != true else { return }
-        mlxServer = MLXRuntime.startServer(port: URL(string: settings.baseURL(for: .mlx))?.port ?? 8081)
+        mlxServer = MLXRuntime.startServer(port: mlxPort)
+    }
+
+    private var lastMLXReplacement: Date?
+
+    /// MLX LM's process stays up after its generation stops, answering every chat with a 404, so only a new
+    /// server helps. Starting the framework again did nothing while the old process ran, so this stops it
+    /// first, or one left behind by an earlier run of the app. Waiting chat requests try again on the new one.
+    private func replaceStoppedMLX() {
+        guard kind == .mlx, MLXRuntime.isInstalled, !isStartingFramework else { return }
+        if let last = lastMLXReplacement, Date().timeIntervalSince(last) < 20 { return }
+        lastMLXReplacement = Date()
+        isStartingFramework = true
+        let port = mlxPort
+        Task { [weak self] in
+            guard let self else { return }
+            if let server = self.mlxServer, server.isRunning {
+                self.stopMLX()
+                await MLXRuntime.waitForExit(server)
+            } else {
+                // The app's own one isn't running, perhaps because the port was taken when it started.
+                self.mlxServer = nil
+                await MLXRuntime.stopStrayServer(port: port)
+            }
+            if self.kind == .mlx { self.startFramework() } else { self.isStartingFramework = false }
+        }
     }
 
     /// Stops a server the app started, which also frees the memory its model holds.

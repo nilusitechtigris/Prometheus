@@ -9,8 +9,35 @@ struct OpenAICompatibleBackend: LLMBackend {
 
     func ping() async throws -> String {
         // MLX LM's model list scans the whole Hugging Face cache, which is too much to do every few seconds.
-        _ = try await HTTP.data(HTTP.request(url(kind == .mlx ? "health" : "v1/models"), timeout: 2))
+        do {
+            _ = try await HTTP.data(HTTP.request(url(kind == .mlx ? "health" : "v1/models"), timeout: 2))
+        } catch BackendError.http(503, _) where kind == .mlx {
+            // Its process stays up after its generation stops, and says so only here.
+            throw BackendError.serverStopped(MLXRuntime.stopReason())
+        }
         return "online"
+    }
+
+    /// Opens a chat's stream. MLX LM answers every chat with a 404 once its generation has stopped, whatever
+    /// the model, until a new server takes over. The app starts one when the health check says so, so a
+    /// request that meets a stopped server waits for the new one and goes once more.
+    private func open(_ request: URLRequest, again: Bool = true) async throws -> AsyncLineSequence<URLSession.AsyncBytes> {
+        do {
+            return try await HTTP.lines(request)
+        } catch BackendError.http(404, let reason) where kind == .mlx {
+            guard reason.contains("generation thread died") else { throw BackendError.couldNotRun(reason) }
+            guard again, try await waitForNewServer() else { throw BackendError.serverStopped(MLXRuntime.stopReason()) }
+            return try await open(request, again: false)
+        }
+    }
+
+    /// The stopped server keeps answering its health check with 503 until the new one replaces it.
+    private func waitForNewServer() async throws -> Bool {
+        for _ in 0..<120 {
+            try await Task.sleep(for: .seconds(1))
+            if (try? await HTTP.data(HTTP.request(url("health"), timeout: 2))) != nil { return true }
+        }
+        return false
     }
 
     func listModels() async throws -> [LocalModel] {
@@ -82,17 +109,18 @@ struct OpenAICompatibleBackend: LLMBackend {
                     if !request.tools.isEmpty { body["tools"] = request.tools.map(\.json) }
 
                     let started = Date()
-                    let lines = try await HTTP.lines(HTTP.request(url("v1/chat/completions"), method: "POST", json: body))
+                    let lines = try await open(HTTP.request(url("v1/chat/completions"), method: "POST", json: body))
                     var stats = BackendStats()
                     var chunkCount = 0
                     var firstToken: Date?, lastToken: Date?
+                    var ended = false
                     // A call can arrive in pieces, so they're put together by position and sent at the end.
                     var calls: [Int: (name: String, arguments: String)] = [:]
                     for try await line in lines {
                         try Task.checkCancellation()
                         guard line.hasPrefix("data:") else { continue }
                         let payload = line.dropFirst(5).trimmingCharacters(in: .whitespaces)
-                        if payload == "[DONE]" { break }
+                        if payload == "[DONE]" { ended = true; break }
                         guard let data = payload.data(using: .utf8),
                               let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { continue }
                         if let err = obj["error"] {
@@ -132,6 +160,12 @@ struct OpenAICompatibleBackend: LLMBackend {
                             stats.promptEvalSeconds = timings.double("prompt_ms").map { $0 / 1000 }
                             stats.evalSeconds = timings.double("predicted_ms").map { $0 / 1000 }
                         }
+                    }
+                    // When MLX LM's generation stops mid-reply, the reply just breaks off. It isn't the model's
+                    // whole answer, so it shouldn't count as one.
+                    if kind == .mlx, !ended, stats.stopReason == nil {
+                        try Task.checkCancellation()
+                        throw BackendError.serverStopped(MLXRuntime.stopReason())
                     }
                     if stats.completionTokens == nil { stats.completionTokens = chunkCount }
                     Self.measure(&stats, started: started, firstToken: firstToken, lastToken: lastToken)

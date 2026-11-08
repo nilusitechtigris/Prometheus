@@ -24,7 +24,15 @@ enum MLXRuntime {
         paths.first { FileManager.default.isExecutableFile(atPath: $0) }
     }
 
-    static var isInstalled: Bool { tool(in: serverPaths) != nil }
+    /// The server to run. A debug build can be pointed at another one, to try what happens when it fails.
+    private static var serverTool: String? {
+        #if DEBUG
+        if let path = ProcessInfo.processInfo.environment["LOCALAI_MLX_SERVER"], FileManager.default.isExecutableFile(atPath: path) { return path }
+        #endif
+        return tool(in: serverPaths)
+    }
+
+    static var isInstalled: Bool { serverTool != nil }
 
     /// Where the server and `hf` keep models, worked out the way they do it.
     static var cache: URL {
@@ -47,19 +55,96 @@ enum MLXRuntime {
         ProcessInfo.processInfo.environment.merging(extra.merging(["HF_HUB_DISABLE_TELEMETRY": "1"]) { new, _ in new }) { _, new in new }
     }
 
+    /// What the server prints, kept so a failure can be explained. The run before sits next to it.
+    static var log: URL {
+        FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Library/Logs/Prometheus/mlx-server.log")
+    }
+
+    /// The server keeps the conversations it has read, so the next request can skip what they share. It keeps
+    /// ten of them however big they are, and keeps them after switching to another model. A day of long tests
+    /// on big models fills the memory that way, and the request that can't get any more stops the server's
+    /// generation for good. This keeps them to an eighth of the memory, which still holds a few long ones.
+    static var promptCacheBytes: UInt64 { ProcessInfo.processInfo.physicalMemory / 8 }
+
     /// Offline, because the server otherwise asks Hugging Face about a model each time it loads one.
     /// Only downloads someone chose should go online.
     static func startServer(port: Int) -> Process? {
-        guard let path = tool(in: serverPaths) else { return nil }
+        guard let path = serverTool else { return nil }
         prepareCache()
         let process = Process()
         process.executableURL = URL(fileURLWithPath: path)
-        process.arguments = ["--host", "127.0.0.1", "--port", "\(port)"]
+        process.arguments = ["--host", "127.0.0.1", "--port", "\(port)", "--prompt-cache-bytes", "\(promptCacheBytes)"]
         process.environment = environment(["HF_HUB_OFFLINE": "1"])
-        process.standardOutput = FileHandle.nullDevice
-        process.standardError = FileHandle.nullDevice
+        let output = startLog()
+        process.standardOutput = output ?? FileHandle.nullDevice
+        process.standardError = output ?? FileHandle.nullDevice
         process.standardInput = FileHandle.nullDevice
         return (try? process.run()) == nil ? nil : process
+    }
+
+    private static func startLog() -> FileHandle? {
+        let fm = FileManager.default
+        try? fm.createDirectory(at: log.deletingLastPathComponent(), withIntermediateDirectories: true)
+        let previous = log.deletingPathExtension().appendingPathExtension("previous.log")
+        try? fm.removeItem(at: previous)
+        try? fm.moveItem(at: log, to: previous)
+        fm.createFile(atPath: log.path, contents: nil)
+        return try? FileHandle(forWritingTo: log)
+    }
+
+    /// Why the server's generation stopped, from the line it logs when that happens.
+    static func stopReason() -> String? {
+        guard let handle = try? FileHandle(forReadingFrom: log) else { return nil }
+        defer { try? handle.close() }
+        let size = (try? handle.seekToEnd()) ?? 0
+        try? handle.seek(toOffset: size > 200_000 ? size - 200_000 : 0)
+        let text = String(decoding: handle.readDataToEndOfFile(), as: UTF8.self)
+        let marker = "generation thread died: "
+        guard let line = text.split(whereSeparator: \.isNewline).last(where: { $0.contains(marker) }),
+              let range = line.range(of: marker) else { return nil }
+        let reason = line[range.upperBound...].trimmingCharacters(in: .whitespaces)
+        return reason.isEmpty ? nil : String(reason.prefix(300))
+    }
+
+    /// Waits for a server to exit, forcing it after a few seconds, so a new one can have its port.
+    static func waitForExit(_ process: Process) async {
+        for _ in 0..<50 where process.isRunning { try? await Task.sleep(for: .milliseconds(100)) }
+        if process.isRunning { kill(process.processIdentifier, SIGKILL) }
+        for _ in 0..<20 where process.isRunning { try? await Task.sleep(for: .milliseconds(100)) }
+    }
+
+    /// Stops an MLX LM server the app didn't start that holds the port, such as one left behind when the app
+    /// crashed. Only called once that server has said its generation stopped, so nothing is lost. Anything
+    /// else on the port is left alone. Returns whether the port is free now.
+    @discardableResult
+    static func stopStrayServer(port: Int) async -> Bool {
+        let pids = await Task.detached { () -> [pid_t] in
+            let listening = run("/usr/sbin/lsof", ["-nP", "-t", "-iTCP:\(port)", "-sTCP:LISTEN"])
+            return listening.split(whereSeparator: \.isNewline).compactMap { pid_t($0.trimmingCharacters(in: .whitespaces)) }
+                .filter { run("/bin/ps", ["-o", "command=", "-p", "\($0)"]).contains("mlx_lm") }
+        }.value
+        guard !pids.isEmpty else { return false }
+        for pid in pids { kill(pid, SIGTERM) }
+        for _ in 0..<50 {
+            if pids.allSatisfy({ kill($0, 0) != 0 }) { return true }
+            try? await Task.sleep(for: .milliseconds(100))
+        }
+        for pid in pids { kill(pid, SIGKILL) }
+        try? await Task.sleep(for: .milliseconds(500))
+        return true
+    }
+
+    private static func run(_ path: String, _ arguments: [String]) -> String {
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: path)
+        process.arguments = arguments
+        let pipe = Pipe()
+        process.standardOutput = pipe
+        process.standardError = FileHandle.nullDevice
+        guard (try? process.run()) != nil else { return "" }
+        let data = pipe.fileHandleForReading.readDataToEndOfFile()
+        process.waitUntilExit()
+        return String(decoding: data, as: UTF8.self)
     }
 
     /// Downloads a repo, reporting how much of `bytes` has arrived. Stopping the stream stops the download,
