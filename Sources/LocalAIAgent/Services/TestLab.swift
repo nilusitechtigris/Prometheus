@@ -147,6 +147,7 @@ final class TestLab {
             for other in (try? await backend.loadedModels()) ?? [] where other.name != model.id {
                 await backends.unload(other.name)
             }
+            await backends.freeOtherFrameworks()
         }
         return TestSetup(model: model, backend: backend, context: context,
                          think: backend.kind.supportsThinkingControl && supportsThinking ? settings.thinkingEnabled : nil,

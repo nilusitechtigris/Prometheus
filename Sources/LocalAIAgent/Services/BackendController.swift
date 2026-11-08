@@ -90,8 +90,22 @@ final class BackendController {
         loaded = []
         details = nil
         detailsFor = nil
-        if kind == .mlx { startMLXIfNeeded() } else { stopMLX() }
+        if kind == .mlx {
+            if settings.unloadOnSwitch { Task { await freeOtherFrameworks() } }
+            startMLXIfNeeded()
+        } else {
+            stopMLX()
+        }
         Task { await refresh() }
+    }
+
+    /// Frameworks share the Mac's memory, and Ollama keeps a model loaded for minutes after its last use. A big
+    /// model on MLX LM then runs out of room, so MLX work starts by asking Ollama to let go. Leaving MLX LM
+    /// stops its server, which frees its model.
+    func freeOtherFrameworks() async {
+        guard kind == .mlx, let ollama = makeBackend(.ollama) as? OllamaBackend,
+              let models = try? await ollama.loadedModels() else { return }
+        for model in models { try? await ollama.unload(model.name) }
     }
 
     /// Largest context the selected model supports (from the framework, or our catalog).
