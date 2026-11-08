@@ -701,6 +701,7 @@ final class DevSession {
                                  think: backends.kind.supportsThinkingControl && details.supportsThinking ? false : nil)
             record.context = details.context
             self?.comparing = record
+            if backends.settings.unloadOnSwitch { await backends.freeOtherFrameworks() }
             await DevCompare.warmUp(setup)
             for harness in [false, true] {
                 if Task.isCancelled { break }

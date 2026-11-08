@@ -63,8 +63,10 @@ enum MLXRuntime {
     /// The server keeps the conversations it has read, so the next request can skip what they share. It keeps
     /// ten of them however big they are, and keeps them after switching to another model. A day of long tests
     /// on big models fills the memory that way, and the request that can't get any more stops the server's
-    /// generation for good. This keeps them to an eighth of the memory, which still holds a few long ones.
-    static var promptCacheBytes: UInt64 { ProcessInfo.processInfo.physicalMemory / 8 }
+    /// generation for good. A request copies the conversation it carries on before the server trims to this
+    /// limit, so even a small one keeps that speed-up. An eighth of the memory was too much: Qwen3.8 27B at 16K
+    /// on a 24 GB Mac mini leaves the GPU under 1 GB to spare, and ran out with it (2026-11-08).
+    static var promptCacheBytes: UInt64 { ProcessInfo.processInfo.physicalMemory / 32 }
 
     /// Offline, because the server otherwise asks Hugging Face about a model each time it loads one.
     /// Only downloads someone chose should go online.

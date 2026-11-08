@@ -187,8 +187,11 @@ enum BackendError: LocalizedError {
         case .badResponse: return "Unexpected response from the server."
         case .notSupported(let what): return "\(what) isn't supported by this framework."
         case .serverStopped(let reason):
-            return "MLX LM's server stopped generating after an error" + (reason.map { " (\($0))" } ?? "")
-                + ". Prometheus restarts it, so the next request starts fresh."
+            let restart = "Prometheus restarts MLX LM's server, so the next request starts fresh."
+            if let reason, ["Insufficient Memory", "OutOfMemory", "Unable to allocate"].contains(where: reason.contains) {
+                return "The Mac ran out of GPU memory for this model (\(reason)). A smaller model or a shorter context leaves more room. \(restart)"
+            }
+            return "MLX LM's server stopped generating after an error" + (reason.map { " (\($0))" } ?? "") + ". \(restart)"
         case .couldNotRun(let reason): return "MLX LM couldn't run the model: \(reason.prefix(300))"
         }
     }
