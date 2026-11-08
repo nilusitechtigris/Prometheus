@@ -3,9 +3,17 @@ import SwiftUI
 
 /// The app's layout: a sidebar on near-black, with each page in a rounded panel beside it.
 struct ForgeShell: View {
+    @Environment(UIState.self) private var ui
+    @Environment(DevSession.self) private var dev
+
+    /// One side of a comparison has the whole window, so the sidebar steps aside too.
+    private var pageFills: Bool { ui.destination == .chat && dev.isOn && dev.compareFillsWindow }
+
     var body: some View {
         HStack(spacing: 0) {
-            ForgeSidebar()
+            if !pageFills {
+                ForgeSidebar().transition(.move(edge: .leading))
+            }
             MainPage()
                 // Clear of the window's title bar, where clicks would drag the window.
                 .safeAreaPadding(.top, 22)
@@ -13,7 +21,9 @@ struct ForgeShell: View {
                 .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
                 .overlay(RoundedRectangle(cornerRadius: 20, style: .continuous).strokeBorder(Forge.line, lineWidth: 1))
                 .padding([.vertical, .trailing], 10)
+                .padding(.leading, pageFills ? 10 : 0)
         }
+        .animation(Motion.quick, value: pageFills)
         .overlay(alignment: .bottom) { ToastHost() }
         .background(WindowBackdrop())
         .background(Forge.black)

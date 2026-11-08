@@ -10,8 +10,11 @@ struct DevWorkspaceView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            DevTopBar()
-            Forge.rule()
+            // One side of a comparison filling the window takes the bar's room too.
+            if !dev.compareFillsWindow {
+                DevTopBar()
+                Forge.rule()
+            }
             if dev.showsCompare {
                 DevCompareView()
             } else if dev.project == nil {
@@ -121,7 +124,10 @@ private struct DevTopBar: View {
             Spacer(minLength: 8)
             if !dev.comparisons.isEmpty || dev.isComparing {
                 Button {
-                    withAnimation(Motion.quick) { dev.showsCompare.toggle() }
+                    withAnimation(Motion.quick) {
+                        dev.showsCompare.toggle()
+                        dev.compareFills = nil
+                    }
                 } label: {
                     HStack(spacing: 5) {
                         if dev.isComparing { ProgressView().controlSize(.mini) } else { Image(systemName: "square.split.2x1") }

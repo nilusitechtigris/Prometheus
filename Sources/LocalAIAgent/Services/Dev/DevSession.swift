@@ -105,6 +105,10 @@ final class DevSession {
     /// The comparison on screen, while the Compare view is showing.
     var shownComparison: UUID?
     var showsCompare = false
+    /// The side given the whole window, harness off (false) or on (true). Nil while both show.
+    var compareFills: Bool?
+    /// Whether one side of a comparison has the window, so nothing else shows.
+    var compareFillsWindow: Bool { showsCompare && compareFills != nil && shownComparison != nil }
     /// The comparison being made right now.
     private(set) var comparing: DevComparison?
     /// Which side is being built: false for the harness off, true for on.
@@ -689,6 +693,7 @@ final class DevSession {
         comparing = record
         shownComparison = record.id
         showsCompare = true
+        compareFills = nil
         compareSide = nil
         compareStage = "Loading the model"
         compareWriting = ""
@@ -789,10 +794,12 @@ final class DevSession {
     func showComparison(_ id: UUID) {
         shownComparison = id
         showsCompare = true
+        compareFills = nil
     }
 
     func closeCompare() {
         showsCompare = false
+        compareFills = nil
     }
 
     /// Takes a comparison off the list. Its folders stay where they are.
@@ -808,6 +815,7 @@ final class DevSession {
     func openSide(_ side: DevCompareSide) {
         guard !isComparing || comparing?.on.folder != side.folder && comparing?.off.folder != side.folder else { return }
         showsCompare = false
+        compareFills = nil
         open(URL(fileURLWithPath: side.folder))
     }
 

@@ -1871,6 +1871,23 @@ enum DevChecks {
         log.check(dev.messages.first?.text == "Did it", "the conversation comes back", "\(dev.messages.count)")
         log.check(dev.recents.first == root.path, "it's in the recents")
         dev.closeProject()
+
+        // One side of a comparison can have the whole window, and Compare always opens with both.
+        let shown = dev.shownComparison, showing = dev.showsCompare
+        dev.shownComparison = UUID()
+        dev.showsCompare = true
+        log.check(!dev.compareFillsWindow, "Compare opens with both sides")
+        dev.compareFills = true
+        log.check(dev.compareFillsWindow, "a side can fill the window")
+        dev.compareFills = false
+        log.check(dev.compareFillsWindow && dev.compareFills == false, "the other side can take its place")
+        dev.closeCompare()
+        log.check(!dev.compareFillsWindow && dev.compareFills == nil, "closing Compare gives the window back")
+        dev.compareFills = true
+        dev.showComparison(UUID())
+        log.check(!dev.compareFillsWindow, "showing another comparison shows both sides")
+        dev.shownComparison = shown
+        dev.showsCompare = showing
         try? log.report.write(toFile: path, atomically: true, encoding: .utf8)
     }
 
