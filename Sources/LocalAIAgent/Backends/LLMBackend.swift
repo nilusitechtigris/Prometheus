@@ -174,6 +174,10 @@ enum BackendError: LocalizedError {
     case http(Int, String)
     case badResponse
     case notSupported(String)
+    /// MLX LM's generation stopped after an error, with the reason from its log when there is one.
+    case serverStopped(String?)
+    /// MLX LM answers 404 when it can't load or run a model, whatever the reason.
+    case couldNotRun(String)
 
     var errorDescription: String? {
         switch self {
@@ -182,6 +186,10 @@ enum BackendError: LocalizedError {
             return "Server returned HTTP \(code)\(detail)"
         case .badResponse: return "Unexpected response from the server."
         case .notSupported(let what): return "\(what) isn't supported by this framework."
+        case .serverStopped(let reason):
+            return "MLX LM's server stopped generating after an error" + (reason.map { " (\($0))" } ?? "")
+                + ". Prometheus restarts it, so the next request starts fresh."
+        case .couldNotRun(let reason): return "MLX LM couldn't run the model: \(reason.prefix(300))"
         }
     }
 }
