@@ -55,6 +55,9 @@ import WebKit
 ///   LOCALAI_WINDOW_SIZE=1380x2400   resize the main window after launch, to snapshot more of a page
 ///   LOCALAI_RENDER_DIR=/path        render both full dashboards (narrow and wide) after LOCALAI_RENDER_DELAY seconds
 ///   LOCALAI_BACKUP_CHECK=/path.txt  check the copy made of saved data before a new build touches it
+///   LOCALAI_WEB=allowed|off|ask     how the harness may use the web in this run, without saving it;
+///                                   LOCALAI_WEB_ANSWER=once|always|no answers its question 2 s after it shows
+///   LOCALAI_CONSENT_CHECK=/path.txt check the question the harness asks before a web lookup
 @MainActor
 enum DebugHooks {
     static func install(chat: ChatController, ui: UIState, lab: TestLab, backends: BackendController,
@@ -138,10 +141,10 @@ enum DebugHooks {
         if let search = env["LOCALAI_CHAT_SEARCH"] { ui.chatSearch = search }
         func go(to page: String?) {
             switch page {
-            case "model": ui.openTests(.model)
+            case "model": settings.showLab = true; ui.openTests(.model)
             case "hardware": ui.openTests(.hardware)
-            case "harness": ui.openTests(.harness)
-            case "publish": ui.openTests(.publish)
+            case "harness": settings.showLab = true; ui.openTests(.harness)
+            case "publish": settings.showLab = true; ui.openTests(.publish)
             case "library": ui.destination = .library
             case "chat": ui.destination = .chat
             case "settings": ui.destination = .settings
@@ -208,6 +211,23 @@ enum DebugHooks {
                 }
             }
         }
+        if let path = env["LOCALAI_CONSENT_CHECK"] {
+            Task {
+                let lines = await WebConsent.selfCheck()
+                try? lines.joined(separator: "\n").write(toFile: path, atomically: true, encoding: .utf8)
+            }
+        }
+        if let reply = env["LOCALAI_WEB_ANSWER"] {
+            Task {
+                while !Task.isCancelled {
+                    if WebConsent.shared.pending != nil {
+                        try? await Task.sleep(for: .seconds(2))
+                        WebConsent.shared.answer(reply == "once" ? .once : reply == "always" ? .always : .notNow)
+                    }
+                    try? await Task.sleep(for: .milliseconds(200))
+                }
+            }
+        }
         if let path = env["LOCALAI_BACKUP_CHECK"] {
             var lines = DataBackup.selfCheck()
             // Only ever in a folder made for the check, never in someone's real data.
@@ -224,6 +244,8 @@ enum DebugHooks {
         }
         if let path = env["LOCALAI_HARNESS_CHECK"] {
             Task {
+                // The check makes real requests, and there's nobody to ask.
+                WebConsent.shared.allowForChecks()
                 let report = await harnessCheck()
                 try? report.write(toFile: path, atomically: true, encoding: .utf8)
             }

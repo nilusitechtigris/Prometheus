@@ -190,7 +190,7 @@ struct HarnessVersionLabel: View {
         VStack(alignment: .leading, spacing: 1) {
             HStack(spacing: 6) {
                 Text(version.title).font(.uiCallout.weight(.semibold))
-                if version == .latest { Chip(text: "Newest", tint: Palette.accent) }
+                if version == .recommended { Chip(text: "Recommended", tint: Palette.accent) }
             }
             Text(version.summary).font(.uiCaption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
         }

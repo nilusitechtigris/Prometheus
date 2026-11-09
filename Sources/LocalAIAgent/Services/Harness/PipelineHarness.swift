@@ -202,7 +202,10 @@ enum PipelineHarness {
         var evidence: [String] = []
         let searchCall = ToolCall(name: "web_search", arguments: ["query": query])
         let found = await HarnessTools.run(searchCall)
-        total.toolLog.append(HarnessTools.describe(searchCall) + (found.failed ? HarnessTools.failedMark : ""))
+        // The one change since this version was frozen: a lookup the person didn't allow was never sent, so the
+        // log says that instead of listing it as a search.
+        let refused = found.failed && found.text.hasSuffix(WebTools.declined)
+        total.toolLog.append(refused ? WebTools.declinedNote : HarnessTools.describe(searchCall) + (found.failed ? HarnessTools.failedMark : ""))
         total.guardRemoved += found.removed
         guard !found.failed else { return [] }
         evidence.append(found.text)

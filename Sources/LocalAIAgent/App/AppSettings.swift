@@ -58,10 +58,14 @@ final class AppSettings {
     var unloadOnSwitch: Bool { didSet { defaults.set(unloadOnSwitch, forKey: "unloadOnSwitch") } }
     /// Whether the stats card under each reply is expanded (applies to every reply).
     var replyStatsExpanded: Bool { didSet { defaults.set(replyStatsExpanded, forKey: "replyStatsExpanded") } }
-    /// Runs chat replies through the harness. Off by default because its web searches leave this Mac.
+    /// Runs chat replies through the harness. On for a new install, since its math, code and rule checks stay
+    /// on this Mac and it asks before it looks anything up (see `WebConsent`). A copy that was already in use
+    /// keeps what it had.
     var harnessEnabled: Bool { didSet { defaults.set(harnessEnabled, forKey: "harnessEnabled") } }
     /// The version chat uses when the harness is on.
     var harnessVersion: HarnessVersion { didSet { defaults.set(harnessVersion.rawValue, forKey: "harnessVersion") } }
+    /// Whether the Tests page shows the Model Test, the Harness Test and Publish beside the Hardware Test.
+    var showLab: Bool { didSet { defaults.set(showLab, forKey: "showLab") } }
     /// Times the harness's loop may go round on a task, in chat and in the Harness Test.
     var harnessMaxRounds: Int { didSet { defaults.set(harnessMaxRounds, forKey: "harnessMaxRounds") } }
     /// Whether the Harness Test also covers the harness off, or only the harness on.
@@ -86,8 +90,12 @@ final class AppSettings {
         maxResponseTokens = defaults.integer(forKey: "maxResponseTokens")
         unloadOnSwitch = defaults.object(forKey: "unloadOnSwitch") as? Bool ?? true
         replyStatsExpanded = defaults.object(forKey: "replyStatsExpanded") as? Bool ?? true
-        harnessEnabled = defaults.bool(forKey: "harnessEnabled")
-        harnessVersion = HarnessVersion(rawValue: defaults.string(forKey: "harnessVersion") ?? "") ?? .latest
+        // Every copy that has run before has chosen a theme, so this tells a new install from an update.
+        let usedBefore = defaults.object(forKey: "movedToPrometheusTheme") != nil || defaults.object(forKey: "backendKind") != nil
+            || FileManager.default.fileExists(atPath: ConversationStore.directory.appendingPathComponent("conversations.json").path)
+        harnessEnabled = defaults.object(forKey: "harnessEnabled") as? Bool ?? !usedBefore
+        harnessVersion = HarnessVersion(rawValue: defaults.string(forKey: "harnessVersion") ?? "") ?? .recommended
+        showLab = defaults.object(forKey: "showLab") as? Bool ?? usedBefore
         let rounds = defaults.integer(forKey: "harnessMaxRounds")
         harnessMaxRounds = rounds > 0 ? rounds : 3
         harnessTestRunsOff = defaults.object(forKey: "harnessTestRunsOff") as? Bool ?? true
@@ -95,6 +103,9 @@ final class AppSettings {
         let panelHeight = defaults.double(forKey: "telemetryHeight")
         telemetryHeight = panelHeight > 0 ? min(max(panelHeight, Self.telemetryHeights.lowerBound), Self.telemetryHeights.upperBound) : 216
         chatsOpen = defaults.object(forKey: "chatsOpen") as? Bool ?? true
+        // Written down once, so the choice made at the first launch doesn't change at the second.
+        if defaults.object(forKey: "harnessEnabled") == nil { defaults.set(harnessEnabled, forKey: "harnessEnabled") }
+        if defaults.object(forKey: "showLab") == nil { defaults.set(showLab, forKey: "showLab") }
     }
 
     func baseURL(for kind: BackendKind) -> String {

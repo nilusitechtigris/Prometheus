@@ -51,6 +51,8 @@ extension TestLab {
         /// The exact value a tool produced, which the reply has to contain.
         var result: String?
         var readTheWeb = false
+        /// The person said no to a lookup for this reply, so later rounds don't try again.
+        var webDeclined = false
         /// True while the next Act should look for more.
         var wantsEvidence = true
         var failedProgram: (problem: String, code: String)?

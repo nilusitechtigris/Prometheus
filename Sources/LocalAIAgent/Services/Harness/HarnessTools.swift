@@ -167,6 +167,13 @@ enum WebTools {
     }
     #endif
 
+    /// How a request ends when the person hasn't allowed it. Callers look for it to say so plainly.
+    static let declined = "no web lookup was allowed for this reply."
+    /// The line a reply's steps show in that case, whether the setting is Never or the answer was Not now.
+    static let declinedNote = "Skipped the web lookup, which wasn't allowed"
+
+    /// The longest search sent. The harness writes searches of a few words, so this only stops a runaway one.
+    static let maxQueryCharacters = 160
     private static let maxPageCharacters = 7_000
     /// How much of a page the harness searches for passages. The model only reads what it picks out.
     static let maxSearchableCharacters = 60_000
@@ -184,7 +191,12 @@ enum WebTools {
         let config = URLSessionConfiguration.ephemeral
         config.timeoutIntervalForRequest = 15
         config.timeoutIntervalForResource = 30
-        config.httpAdditionalHeaders = ["User-Agent": "Prometheus/1.0 (local AI test harness for macOS)"]
+        // Nothing that could tie one request to another, or to this Mac's settings.
+        config.httpCookieStorage = nil
+        config.httpShouldSetCookies = false
+        config.httpCookieAcceptPolicy = .never
+        config.urlCache = nil
+        config.httpAdditionalHeaders = ["User-Agent": "Prometheus/1.0 (local AI test harness for macOS)", "Accept-Language": "en"]
         return URLSession(configuration: config, delegate: RedirectGuard(), delegateQueue: nil)
     }()
 
@@ -201,6 +213,9 @@ enum WebTools {
         parts.password = nil
         guard let url = parts.url, TrustedSites.isTrusted(url) else {
             return .failure(Failure(message: "only https pages on the trusted sites can be opened."))
+        }
+        guard await WebConsent.shared.mayUseWeb(detail: url.absoluteString, isSearch: false) else {
+            return .failure(Failure(message: declined))
         }
         do {
             let (data, response) = try await fetch(url)
@@ -264,7 +279,10 @@ enum WebTools {
 
     /// Searches the sources with official, keyless search APIs at once.
     static func search(_ query: String) async -> Result<String, Failure> {
-        guard !query.trimmingCharacters(in: .whitespaces).isEmpty else { return .failure(Failure(message: "the search was empty.")) }
+        // Short enough to read in full before saying yes to it, and what's asked about is exactly what's sent.
+        let query = String(query.trimmingCharacters(in: .whitespacesAndNewlines).prefix(maxQueryCharacters))
+        guard !query.isEmpty else { return .failure(Failure(message: "the search was empty.")) }
+        guard await WebConsent.shared.mayUseWeb(detail: query, isSearch: true) else { return .failure(Failure(message: declined)) }
         async let wikipedia = wikipediaResults(query)
         async let stackOverflow = stackOverflowResults(query)
         async let arxiv = arxivResults(query)
@@ -273,7 +291,10 @@ enum WebTools {
         if groups.allSatisfy({ $0 == nil }) { return .failure(Failure(message: "no search service could be reached.")) }
         let results = groups.compactMap { $0 }.flatMap { $0 }
         guard !results.isEmpty else { return .success("No results for \"\(query)\".") }
-        return .success(results.enumerated().map { "\($0.offset + 1). \($0.element)" }.joined(separator: "\n"))
+        let text = results.enumerated().map { "\($0.offset + 1). \($0.element)" }.joined(separator: "\n")
+        // A yes to this search covers reading what it found.
+        await WebConsent.shared.noteResults(HarnessText.hits(in: text).map(\.url), of: query)
+        return .success(text)
     }
 
     private static func encoded(_ text: String) -> String {

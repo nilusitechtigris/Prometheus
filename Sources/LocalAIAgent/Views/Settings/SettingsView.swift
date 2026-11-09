@@ -3,7 +3,7 @@ import SwiftUI
 
 /// The sections of the Settings page.
 enum SettingsTab: String, CaseIterable, Identifiable {
-    case general, appearance, frameworks, safety, data, updates
+    case general, harness, appearance, frameworks, safety, data, updates
 
     var id: String { rawValue }
     var title: String { rawValue.capitalized }
@@ -39,6 +39,7 @@ struct SettingsView: View {
             PageSwap(value: ui.settingsTab) {
                 switch ui.settingsTab {
                 case .general: GeneralSettings()
+                case .harness: HarnessSettings()
                 case .appearance: AppearanceSettings()
                 case .frameworks: FrameworkSettings()
                 case .safety: SafetySettings()
@@ -205,6 +206,50 @@ private struct FrameworkRow: View {
     }
 }
 
+/// The harness in chat: whether it's on, how it may use the web, and the choices behind it.
+private struct HarnessSettings: View {
+    @Environment(AppSettings.self) private var settings
+    @Environment(BackendController.self) private var backends
+
+    var body: some View {
+        @Bindable var settings = settings
+        Form {
+            Section {
+                Toggle("Use the harness in chat", isOn: $settings.harnessEnabled)
+            } footer: {
+                Text("With it on, code runs the math, checks each reply and sends it back if it's wrong. With it off you get the plain model. You can switch at any point in a chat, under the message box."
+                     + (backends.kind.supportsTools ? "" : " It works with Ollama and MLX LM, so it's resting while \(backends.kind.displayName) is chosen."))
+                    .font(.uiCaption)
+                    .foregroundStyle(.secondary)
+            }
+            Section {
+                WebLookupsPicker()
+            } footer: {
+                Text("A lookup sends search terms, written from your message, and the addresses of the pages it reads. The sites see those and your IP address, and nothing else from your chat. Pages come from a list of \(TrustedSites.all.count) trusted sites, and every search and page is listed with the reply.")
+                    .font(.uiCaption)
+                    .foregroundStyle(.secondary)
+            }
+            Section {
+                Picker("Version", selection: $settings.harnessVersion) {
+                    ForEach(HarnessVersion.allCases) { version in
+                        Text(version == .recommended ? "\(version.title) (recommended)" : version.title).tag(version)
+                    }
+                }
+                Picker("Rounds per task", selection: $settings.harnessMaxRounds) {
+                    ForEach(AppSettings.harnessRoundOptions, id: \.self) { Text("\($0)").tag($0) }
+                }
+            } header: {
+                Text("For comparing")
+            } footer: {
+                Text("Every design of the harness stays in the app, so you can compare them on your own models in Tests. In \(HarnessVersion.loop.short) and \(HarnessVersion.thinking.short), rounds are how many times it may go back and try again when a reply fails its checks. In \(HarnessVersion.council.short), they're how many times the three agents may go round the shared notes. More rounds can fix more replies, and take longer.")
+                    .font(.uiCaption)
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .formStyle(.grouped)
+    }
+}
+
 private struct SafetySettings: View {
     @Environment(AppSettings.self) private var settings
 
@@ -230,22 +275,8 @@ private struct SafetySettings: View {
                     .font(.uiCaption)
                     .foregroundStyle(.secondary)
             }
-            Section {
-                Picker("Version in chat", selection: $settings.harnessVersion) {
-                    ForEach(HarnessVersion.allCases) { Text($0.title).tag($0) }
-                }
-                Picker("Rounds per task", selection: $settings.harnessMaxRounds) {
-                    ForEach(AppSettings.harnessRoundOptions, id: \.self) { Text("\($0)").tag($0) }
-                }
-            } header: {
-                Text("Harness")
-            } footer: {
-                Text("In \(HarnessVersion.loop.short) and \(HarnessVersion.thinking.short), rounds are how many times it may go back and try again when a reply fails its checks. In \(HarnessVersion.council.short), they're how many times the three agents may go round the shared notes, and they stop early once they agree. This counts in chat and in the Harness Test. More rounds can fix more replies, and take longer.")
-                    .font(.uiCaption)
-                    .foregroundStyle(.secondary)
-            }
             Section("Privacy") {
-                Label("Your chats stay on this Mac. With the harness off, the only internet access is downloading models you choose, through your framework, and updating the app when you press Update. With it on, search terms go to Wikipedia, Stack Overflow, arXiv and MDN, and pages come from the trusted sites.", systemImage: "lock.shield")
+                Label("Your chats are saved only on this Mac. The app goes online for three things: downloading a model you choose, through your framework; updating when you press Update; and the harness's web lookups, which ask first unless you've chosen otherwise in Settings › Harness. A lookup sends search terms, written from your message, and page addresses.", systemImage: "lock.shield")
                     .font(.uiCallout)
             }
         }

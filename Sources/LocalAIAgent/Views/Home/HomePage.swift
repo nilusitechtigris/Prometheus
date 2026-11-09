@@ -379,7 +379,8 @@ private struct ProTip: View {
                 .foregroundStyle(Forge.dim)
                 .fixedSize(horizontal: false, vertical: true)
             Button {
-                ui.openTests(.harness)
+                ui.settingsTab = .harness
+                ui.destination = .settings
             } label: {
                 HStack(spacing: 5) {
                     Text("Learn More")

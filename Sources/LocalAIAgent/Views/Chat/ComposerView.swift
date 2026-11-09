@@ -13,6 +13,10 @@ struct ComposerView: View {
         @Bindable var ui = ui
 
         VStack(spacing: 10) {
+            if let request = WebConsent.shared.pending {
+                WebConsentCard(request: request)
+                    .transition(.opacity.combined(with: .move(edge: .bottom)))
+            }
             if let live = chat.live {
                 HStack {
                     if let stage = live.stage { HarnessStageStrip(current: stage, round: live.round, speaker: live.speaker) }
@@ -81,7 +85,7 @@ struct ComposerView: View {
             .padding(.horizontal, 4)
 
             if harnessOn {
-                Label(harnessNote, systemImage: "globe")
+                Label(harnessNote, systemImage: WebConsent.shared.policy == .allowed ? "globe" : "lock")
                     .font(.uiCaption2)
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
@@ -98,6 +102,7 @@ struct ComposerView: View {
         .frame(maxWidth: .infinity)
         .animation(Motion.quick, value: chat.isGenerating)
         .animation(Motion.quick, value: harnessOn)
+        .animation(Motion.quick, value: WebConsent.shared.pending)
         .onAppear { focused = true }
         .onChange(of: ui.composerFocusRequest) { focused = true }
     }
@@ -150,8 +155,16 @@ struct ComposerView: View {
 
     private var harnessNote: String {
         let version = settings.harnessVersion
+        let name = "\(version.label) on"
         let thinking = version.alwaysThinks ? " Thinking stays on for its agents." : ""
-        return "Harness \(version.short) on: \(version == .tools ? "the model picks its own searches, which go" : "search terms go") to Wikipedia, Stack Overflow, arXiv and MDN. Code runs in a sandbox on this Mac.\(thinking)"
+        switch WebConsent.shared.policy {
+        case .ask:
+            return "\(name): math, code and rule checks stay on this Mac. It asks before each web search.\(thinking)"
+        case .allowed:
+            return "\(name): \(version == .tools ? "the model picks its own searches, which go" : "search terms go") to \(WebConsent.destinations). Code runs in a sandbox on this Mac.\(thinking)"
+        case .off:
+            return "\(name), offline: math, code and rule checks stay on this Mac. Web lookups are off.\(thinking)"
+        }
     }
 
     private var canSend: Bool {
@@ -222,9 +235,9 @@ private struct HarnessPill: View {
                 Image(systemName: "shield.lefthalf.filled")
                     .symbolEffect(.bounce, value: on)
                 if on {
-                    Text(compact ? version.short : "Harness \(version.short)")
-                } else if !compact {
-                    Text("Harness")
+                    Text(version == .recommended ? (compact ? "On" : "Harness on") : (compact ? version.short : "Harness \(version.short)"))
+                } else {
+                    Text(compact ? "Off" : "Harness off")
                 }
             }
             .font(.uiCallout.weight(on ? .semibold : .regular))
@@ -235,9 +248,9 @@ private struct HarnessPill: View {
         .overlay(Capsule().strokeBorder(on ? Palette.accent.opacity(0.6) : .clear, lineWidth: 1))
         .disabled(!backends.kind.supportsTools)
         .help(backends.kind.supportsTools
-              ? (on ? "Harness \(version.title): it uses tools for each message, so search terms leave this Mac. Click to change the version or turn it off."
-                    : "Harness off: everything stays on this Mac. Click to give the model web search and a code sandbox.")
-              : "The harness needs Ollama or MLX LM for now")
+              ? (on ? "Harness on: code runs the math, checks each reply and can look facts up. Click to change it or turn it off."
+                    : "Harness off: the plain model, with nothing checked. Click to turn it on.")
+              : "The harness works with Ollama and MLX LM. Pick one of those under the message box to use it.")
         .accessibilityLabel(on ? "Harness, \(version.title)" : "Harness, off")
         .popover(isPresented: $show, arrowEdge: .top) {
             HarnessPopover { show = false }
@@ -249,27 +262,69 @@ struct HarnessPopover: View {
     @Environment(AppSettings.self) private var settings
     @Environment(BackendController.self) private var backends
     let dismiss: () -> Void
+    @State private var showVersions = false
 
     var body: some View {
+        let on = settings.harnessEnabled
+        let usual = settings.harnessVersion == .recommended
         VStack(alignment: .leading, spacing: 4) {
             Text("Harness").font(.uiHeadline).padding(.horizontal, 8).padding(.bottom, 4)
-            PopoverRow(selected: !settings.harnessEnabled) {
+            PopoverRow(selected: !on) {
                 settings.harnessEnabled = false
                 dismiss()
             } content: {
                 VStack(alignment: .leading, spacing: 1) {
                     Text("Off").font(.uiCallout.weight(.semibold))
-                    Text("Everything stays on this Mac.").font(.uiCaption).foregroundStyle(.secondary)
+                    Text("The plain model. Nothing is checked.").font(.uiCaption).foregroundStyle(.secondary)
                 }
                 Spacer(minLength: 0)
             }
-            ForEach(HarnessVersion.allCases) { version in
-                PopoverRow(selected: settings.harnessEnabled && settings.harnessVersion == version) {
-                    settings.harnessVersion = version
-                    settings.harnessEnabled = true
-                    dismiss()
-                } content: {
-                    HarnessVersionLabel(version: version)
+            PopoverRow(selected: on && usual) {
+                settings.harnessVersion = .recommended
+                settings.harnessEnabled = true
+                dismiss()
+            } content: {
+                VStack(alignment: .leading, spacing: 1) {
+                    Text("On").font(.uiCallout.weight(.semibold))
+                    Text("Code runs the math, checks each reply and sends it back if it's wrong.")
+                        .font(.uiCaption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                }
+                Spacer(minLength: 0)
+            }
+
+            WebLookupsPicker()
+                .padding(.horizontal, 8)
+                .padding(.top, 8)
+
+            Button {
+                withAnimation(Motion.quick) { showVersions.toggle() }
+            } label: {
+                HStack(spacing: 6) {
+                    Image(systemName: "chevron.right")
+                        .font(.system(size: 9, weight: .bold))
+                        .rotationEffect(.degrees(showVersions ? 90 : 0))
+                    Text("Other versions").font(.uiCallout)
+                    if on, !usual { Text("· using \(settings.harnessVersion.title)").font(.uiCaption).foregroundStyle(Palette.accent) }
+                    Spacer(minLength: 0)
+                }
+                .foregroundStyle(.secondary)
+                .padding(.horizontal, 8)
+                .padding(.top, 10)
+                .padding(.bottom, 2)
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .help("Earlier and newer designs of the harness, kept so you can compare them")
+
+            if showVersions {
+                ForEach(HarnessVersion.allCases) { version in
+                    PopoverRow(selected: on && settings.harnessVersion == version) {
+                        settings.harnessVersion = version
+                        settings.harnessEnabled = true
+                        dismiss()
+                    } content: {
+                        HarnessVersionLabel(version: version)
+                    }
                 }
             }
             Text(footnote)
@@ -281,12 +336,88 @@ struct HarnessPopover: View {
         }
         .padding(12)
         .frame(width: 380)
+        .onAppear { showVersions = on && !usual }
     }
 
     private var footnote: String {
         let canCall = backends.details?.capabilities.contains("tools") ?? true
-        return (canCall ? "" : "This model can't call tools, so v1 would answer without them. ")
-            + "Applies from your next message. Compare the versions on the Tests page."
+        return (showVersions && !canCall ? "This model can't call tools, so v1 would answer without them. " : "")
+            + "Applies from your next message."
+    }
+}
+
+/// How the harness may use the web. The same three choices show in the Harness menu and in Settings.
+struct WebLookupsPicker: View {
+    var body: some View {
+        @Bindable var consent = WebConsent.shared
+        VStack(alignment: .leading, spacing: 5) {
+            HStack {
+                Label("Web lookups", systemImage: "globe").font(.uiCallout.weight(.medium))
+                Spacer()
+                Picker("Web lookups", selection: $consent.policy) {
+                    ForEach(WebConsent.Policy.allCases) { Text($0.title).tag($0) }
+                }
+                .pickerStyle(.segmented)
+                .labelsHidden()
+                .fixedSize()
+            }
+            Text(caption)
+                .font(.uiCaption2)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+    }
+
+    private var caption: String {
+        switch WebConsent.shared.policy {
+        case .ask: return "For a fact, the harness shows you each search first. If you allow it, the search goes to \(WebConsent.destinations), and it reads pages from the trusted sites."
+        case .allowed: return "For a fact, search terms go to \(WebConsent.destinations), and pages come from the trusted sites."
+        case .off: return "Nothing is looked up in chat. Math, code and rule checks still run on this Mac."
+        }
+    }
+}
+
+/// The question the harness asks before anything leaves this Mac. It sits above the message box, or along
+/// the foot of the window when another page is showing. What it would send is shown in full.
+struct WebConsentCard: View {
+    let request: WebConsent.Request
+
+    var body: some View {
+        HStack(alignment: .center, spacing: 12) {
+            Image(systemName: "globe").font(.uiTitle2).foregroundStyle(Palette.accent)
+            VStack(alignment: .leading, spacing: 3) {
+                Text(request.isSearch ? "Look this up?" : "Open this page?").font(.uiCallout.weight(.semibold))
+                Text(request.isSearch ? "“\(request.detail)”" : request.detail)
+                    .font(.uiCallout)
+                    .textSelection(.enabled)
+                    .fixedSize(horizontal: false, vertical: true)
+                Text(explanation)
+                    .font(.uiCaption)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            Spacer(minLength: 8)
+            // No keyboard shortcut on purpose: a yes should be a click, not a Return meant for the message box.
+            Button("Not now") { WebConsent.shared.answer(.notNow) }
+                .help("Answer without looking anything up")
+            Button("Always allow") { WebConsent.shared.answer(.always) }
+                .help("Stop asking. You can change this in the Harness menu")
+            Button("Allow once") { WebConsent.shared.answer(.once) }
+                .buttonStyle(AccentButtonStyle(compact: true))
+                .help(request.isSearch ? "Send this search and read the pages it finds" : "Open this page")
+        }
+        .controlSize(.small)
+        .padding(.horizontal, 14)
+        .padding(.vertical, 10)
+        .glassPanel(cornerRadius: 16)
+        .overlay(RoundedRectangle(cornerRadius: 16, style: .continuous).strokeBorder(Palette.accent.opacity(0.45), lineWidth: 1))
+        .accessibilityElement(children: .contain)
+    }
+
+    private var explanation: String {
+        request.isSearch
+            ? "This search would go to \(WebConsent.destinations), and the harness would read pages it finds on the trusted sites. Those sites see the search, the page addresses and your IP address. Nothing else from your chat is sent."
+            : "The site sees this address and your IP address. Nothing else from your chat is sent."
     }
 }
 
@@ -350,7 +481,7 @@ private struct LiveTicker: View {
         TimelineView(.periodic(from: .now, by: 0.25)) { _ in
             HStack(spacing: 10) {
                 switch live.phase {
-                case .waiting: Text(live.stage == .understand || live.stage == .act ? "Working…" : "Waiting for first token…")
+                case .waiting: Text(WebConsent.shared.pending != nil ? "Waiting for your answer" : live.stage == .understand || live.stage == .act ? "Working…" : "Waiting for first token…")
                 case .thinking: Text("Thinking")
                 case .answering: Text("Answering")
                 }

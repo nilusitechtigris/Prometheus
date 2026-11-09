@@ -178,7 +178,9 @@ final class ChatController {
         generationTask = Task { [weak self] in
             guard let self else { return }
             if let harness {
+                WebConsent.shared.beginReply()
                 await runHarness(harness, request, messages: messages, model: model, messageID: assistant.id, convID: convID)
+                WebConsent.shared.endReply()
             } else {
                 await stream(request, backend: backend, messageID: assistant.id, convID: convID, estimatedPrompt: estimatedPrompt)
             }

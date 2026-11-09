@@ -177,7 +177,7 @@ private struct ForgeSidebar: View {
             Circle().fill(online ? Palette.good : Palette.critical).frame(width: 8, height: 8)
             VStack(alignment: .leading, spacing: 1) {
                 Text(online ? "Ready to run" : "\(backends.kind.displayName) offline").font(.uiCaption.weight(.medium))
-                Text(harnessOn ? "Harness \(settings.harnessVersion.short)" : "Local · \(backends.kind.displayName)")
+                Text(harnessOn ? "\(settings.harnessVersion.label) on" : "Local · \(backends.kind.displayName)")
                     .font(.uiCaption2).foregroundStyle(Forge.dim)
             }
             Spacer(minLength: 0)
@@ -186,7 +186,9 @@ private struct ForgeSidebar: View {
         .padding(.vertical, 10)
         .background(Forge.card, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
         .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).strokeBorder(Forge.line, lineWidth: 1))
-        .help(harnessOn ? "Harness on: search terms go to Wikipedia, Stack Overflow, arXiv and MDN"
+        .help(harnessOn ? (WebConsent.shared.policy == .allowed
+                               ? "Harness on: search terms go to \(WebConsent.destinations)"
+                               : "Harness on: nothing leaves this Mac unless you allow a lookup")
                         : "100% local — prompts and responses never leave this Mac")
     }
 }

@@ -15,18 +15,23 @@ enum TestTab: String, CaseIterable, Identifiable {
         }
     }
 
-    /// Greek numeral shown on the tab.
+    /// The Hardware Test is for everyone. The others measure models and the harness, and show with the Lab on.
+    static func shown(lab: Bool) -> [TestTab] { lab ? allCases : [.hardware] }
 }
 
 /// The one Tests page: choose which test's results to see, then read them in the same layout.
 struct TestsPage: View {
     @Environment(UIState.self) private var ui
+    @Environment(AppSettings.self) private var settings
+
+    /// With the Lab off there is only the Hardware Test to show, whatever tab was open last.
+    private var tab: TestTab { settings.showLab ? ui.testTab : .hardware }
 
     var body: some View {
         VStack(spacing: 0) {
             TestTabBar()
-            PageSwap(value: ui.testTab) {
-                switch ui.testTab {
+            PageSwap(value: tab) {
+                switch tab {
                 case .model: ModelTestDashboard()
                 case .hardware: HardwareTestDashboard()
                 case .harness: HarnessTestDashboard()
@@ -41,14 +46,26 @@ private struct TestTabBar: View {
     @Environment(UIState.self) private var ui
     @Environment(TestLab.self) private var lab
     @Environment(BackendController.self) private var backends
+    @Environment(AppSettings.self) private var settings
     @Namespace private var underline
 
     var body: some View {
+        @Bindable var settings = settings
         HStack(spacing: 22) {
-            ForEach(TestTab.allCases) { tab(for: $0) }
+            ForEach(TestTab.shown(lab: settings.showLab)) { tab(for: $0) }
             Spacer()
+            Toggle(isOn: $settings.showLab) {
+                Text("Lab").font(.uiCallout).foregroundStyle(settings.showLab ? .primary : .secondary)
+            }
+            .toggleStyle(.switch)
+            .controlSize(.mini)
+            .disabled(lab.isRunning)
+            .help(settings.showLab
+                  ? "Hide the Model Test, the Harness Test and Publish"
+                  : "Measure a model and the harness yourself, and publish your runs")
         }
         .animation(Motion.page, value: ui.testTab)
+        .animation(Motion.quick, value: settings.showLab)
         .padding(.horizontal, 24)
         .padding(.top, 18)
         .frame(maxWidth: 1180)
@@ -60,7 +77,7 @@ private struct TestTabBar: View {
             ui.testTab = tab
         } label: {
             HStack(alignment: .firstTextBaseline, spacing: 7) {
-                UnderlineTab(title: tab.title, selected: ui.testTab == tab, bar: underline)
+                UnderlineTab(title: tab.title, selected: (settings.showLab ? ui.testTab : .hardware) == tab, bar: underline)
                 if isRunning(tab) {
                     ProgressView().controlSize(.mini)
                 } else if let status = status(of: tab) {

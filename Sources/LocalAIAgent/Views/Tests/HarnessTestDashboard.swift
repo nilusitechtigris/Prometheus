@@ -13,6 +13,7 @@ struct HarnessTestDashboard: View {
     /// Off only for debug renders of the whole page.
     var scrollable = true
     @State var detail = Detail.howItWorks
+    @State private var askAboutWeb = false
 
     var body: some View {
         let run = lab.harnessRun(for: testModel?.id)
@@ -31,7 +32,20 @@ struct HarnessTestDashboard: View {
             HarnessOffToggle()
             RunTestButton(title: lab.harnessChoice == nil ? "Run all \(HarnessVersion.allCases.count)" : "Run test",
                           disabled: !canRun || !backends.kind.supportsTools) {
-                lab.runHarnessTest(backends: backends, settings: settings)
+                // The test can't stop to ask about each lookup, so it asks once before it starts.
+                if WebConsent.shared.testNeedsAsking {
+                    askAboutWeb = true
+                } else {
+                    lab.runHarnessTest(backends: backends, settings: settings)
+                }
+            }
+            .confirmationDialog("This test looks things up on the web", isPresented: $askAboutWeb) {
+                Button("Run the Test") {
+                    if canRun { lab.runHarnessTest(backends: backends, settings: settings) }
+                }
+                Button("Cancel", role: .cancel) {}
+            } message: {
+                Text("With the harness on, its knowledge tasks search \(WebConsent.destinations) and open pages from the trusted sites, without asking each time. This is for the test only, whatever Web lookups is set to in chat. The questions are fixed, so nothing of yours is sent.")
             }
         } content: {
             if let run {
@@ -444,7 +458,7 @@ private struct VersionCard: View {
                 VStack(alignment: .leading, spacing: 6) {
                     HStack(spacing: 6) {
                         Text(version.title).font(.uiHeadline)
-                        if version == .latest { Chip(text: "Newest", tint: Palette.accent) }
+                        if version == .recommended { Chip(text: "Recommended", tint: Palette.accent) }
                     }
                     Text(version.summary).font(.uiCaption).foregroundStyle(.secondary)
                         .fixedSize(horizontal: false, vertical: true)

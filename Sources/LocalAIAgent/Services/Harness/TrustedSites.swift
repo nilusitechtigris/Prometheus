@@ -36,7 +36,7 @@ enum TrustedSites {
             ("britannica.com", "Britannica"), ("plato.stanford.edu", "Stanford Encyclopedia of Philosophy"),
             ("iep.utm.edu", "Internet Encyclopedia of Philosophy"), ("merriam-webster.com", "Merriam-Webster"),
             ("etymonline.com", "Online Etymology Dictionary"), ("worldhistory.org", "World History Encyclopedia"),
-            ("archive.org", "Internet Archive"),
+            ("si.edu", "Smithsonian Institution"),
         ])
         + sites(.science, [
             ("nature.com", "Nature"), ("science.org", "Science"), ("scientificamerican.com", "Scientific American"),

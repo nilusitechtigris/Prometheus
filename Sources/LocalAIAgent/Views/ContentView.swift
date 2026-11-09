@@ -44,6 +44,16 @@ struct MainPage: View {
                 TelemetryPanel().transition(.move(edge: .bottom))
             }
         }
+        .overlay(alignment: .bottom) {
+            // The message box shows the question on the Chat page. Anywhere else it would wait unseen.
+            if let request = WebConsent.shared.pending, ui.destination != .chat || dev.isOn {
+                WebConsentCard(request: request)
+                    .frame(maxWidth: 860)
+                    .padding(20)
+                    .transition(.opacity.combined(with: .move(edge: .bottom)))
+            }
+        }
+        .animation(Motion.quick, value: WebConsent.shared.pending)
         .animation(Motion.page, value: ui.destination)
         .animation(Motion.quick, value: settings.chatsOpen)
         .animation(Motion.quick, value: settings.telemetryOpen)

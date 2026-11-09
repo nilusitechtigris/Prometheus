@@ -24,7 +24,7 @@ final class TestLab {
     var selectedHarnessRunID: UUID?
     var selectedHardwareRunID: UUID?
     /// The version of the harness to test and show; nil means every version in turn.
-    var harnessChoice: HarnessVersion? = .latest
+    var harnessChoice: HarnessVersion? = .recommended
 
     private var modelTask: Task<Void, Never>?
     private var hardwareTask: Task<Void, Never>?
@@ -122,6 +122,7 @@ final class TestLab {
     /// Runs a few questions through the harness, for checking changes without a full test.
     func debugSample(ids: [String], backends: BackendController, settings: AppSettings, path: String) {
         guard let model = testModel(in: backends) else { return }
+        WebConsent.shared.allowForChecks()
         Task {
             let setup = await Self.prepare(model, backends: backends, settings: settings)
             var lines: [String] = ["model \(model.id) tools \(setup.supportsTools) harness \(settings.harnessVersion.title)"]
@@ -270,6 +271,9 @@ final class TestLab {
 
         harnessTask = Task { [weak self] in
             guard let self else { return }
+            // The test can't stop to ask about each lookup, so whoever starts it is told first. The yes belongs
+            // to this task alone: nothing else running at the same time can use it.
+            await WebConsent.$inTest.withValue(true) {
             var setup = await Self.prepare(model, backends: backends, settings: settings)
             // A version that always thinks, tested on its own, compares with a run that thinks too.
             if versions.allSatisfy(\.alwaysThinks), setup.think != nil { setup.think = true }
@@ -327,6 +331,7 @@ final class TestLab {
                     selectedHarnessRunID = nil
                     save()
                 }
+            }
             }
             harnessProgress = nil
             harnessTask = nil

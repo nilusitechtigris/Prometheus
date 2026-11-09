@@ -134,7 +134,7 @@ extension TestLab {
                 await runProgram(task, state: &state, mayConfirm: false, setup: setup, total: &total)
             }
         case .fact:
-            if round == 1 || state.wantsEvidence { await research(task, state: &state, setup: setup, total: &total) }
+            if !state.webDeclined, round == 1 || state.wantsEvidence { await research(task, state: &state, setup: setup, total: &total) }
         case .writing, .other:
             break
         }
@@ -306,6 +306,11 @@ extension TestLab {
         if state.hits.isEmpty, let query = await nextQuery(task, state: &state, setup: setup, total: &total) {
             let call = ToolCall(name: "web_search", arguments: ["query": query])
             let found = await HarnessTools.run(call)
+            if found.failed, found.text.hasSuffix(WebTools.declined) {
+                total.toolLog.append(WebTools.declinedNote)
+                state.webDeclined = true
+                return
+            }
             total.toolLog.append(HarnessTools.describe(call) + (found.failed ? HarnessTools.failedMark : ""))
             total.guardRemoved += found.removed
             guard !found.failed else { return }

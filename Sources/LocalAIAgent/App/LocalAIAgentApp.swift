@@ -10,7 +10,7 @@ final class UIState {
 
     var destination: Destination = .home
     /// Which results the Tests page shows.
-    var testTab: TestTab = .model
+    var testTab: TestTab = .hardware
     /// Which section the Settings page shows.
     var settingsTab: SettingsTab = .general
     var showModelPicker = false
@@ -172,7 +172,7 @@ struct LocalAIAgentApp: App {
                     let centered = NSMutableParagraphStyle()
                     centered.alignment = .center
                     let credits = NSAttributedString(
-                        string: "\(Brand.tagline)\nOpen models running on this Mac. With the harness off, nothing leaves it.",
+                        string: "\(Brand.tagline)\nOpen models running on this Mac. Nothing leaves it unless you allow a web lookup.",
                         attributes: [.font: NSFont.systemFont(ofSize: 11), .foregroundColor: NSColor.secondaryLabelColor,
                                      .paragraphStyle: centered])
                     NSApp.orderFrontStandardAboutPanel(options: [.applicationName: Brand.name, .credits: credits])
@@ -255,13 +255,13 @@ struct LocalAIAgentApp: App {
                 }
                 .keyboardShortcut("f")
                 Divider()
-                Button("Model Test Results") { ui.openTests(.model) }
+                Button("Model Test Results") { settings.showLab = true; ui.openTests(.model) }
                     .keyboardShortcut("3", modifiers: [.command, .option])
                 Button("Hardware Test Results") { ui.openTests(.hardware) }
                     .keyboardShortcut("4", modifiers: [.command, .option])
-                Button("Harness Test Results") { ui.openTests(.harness) }
+                Button("Harness Test Results") { settings.showLab = true; ui.openTests(.harness) }
                     .keyboardShortcut("5", modifiers: [.command, .option])
-                Button("Publish Test Results") { ui.openTests(.publish) }
+                Button("Publish Test Results") { settings.showLab = true; ui.openTests(.publish) }
                     .keyboardShortcut("6", modifiers: [.command, .option])
             }
         }

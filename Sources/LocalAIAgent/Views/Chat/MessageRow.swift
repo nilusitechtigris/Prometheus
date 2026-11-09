@@ -118,7 +118,7 @@ private struct HarnessStepsView: View {
     private var rounds: Int { 1 + steps.filter { $0.hasPrefix("Round ") }.count }
 
     private var title: String {
-        let harness = version.map { "Harness \($0.short)" } ?? "Harness"
+        let harness = version?.label ?? "Harness"
         let name = rounds > 1 ? "\(harness) · round \(rounds)" : harness
         if isLive { return "\(name) working…" }
         return "\(name) · \(steps.count) step\(steps.count == 1 ? "" : "s")"
@@ -289,6 +289,7 @@ private struct WaitingIndicator: View {
 
     private var label: String {
         guard let live = chat.live else { return "Waiting…" }
+        if WebConsent.shared.pending != nil { return "Waiting for your answer, above the message box…" }
         if let speaker = live.speaker { return "\(speaker) is on it…" }
         let waited = Date().timeIntervalSince(live.startedAt)
         return waited > 2 ? "Loading model & reading prompt…" : "Waiting for first token…"

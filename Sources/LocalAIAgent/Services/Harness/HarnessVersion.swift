@@ -5,7 +5,10 @@ import Foundation
 enum HarnessVersion: String, Codable, CaseIterable, Identifiable {
     case tools, pipeline, loop, thinking, council
 
-    static let latest = HarnessVersion.council
+    /// What "harness on" means unless someone picks another. The loop led every measured comparison so far:
+    /// 66 against 47 for the council on the published Mac mini run, and it works at the speed of the model's
+    /// own setting, where the council takes several times as long.
+    static let recommended = HarnessVersion.loop
 
     var id: String { rawValue }
 
@@ -31,6 +34,9 @@ enum HarnessVersion: String, Codable, CaseIterable, Identifiable {
     }
 
     var title: String { "\(short) \(name)" }
+
+    /// How a reply or a status line names it: plain "Harness" unless someone picked another version.
+    var label: String { self == .recommended ? "Harness" : "Harness \(short)" }
 
     var summary: String {
         switch self {
@@ -158,7 +164,9 @@ extension TestLab {
             }
             let (result, removed, failed) = await HarnessTools.run(call)
             if !failed { gate.note(call, result: result) }
-            reply.toolLog.append(HarnessTools.describe(call) + (failed ? HarnessTools.failedMark : ""))
+            // A lookup the person didn't allow was never sent, so it isn't listed as a search.
+            let refused = failed && result.hasSuffix(WebTools.declined)
+            reply.toolLog.append(refused ? WebTools.declinedNote : HarnessTools.describe(call) + (failed ? HarnessTools.failedMark : ""))
             reply.guardRemoved += removed
             turns.append(ChatTurn(role: "tool", content: result, toolName: call.name))
         }
