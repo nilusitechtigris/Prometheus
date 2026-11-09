@@ -859,7 +859,11 @@ final class DevSession {
 
     private func loadMessages() -> [DevMessage] {
         guard let file = conversationFile, let data = try? Data(contentsOf: file) else { return [] }
-        return (try? JSONDecoder().decode([DevMessage].self, from: data)) ?? []
+        guard let messages = try? JSONDecoder().decode([DevMessage].self, from: data) else {
+            ConversationStore.setAside(file)
+            return []
+        }
+        return messages
     }
 
     func persist() {

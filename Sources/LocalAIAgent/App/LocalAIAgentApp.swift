@@ -110,6 +110,8 @@ struct LocalAIAgentApp: App {
 
     init() {
         AppFonts.register()
+        // Before anything reads the saved data, so a build that reads it wrongly can't cost the only copy.
+        DataBackup.runIfNeeded()
         let settings = AppSettings()
         let backends = BackendController(settings: settings)
         let chat = ChatController(settings: settings, backends: backends)

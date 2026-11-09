@@ -72,7 +72,11 @@ enum DevCompare {
         guard let data = try? Data(contentsOf: file) else { return [] }
         let decoder = JSONDecoder()
         decoder.dateDecodingStrategy = .iso8601
-        return (try? decoder.decode([DevComparison].self, from: data)) ?? []
+        guard let list = try? decoder.decode([DevComparison].self, from: data) else {
+            ConversationStore.setAside(file)
+            return []
+        }
+        return list
     }
 
     static func save(_ list: [DevComparison]) {

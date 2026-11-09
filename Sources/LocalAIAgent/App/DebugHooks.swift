@@ -54,6 +54,7 @@ import WebKit
 ///   LOCALAI_DELETE_PICKED=1         delete the ticked chats after 3 s
 ///   LOCALAI_WINDOW_SIZE=1380x2400   resize the main window after launch, to snapshot more of a page
 ///   LOCALAI_RENDER_DIR=/path        render both full dashboards (narrow and wide) after LOCALAI_RENDER_DELAY seconds
+///   LOCALAI_BACKUP_CHECK=/path.txt  check the copy made of saved data before a new build touches it
 @MainActor
 enum DebugHooks {
     static func install(chat: ChatController, ui: UIState, lab: TestLab, backends: BackendController,
@@ -206,6 +207,20 @@ enum DebugHooks {
                     }
                 }
             }
+        }
+        if let path = env["LOCALAI_BACKUP_CHECK"] {
+            var lines = DataBackup.selfCheck()
+            // Only ever in a folder made for the check, never in someone's real data.
+            if env["LOCALAI_DATA_DIR"] != nil {
+                let file = ConversationStore.directory.appendingPathComponent("Dev/comparisons.json")
+                try? FileManager.default.createDirectory(at: file.deletingLastPathComponent(), withIntermediateDirectories: true)
+                try? "not json".write(to: file, atomically: true, encoding: .utf8)
+                let read = DevCompare.load()
+                let names = (try? FileManager.default.contentsOfDirectory(atPath: file.deletingLastPathComponent().path)) ?? []
+                let aside = names.contains { $0.hasPrefix("comparisons.unreadable-") }
+                lines.append("\(read.isEmpty && aside ? "PASS" : "FAIL") an unreadable Dev file is set aside, not lost")
+            }
+            try? lines.joined(separator: "\n").write(toFile: path, atomically: true, encoding: .utf8)
         }
         if let path = env["LOCALAI_HARNESS_CHECK"] {
             Task {
