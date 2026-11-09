@@ -4,7 +4,29 @@
 <p align="center"><b>Bring the fire home.</b></p>
 <p align="center">A native Mac app for running open AI models on your own machine, with a harness that helps small models do more.</p>
 
+<p align="center">
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-Apache%202.0-a3e635?style=flat-square&labelColor=111111" alt="Apache 2.0"></a>
+  <img src="https://img.shields.io/badge/macOS%2014%2B-Apple%20Silicon-a3e635?style=flat-square&labelColor=111111" alt="macOS 14 or later on Apple Silicon">
+  <img src="https://img.shields.io/badge/Swift-SwiftUI-a3e635?style=flat-square&labelColor=111111" alt="Swift and SwiftUI">
+  <img src="https://img.shields.io/badge/no%20account-no%20cloud-a3e635?style=flat-square&labelColor=111111" alt="No account, no cloud">
+  <a href="https://github.com/nilusitechtigris/Prometheus/stargazers"><img src="https://img.shields.io/github/stars/nilusitechtigris/Prometheus?style=flat-square&color=a3e635&labelColor=111111" alt="GitHub stars"></a>
+</p>
+
 ![The Prometheus home page](docs/screenshots/home.png)
+
+## Same model, better harness
+
+Everyone is building bigger models. A laptop can't run them, so Prometheus works on the other side: the code around a small model. It runs the math in a sandbox, looks facts up on trusted sites, checks the reply in code and sends it back if it's wrong. The model stays the same, and does more.
+
+| What was tested | Model and Mac | Harness off | Harness on |
+| --- | --- | --- | --- |
+| 24 questions, scored out of 100 | Qwen3 1.7B, MacBook Air M4 | 24 | **62** (v4) |
+| 9 quick tasks, scored out of 100 | Qwen2.5 Coder 7B, Mac mini M4 Pro | 9 | **66** (v3) |
+| 24 coding tasks, hidden checks | Qwen3 1.7B, MacBook Air M4 | 14 of 24 | **21 of 24** (Dev agent) |
+| 10 pages and games, played by code | Qwen3 1.7B, MacBook Air M4 | 4 of 10 | **9 of 10** (Dev agent) |
+| 7 poisoned web pages resisted | Qwen3 1.7B, MacBook Air M4 | 0 or 1 of 7 | **7 of 7** |
+
+Each row is one run on one Mac, so treat it as a first look, not a benchmark. The details are [further down](#results-so-far). **Have an Apple Silicon Mac?** Run the Harness Test and [publish your results](results/README.md): more runs on more Macs and models is what turns these into real numbers.
 
 ## What it is
 
@@ -201,14 +223,23 @@ The Versions tab puts them side by side, question by question, for runs on the s
 
 ### Results so far
 
-Scores out of 100, with thinking on:
+**Max test** (24 questions), scores out of 100, with thinking on, on a MacBook Air M4:
 
 | Model | Context | Off | v1 | v2 | v3 | v4 | v5 |
 | --- | --- | --- | --- | --- | --- | --- | --- |
 | Qwen3 1.7B Q4_K_M | 4K | 24 | 25 | 42 | not run | not run | not run |
 | Qwen3 1.7B FP16 | 8K | 28 | not run | not run | 48 | not run | not run |
+| Qwen3 1.7B Q4_K_M | 8K | 24 | not run | not run | not run | 62 | not run |
 
-These are single runs, so don't read much into small differences, and the two rows use different setups. They also come from an older version of the test, which gave thinking less room on easy questions and marked a few right answers wrong, so new runs won't compare with them. The v3 run came before a calculator fix that affected one 4-point question, and v4 and v5 haven't been scored yet. Injection protection stopped 7 of 7 poisoned pages in these runs, against 0 of 7 without it.
+These are single runs, so don't read much into small differences, and the rows use different setups. They also come from an older version of the test, which gave thinking less room on easy questions and marked a few right answers wrong, so new runs won't compare with them. The v3 run came before a calculator fix that affected one 4-point question. Injection protection stopped 7 of 7 poisoned pages in these runs, against 1 of 7 at most without it.
+
+**Normal test** (9 tasks), scores out of 100, with thinking off, on a Mac mini M4 Pro with 24 GB, from the current version of the test. It's [published in full](results/mac-mini-m4-pro-24gb-2026-11-07-1228.md), with every reply:
+
+| Model | Context | Off | v1 | v2 | v3 | v4 | v5 |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| Qwen2.5 Coder 7B Q8_0 | 16K | 9 | 9 | 47 | 66 | 66 | 47 |
+
+With thinking off, v4 works like v3, so their scores match. In v1 the model wrote its tool calls as plain text instead of making them, then answered anyway: it called element 74 plutonium (it's tungsten). Normal and Max scores don't compare with each other.
 
 ### How v3 works
 
@@ -290,6 +321,14 @@ Conversations are stored in `~/Library/Application Support/LocalAIAgent/conversa
 
 > **Note:** The macOS 27 SDK in Command Line Tools declares SwiftUI's `@State` as a macro whose plugin only ships with Xcode. `build-app.sh` detects this and builds against the newest installed SDK that doesn't need the macro (26.5 here).
 
+## Help it along
+
+Prometheus is made by one person, and the most useful help needs no code:
+
+- **Publish a test run.** Run the Harness Test on your Mac, then press **Publish** ([how](results/README.md)). Any Apple Silicon Mac and any model helps, and M1 to M3 Macs and 8 or 16 GB machines are missing so far.
+- **Stump it.** Found a question that a small model gets wrong even with the harness on? [Open an issue](https://github.com/nilusitechtigris/Prometheus/issues/new) with the question, the model and what came back. Failures are how each version of the harness was made.
+- **Tell someone.** If it's useful to you, a ⭐ helps other people find it.
+
 ## License
 
 The code is licensed under the [Apache License 2.0](LICENSE). A few things in this repository have their own terms, listed in [NOTICE](NOTICE):
@@ -298,4 +337,4 @@ The code is licensed under the [Apache License 2.0](LICENSE). A few things in th
 - **Pictures:** the backgrounds and the icon were made with Canva's AI tools. They aren't under the Apache License, and Canva's [AI Product Terms](https://www.canva.com/policies/ai-product-terms/) apply to them.
 - **Models:** none are included. You download them yourself, and each has its own license, shown in the Model Library.
 
-Prometheus isn't related to the Prometheus monitoring system.
+Prometheus isn't related to the Prometheus monitoring system, or to the Prometheus evaluator models.
