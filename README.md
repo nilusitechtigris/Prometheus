@@ -12,6 +12,8 @@
   <a href="https://github.com/nilusitechtigris/Prometheus/stargazers"><img src="https://img.shields.io/github/stars/nilusitechtigris/Prometheus?style=flat-square&color=a3e635&labelColor=111111" alt="GitHub stars"></a>
 </p>
 
+> **Version 2.0 is in beta.** It's what the install command and **Update** give you today, and it isn't tagged as a release yet. [What's new in 2.0](CHANGELOG.md). The pictures on this page are still from 1.0.
+
 ![The Prometheus home page](docs/screenshots/home.png)
 
 ## Same model, better harness
@@ -26,13 +28,19 @@ Everyone is building bigger models. A laptop can't run them, so Prometheus works
 | 10 pages and games, played by code | Qwen3 1.7B, MacBook Air M4 | 4 of 10 | **9 of 10** (Dev agent) |
 | 7 poisoned web pages resisted | Qwen3 1.7B, MacBook Air M4 | 0 or 1 of 7 | **7 of 7** |
 
-Each row is one run on one Mac, so treat it as a first look, not a benchmark. The details are [further down](#results-so-far). **Have an Apple Silicon Mac?** Run the Harness Test and [publish your results](results/README.md): more runs on more Macs and models is what turns these into real numbers.
+Each row is one run on one Mac, on the app's own test questions, which the harness was developed against. So treat it as a first look, not a benchmark. The details are [further down](#results-so-far).
+
+Version 2.0 adds a **held-out test**: 120 public questions the harness is never tuned on, graded by code, with repeat runs. No held-out results are in yet. When they are, they go here, whatever they show.
+
+**Have an Apple Silicon Mac?** Run the Harness Test and [publish your results](results/README.md): more runs on more Macs and models is what turns these into real numbers.
 
 ## What it is
 
 Prometheus runs open models such as Qwen, Llama and Gemma on your Mac, through Ollama, LM Studio, llama.cpp or MLX LM. There's no account and no cloud service, and your chats stay on your Mac.
 
-Small models are fast and private, but they get arithmetic wrong, misremember facts and break rules like "exactly three words". The **harness** is an optional layer that helps with this. It can run code in a sandbox, search trusted sites, and check replies in code before you see them. It's off by default, because its searches leave your Mac.
+Small models are fast and private, but they get arithmetic wrong, misremember facts and break rules like "exactly three words". The **harness** is a layer of code around the model that helps with this. It runs math and code in a sandbox, checks replies in code before you see them, and can look facts up on trusted sites. A new install starts with it on. Its math, code and rule checks stay on your Mac. Before any web search it shows you what it will send and where, and waits for your yes. You can switch it off under the message box at any time.
+
+**Side by side** asks the plain model and the harness the same question and shows both replies next to each other, with a line from code about what it could check, and a picture of the result you can save and share. The empty chat page has a three-question demo of it.
 
 **Dev mode** turns the chat into a workspace for web apps and Python: open or start a project, and a coding agent writes, runs and fixes code in it, with a Terminal and a live Preview in the window. **Compare** builds the same request with the agent's harness off and on, side by side, to show what it adds.
 
@@ -74,13 +82,13 @@ To keep a copy in your Applications folder, run this as well:
 make install
 ```
 
-**2. Start a framework.** Ollama is the easiest:
+**2. Get a framework.** Ollama is the easiest, and the app walks you through it. If Ollama isn't on your Mac, the chat page has a **Get Ollama** button. It opens Ollama's own download page, and the app carries on by itself once Ollama is running. If Ollama is installed but not running, there's a **Start Ollama** button.
+
+To do it in Terminal instead:
 
 ```bash
 brew install ollama && brew services start ollama
 ```
-
-If Ollama is installed but not running, the app shows a **Start Ollama** button.
 
 To run MLX models as well, install MLX LM, then pick it in **Settings › Frameworks**. The app starts and stops it for you:
 
@@ -94,13 +102,15 @@ The harness runs JavaScript with Node, so install that too if you'll use it:
 brew install node
 ```
 
-**3. Download a model.** Open **Models** in the sidebar and pick one. It shows which models fit your Mac. Qwen3 4B Instruct 2507 is a good first choice on 16 GB.
+**3. Download a model.** With no model yet, the chat page offers a starter picked for your Mac's memory, with one button. On 16 GB that's Qwen3 4B Instruct 2507. **Models** in the sidebar has the rest, and shows which ones fit your Mac.
 
-**4. Chat.** Open **Chat** and send a message. To try the harness, click the **Harness** button under the message box and pick a version.
+**4. Chat.** Open **Chat** and send a message, or press **See the harness at work** for the three-question demo. The **Harness** button under the message box turns the harness off and on. The other versions of it are there too, under **Other versions**.
 
 ### Updating
 
 Open **Settings › Updates** and press **Update**. The app downloads the newest code from GitHub, builds it and restarts itself. You can keep using it during the build, and it waits for a running test, reply or download before it restarts. If anything goes wrong, your copy keeps working.
+
+Before a new build first opens your saved data, it copies your chats, test history, Dev mode's chats and comparisons, and shared notes into a `Backups` folder beside them, and keeps the newest five copies.
 
 It keeps the code in `~/Prometheus`, the same place the new Mac command uses, and it needs the Command Line Tools. It only ever moves forward, because an older build can erase saved chats it can't read. So it won't touch a copy built from code that isn't on `main`, or a `~/Prometheus` folder with changes of its own.
 
@@ -119,6 +129,8 @@ If your copy doesn't have the Updates tab yet, quit the app and paste this into 
 - Streaming replies with Markdown, code blocks, tables and collapsible thinking
 - Stop, regenerate, and saved chats with search (⌘F). Select several chats to delete them together
 - Speed, time and token numbers under every reply
+- **Side by side** (⇧⌘↩): the plain model and the harness answer the same message next to each other, and one click saves a picture of it
+- With the harness on, a card shows each web search before it's sent: **Allow once**, **Always allow** or **Not now**
 - Framework, model and quantization, context window, Think, Harness and temperature under the message box
 - Live hardware telemetry along the bottom (⌥⌘1): GPU, memory and CPU load and temperatures, with no admin rights needed
 
@@ -133,7 +145,7 @@ Press **Dev** (`</>`) under the message box, then start a **New Project** or ope
 - **Terminal:** shows what a program prints. Type into it when a program asks for input, press Stop, or type a command like `python main.py 5`. After an error, click the file and line to jump there, or press **Fix with Agent**.
 - **Preview:** games, charts and web pages run here, with real graphics, keyboard and mouse. Ask for one and it opens by itself. Any errors show up in the Terminal, ready for **Fix with Agent**.
 - **Agent:** tell it what to build or change, or ask about the code. It shows each step and each file it changed, with **Undo** for every reply.
-- **Harness On / Off,** above the agent: off, the model gets one go at your request, and every file in its reply is saved as it came, with nothing run or checked. That's what using the model in a plain chat gives you.
+- **Harness Off / v1 / v2,** above the agent. Off, the model gets one go at your request, and every file in its reply is saved as it came, with nothing run or checked. That's what using the model in a plain chat gives you. **v1** is the agent described below. **v2**, the checked build, builds and fixes like v1, then checks what a first use of the app would show. It tries one fix for each thing it finds, keeps the fix only if it holds, and says what it couldn't fix. v2 is new and has no scores yet, so the switch starts on v1.
 - **Compare** (⧉ beside Send, or the Compare page): builds a request twice on the same model, in two new folders under Documents › Prometheus Projects › Comparisons, first with the harness off and then on. Both apps run side by side, each with its time, its number of model calls and the same scorecard, checked by code: does it show something, open without errors, look styled, work offline, work when used and fit the window. Earlier comparisons stay in a list, and either side opens as a project. Prompts made for testing it, with what each one tests, are in [docs/dev-mode-test-prompts.md](docs/dev-mode-test-prompts.md) and in the Compare page's **Prompts** menu.
 
 The agent is made for small models, which lose track when they drive a long loop of tools by themselves. So code runs the loop, and the model gets one small job at a time, with only what that job needs:
@@ -195,17 +207,23 @@ Verified open models from Meta, Google, Microsoft, Alibaba Qwen, Mistral AI, IBM
 
 ### Tests
 
-One page with three tabs, all laid out the same way:
+The Tests page opens on the **Hardware Test**. Turn on **Lab** there for the rest. All of them are laid out the same way:
 
 - **Model Test** (⌥⌘3): 24 auto-graded questions across math, reasoning, knowledge, instructions, code and long context. Each topic has four levels worth 1, 2, 4 and 8 points. A score of 100 is the level of Claude Opus 5.5 at max effort, from a blind run of the same questions.
 - **Hardware Test** (⌥⌘4, about 30 seconds): CPU, GPU, memory bandwidth and disk speed, plus 15 seconds of sustained GPU load to check for throttling.
-- **Harness Test** (⌥⌘5) comes in two sizes. **Normal** is a quick check: 9 tasks across Coding, Knowledge and Instructions, which show the code sandbox, web search and the rule checks at work. **Max** is the full test: the same 24 questions with the harness off and on, then 7 poisoned web pages both ways. Their scores don't compare. Turn off **Harness off too** to run with the harness on only.
+- **Harness Test** (⌥⌘5) comes in four sizes, and scores from different sizes don't compare.
+  - **Normal** is a quick check: 9 tasks across Coding, Knowledge and Instructions, which show the code sandbox, web search and the rule checks at work.
+  - **Max** is the app's full test: the same 24 questions with the harness off and on, then 7 poisoned web pages both ways.
+  - **Held-out** asks 120 public questions, from GSM8K, GSM-Plus, IFEval and MBPP, that the harness is never tuned on. Code grades every one, and the app shows totals without showing the questions or replies.
+  - **Practice** asks 60 more of the same kinds. That's where failures get studied, so a gain there proves nothing.
+
+  Choose **3 runs** to repeat a test and see every round's score, the mean and the spread. For any two runs on the same questions, the page counts the answers that flipped each way and says how often chance alone would split them that unevenly. Turn off **Harness off too** to run with the harness on only. How the public questions were picked, their licences and what a score on them can't show are in [benchmarks/heldout](benchmarks/heldout/README.md).
 
 **Publish** (⌥⌘6) shares your results. Tick the runs you want and press **Publish**. The app saves a JSON file and a readable report named after your Mac and the date, then opens GitHub, where you drag them in to make a pull request. Each task shows its reply, the end of the model's thinking, its token counts, time and points. People's results are in [results](results/README.md), which also describes the files.
 
 ## The harness
 
-Every version stays available, in chat and in the Harness Test, so you can compare them on your own models.
+**Harness on** means v3, the loop. In the one published run where every version shared a setup it scored highest, level with v4, and it's the simplest of the versions that check a reply and try again. Every other version stays in the app, under **Other versions** in chat and in the Harness Test, so you can compare them on your own models.
 
 | Version | What it does |
 | --- | --- |
@@ -213,7 +231,8 @@ Every version stays available, in chat and in the Harness Test, so you can compa
 | **v2 Pipeline** | The harness works out what the task needs and runs one tool, then the model answers from what it found. Kept exactly as it was. |
 | **v3 Loop** | The pipeline, plus code that checks each reply and goes round again until it passes. |
 | **v4 Thinking loop** | The loop, with the model thinking through every step it takes part in. Needs Think on: with it off, it works like v3. |
-| **v5 Council** | The newest. Code prepares a shared notes file, then three agents with their own personality and temperature discuss the task in it, thinking on. |
+| **v5 Council** | Code prepares a shared notes file, then three agents with their own personality and temperature discuss the task in it, thinking on. |
+| **v6 Evidence loop** | New in 2.0, and not scored yet. The loop with stricter evidence: code works out dates, letter counts and sums itself, a looked-up answer only counts when one sentence on the page holds it, and its steps end by saying what was checked. Two rounds at most. |
 
 ![The Harness Test results](docs/screenshots/harness.png)
 
@@ -222,6 +241,8 @@ The Versions tab puts them side by side, question by question, for runs on the s
 ![Each harness version compared, question by question](docs/screenshots/harness-versions.png)
 
 ### Results so far
+
+None of these are held-out results. They come from the app's own questions, which the harness was developed against, and each is a single run. v6 isn't in them: it has no test runs yet.
 
 **Max test** (24 questions), scores out of 100, with thinking on, on a MacBook Air M4:
 
@@ -283,7 +304,7 @@ Yes. All six Qwen3 models tried so far (1.7B, 4B and 8B, in several quantization
 ## Privacy and safety
 
 - **Harness off:** the only internet access is downloading models you choose, through your framework, and updating the app when you press **Update**. It never checks for updates by itself. The app runs MLX LM offline, so it only reaches Hugging Face when you download a model.
-- **Harness on:** search terms go to Wikipedia, Stack Overflow, arXiv and MDN, and pages come only from a list of 100 trusted sites. Every search and page is listed above the reply.
+- **Harness on:** math, code and rule checks run on your Mac. Before a web search, the app shows the search and where it goes, and waits for your answer: allow once, always allow, or not now. **Settings › Harness** sets it to ask first, always or never. When you allow it, search terms go to Wikipedia, Stack Overflow, arXiv and MDN, and pages come only from a list of 100 trusted sites. Every search and page is listed above the reply. The Harness Test asks once before it starts, because it can't stop to ask for each lookup.
 - **Publishing:** the app sends nothing itself. The file holds the runs you chose and your Mac's kind, chip, core counts, memory and macOS version, but never your chats, your name, your computer's name or its serial number. It only goes online if you paste it into GitHub and submit it, and it's public once you do.
 - **Code** runs in a deny-by-default macOS sandbox with no internet, no other programs and no access to your files, limited to 10 seconds, 1 GB of memory and 10 MB of files.
 - **Dev mode** stays on this Mac: your code only goes to the model running here. The agent can only touch files inside the folder you opened. It tests in a copy of the folder that leaves out hidden files such as `.env`, for up to 15 seconds a run. Programs you start in the Terminal run in the folder itself, so they can change its files, but the same sandbox keeps them from the internet, other programs and everything outside it, for up to 10 minutes and 2 GB of memory. They can't write hidden files either, so a program can't plant a Git hook that would later run outside the sandbox. The agent and a program in the Terminal take turns, so nothing changes the folder while the agent saves.
@@ -299,6 +320,7 @@ The harness needs Ollama or MLX LM, and a model that supports tools for v1.
 ```
 assets/art/                 AI-generated pictures; originals/ holds the unedited exports
 assets/fonts/               Geist and Geist Mono (SIL Open Font License)
+benchmarks/heldout/         The held-out and practice questions, their licences and the rules for using them
 docs/screenshots/           The pictures in this file
 Sources/SensorsC/           C bridge: Apple SMC + HID temperature sensors
 Sources/LocalAIAgent/
@@ -313,11 +335,12 @@ Sources/LocalAIAgent/
 results/                    Test results people have published, and the file format
 scripts/build-app.sh        Builds and ad-hoc signs the .app bundle
 scripts/dev_tasks.py        The coding tasks Dev mode's agent is measured on
+scripts/heldout/sample.py   Draws the held-out and practice questions from their public sources, the same way every time
 scripts/setup-mac.sh        Takes a new Mac from nothing to the running app
 scripts/update-app.sh       Updates the app to the newest code; the Update button runs this too
 ```
 
-Conversations are stored in `~/Library/Application Support/LocalAIAgent/conversations.json`.
+Conversations are stored in `~/Library/Application Support/LocalAIAgent/conversations.json`. Copies made before a new build opens them are in `Backups` in the same folder.
 
 > **Note:** The macOS 27 SDK in Command Line Tools declares SwiftUI's `@State` as a macro whose plugin only ships with Xcode. `build-app.sh` detects this and builds against the newest installed SDK that doesn't need the macro (26.5 here).
 
@@ -325,7 +348,7 @@ Conversations are stored in `~/Library/Application Support/LocalAIAgent/conversa
 
 Prometheus is made by one person, and the most useful help needs no code:
 
-- **Publish a test run.** Run the Harness Test on your Mac, then press **Publish** ([how](results/README.md)). Any Apple Silicon Mac and any model helps, and M1 to M3 Macs and 8 or 16 GB machines are missing so far.
+- **Publish a test run.** Run the Harness Test on your Mac, then press **Publish** ([how](results/README.md)). A **Held-out** run with **3 runs** is the most useful one now. Any Apple Silicon Mac and any model helps, and M1 to M3 Macs and 8 or 16 GB machines are missing so far.
 - **Stump it.** Found a question that a small model gets wrong even with the harness on? [Open an issue](https://github.com/nilusitechtigris/Prometheus/issues/new) with the question, the model and what came back. Failures are how each version of the harness was made.
 - **Tell someone.** If it's useful to you, a ⭐ helps other people find it.
 

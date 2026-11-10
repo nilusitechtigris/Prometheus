@@ -24,6 +24,9 @@ final class AppUpdater {
         .appendingPathComponent("Library/Logs/Prometheus-update.log")
     private static let script = Bundle.main.path(forResource: "update-app", ofType: "sh")
 
+    /// The release this copy belongs to, such as "2.0.0-beta". Only copies made by the build script have one.
+    static let version: String? = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String
+
     /// The commit this copy was built from. Only copies made by the build script have one.
     static let commit: String? = {
         let value = Bundle.main.object(forInfoDictionaryKey: "PrometheusCommit") as? String

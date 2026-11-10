@@ -305,7 +305,9 @@ private struct UpdateSettings: View {
         Form {
             Section {
                 LabeledContent("This version") {
-                    Text(AppUpdater.commit.map { String($0.prefix(7)) } ?? "Development build").font(.geistMono(13))
+                    // The version says which release this is, and the commit says exactly which code.
+                    Text([AppUpdater.version, AppUpdater.commit.map { String($0.prefix(7)) } ?? "development build"]
+                        .compactMap { $0 }.joined(separator: " · ")).font(.geistMono(13))
                 }
                 HStack(spacing: 10) {
                     status

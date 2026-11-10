@@ -7,7 +7,8 @@ APP_NAME="Prometheus"
 EXECUTABLE="LocalAIAgent"
 # Kept from the original "Local AI Agent" name so existing settings carry over.
 BUNDLE_ID="com.localaiagent.app"
-VERSION="1.0.0"
+# "beta" until the 2.0.0 release is tagged: main is built by Update on other people's Macs before then.
+VERSION="2.0.0-beta"
 APP="build/${APP_NAME}.app"
 # Lets an update tell whether it's moving forward. See scripts/update-app.sh.
 COMMIT="$(git rev-parse HEAD 2>/dev/null || true)"
