@@ -75,14 +75,14 @@ private struct HomeHero: View {
                     chat.newConversation()
                     ui.composerFocusRequest += 1
                 } label: {
-                    Label("Start a New Task", systemImage: "play.fill")
+                    Label("Start a new task", systemImage: "play.fill")
                 }
                 .buttonStyle(AccentButtonStyle())
                 Button {
                     ui.destination = .library
                 } label: {
                     HStack(spacing: 8) {
-                        Text("Browse Models")
+                        Text("Browse models")
                         Image(systemName: "arrow.right")
                     }
                 }
@@ -108,15 +108,15 @@ private struct TaskBuilder: View {
 
     private let templates: [(symbol: String, title: String, starter: String)] = [
         ("doc.text", "Summarize", "Summarize this in 3 key points:\n\n"),
-        ("tablecells", "Extract Data", "Extract the names, dates and amounts from this as a table:\n\n"),
-        ("chart.bar", "Analyze Content", "Analyze this and tell me what matters most:\n\n"),
-        ("wand.and.stars", "Build Assistant", "Act as an assistant that helps me with "),
+        ("tablecells", "Extract data", "Extract the names, dates and amounts from this as a table:\n\n"),
+        ("chart.bar", "Analyze content", "Analyze this and tell me what matters most:\n\n"),
+        ("wand.and.stars", "Build an assistant", "Act as an assistant that helps me with "),
     ]
 
     private var canSend: Bool { chat.canSend && !task.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
 
     var body: some View {
-        PanelWidget(title: "Task Builder", symbol: "bolt.fill") {
+        PanelWidget(title: "Task builder", symbol: "bolt.fill") {
             Button { showOptions.toggle() } label: {
                 HStack(spacing: 5) {
                     Image(systemName: "slider.horizontal.3")
@@ -127,9 +127,9 @@ private struct TaskBuilder: View {
                 .foregroundStyle(Forge.dim)
                 .padding(.horizontal, 10)
                 .padding(.vertical, 5)
-                .overlay(Capsule().strokeBorder(Forge.line, lineWidth: 1))
+                .overlay(Capsule(style: .circular).strokeBorder(Forge.line, lineWidth: 1))
             }
-            .buttonStyle(.plain)
+            .buttonStyle(.soft)
             .help("Temperature, response length and system instructions")
             .popover(isPresented: $showOptions, arrowEdge: .bottom) { GenerationOptionsView().environment(settings) }
         } content: {
@@ -151,9 +151,8 @@ private struct TaskBuilder: View {
                         .foregroundStyle(Palette.onAccent)
                         .frame(width: 32, height: 32)
                         .background(Palette.gradient, in: RoundedRectangle(cornerRadius: 9, style: .continuous))
-                        .opacity(canSend ? 1 : 0.4)
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(.soft)
                 .disabled(!canSend)
                 .help("Start this task in a new chat")
             }
@@ -163,10 +162,10 @@ private struct TaskBuilder: View {
             .background(Color.black.opacity(0.35), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
             .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous)
                 .strokeBorder(focused ? Palette.accent.opacity(0.6) : Forge.line, lineWidth: 1))
-            ViewThatFits(in: .horizontal) {
-                HStack(spacing: 8) { chips }
-                LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 8) { chips }
-            }
+            // One line when they fit. In a narrow window they wrap, still starting at the left edge: a grid
+            // centred each one in its column, which lined up with nothing.
+            FlowLayout(spacing: 8, lineSpacing: 8) { chips }
+                .frame(maxWidth: .infinity, alignment: .leading)
         }
     }
 
@@ -183,10 +182,10 @@ private struct TaskBuilder: View {
                 .font(.uiCaption)
                 .padding(.horizontal, 13)
                 .padding(.vertical, 8)
-                .overlay(Capsule().strokeBorder(Forge.line, lineWidth: 1))
-                .contentShape(Capsule())
+                .overlay(Capsule(style: .circular).strokeBorder(Forge.line, lineWidth: 1))
+                .contentShape(Capsule(style: .circular))
             }
-            .buttonStyle(.plain)
+            .buttonStyle(.soft)
             .help("Start from this template")
         }
     }
@@ -210,18 +209,18 @@ private struct RecentTasks: View {
     private var recent: [Conversation] { Array(chat.conversations.filter { !$0.messages.isEmpty }.prefix(3)) }
 
     var body: some View {
-        PanelWidget(title: "Your Recent Tasks", symbol: "clock.arrow.circlepath") {
+        PanelWidget(title: "Your recent tasks", symbol: "clock.arrow.circlepath") {
             Button {
                 ui.destination = .chat
             } label: {
                 HStack(spacing: 5) {
-                    Text("View All")
+                    Text("View all")
                     Image(systemName: "arrow.right")
                 }
                 .font(.uiCaption)
                 .foregroundStyle(Palette.accent)
             }
-            .buttonStyle(.plain)
+            .buttonStyle(.soft)
         } content: {
             if recent.isEmpty {
                 Text("Tasks you start will show here.").font(.uiCallout).foregroundStyle(Forge.dim)
@@ -278,7 +277,7 @@ private struct RecentTasks: View {
             .overlay(shape.strokeBorder(Forge.line, lineWidth: 1))
             .contentShape(shape)
         }
-        .buttonStyle(.plain)
+        .buttonStyle(.soft)
     }
 }
 
@@ -292,7 +291,7 @@ private struct ActiveModelCard: View {
     @Environment(UIState.self) private var ui
 
     var body: some View {
-        PanelWidget(title: "Active Model", symbol: "cpu") {
+        PanelWidget(title: "Active model", symbol: "cpu") {
             EmptyView()
         } content: {
             if let model = backends.selectedModel {
@@ -322,7 +321,7 @@ private struct ActiveModelCard: View {
                 ui.destination = backends.selectedModel == nil ? .chat : .library
             } label: {
                 HStack(spacing: 6) {
-                    Text(backends.selectedModel == nil ? "Set It Up" : "Change Model")
+                    Text(backends.selectedModel == nil ? "Set it up" : "Change model")
                     Image(systemName: "arrow.right")
                 }
                 .frame(maxWidth: .infinity)
@@ -349,7 +348,7 @@ private struct ActiveModelCard: View {
             .foregroundStyle(verdict.level.color)
             .padding(.horizontal, 7)
             .padding(.vertical, 3)
-            .background(verdict.level.color.opacity(0.13), in: Capsule())
+            .background(verdict.level.color.opacity(0.13), in: Capsule(style: .circular))
         }
     }
 
@@ -384,7 +383,7 @@ private struct ProTip: View {
     @Environment(UIState.self) private var ui
 
     var body: some View {
-        PanelWidget(title: "Pro Tip", symbol: "lightbulb") {
+        PanelWidget(title: "Tip", symbol: "lightbulb") {
             EmptyView()
         } content: {
             Text("The harness checks a small model's maths, code and rules before you see the reply.")
@@ -396,14 +395,14 @@ private struct ProTip: View {
                 ui.destination = .settings
             } label: {
                 HStack(spacing: 5) {
-                    Text("Learn More")
+                    Text("Learn more")
                     Image(systemName: "arrow.right")
                 }
                 .font(.uiCaption)
                 .foregroundStyle(Palette.accent)
                 .frame(maxWidth: .infinity, alignment: .trailing)
             }
-            .buttonStyle(.plain)
+            .buttonStyle(.soft)
         }
     }
 }

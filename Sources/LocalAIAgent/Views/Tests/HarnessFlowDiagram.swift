@@ -55,7 +55,7 @@ struct HarnessFlowDiagram: View {
                     .font(.uiCaption.weight(.semibold))
                     .foregroundStyle(Palette.accent)
                     .padding(.horizontal, 8)
-                    .background(Color(nsColor: .windowBackgroundColor).opacity(0.9), in: Capsule())
+                    .background(Color(nsColor: .windowBackgroundColor).opacity(0.9), in: Capsule(style: .circular))
                     .offset(y: 11)
             }
             .frame(height: 26)

@@ -41,13 +41,15 @@ struct PageHeader<Controls: View>: View {
         // Controls sit beside the title while the title keeps room for its subtitle, and move under it
         // on a narrow window, rather than pushing the whole page wider than the window.
         ViewThatFits(in: .horizontal) {
-            HStack(alignment: .center, spacing: 30) {
+            // Top-aligned, so the buttons sit at the same height on every page, however many lines of
+            // caption each has under them.
+            HStack(alignment: .top, spacing: 30) {
                 heading.frame(minWidth: 0, idealWidth: 300, maxWidth: .infinity, alignment: .leading)
-                controlBlock(.trailing)
+                controlBlock(.trailing, wraps: false).padding(.top, 6)
             }
             VStack(alignment: .leading, spacing: 12) {
                 heading
-                controlBlock(.leading)
+                controlBlock(.leading, wraps: true)
             }
         }
     }
@@ -63,17 +65,28 @@ struct PageHeader<Controls: View>: View {
         }
     }
 
-    private func controlBlock(_ alignment: HorizontalAlignment) -> some View {
-        VStack(alignment: alignment, spacing: 6) {
-            HStack(spacing: 8) { controls }
+    /// Under the title, `wraps` lets the controls take a second line. Kept on one line there, a page with
+    /// many of them grew wider than a small window and pushed the sidebar out of it.
+    @ViewBuilder
+    private func controlBlock(_ alignment: HorizontalAlignment, wraps: Bool) -> some View {
+        let block = VStack(alignment: alignment, spacing: 6) {
+            if wraps {
+                FlowLayout(spacing: 8, lineSpacing: 8) { controls }
+            } else {
+                HStack(spacing: 8) { controls }
+            }
             if let caption {
-                Text(caption).font(.uiCaption).foregroundStyle(.secondary)
+                Text(caption).font(.uiCaption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
             }
             if let notice {
-                Text(notice).font(.uiCaption).foregroundStyle(Palette.accent)
+                Text(notice).font(.uiCaption).foregroundStyle(Palette.accent).fixedSize(horizontal: false, vertical: true)
             }
         }
-        .fixedSize(horizontal: true, vertical: false)
+        if wraps {
+            block.frame(maxWidth: .infinity, alignment: .leading)
+        } else {
+            block.fixedSize(horizontal: true, vertical: false)
+        }
     }
 }
 
@@ -131,7 +144,7 @@ struct TestPage<Controls: View, Content: View>: View {
 
 /// Block sizes every test page uses, so each block has the same size and place on all of them.
 enum TestLayout {
-    static let overviewHeight: CGFloat = 236
+    static let overviewHeight: CGFloat = 248
     static let panelHeight: CGFloat = 330
     static let runsHeight: CGFloat = 200
     static let tileSpacing: CGFloat = 12
@@ -234,7 +247,7 @@ struct TestHero<Chips: View>: View {
                     Text(label).font(.uiCaption2).foregroundStyle(.secondary)
                 }
             }
-            Text(note).font(.uiCaption2).foregroundStyle(.tertiary).lineLimit(1).minimumScaleFactor(0.85)
+            Text(note).font(.uiCaption2).foregroundStyle(.secondary).lineLimit(1).minimumScaleFactor(0.85)
         }
     }
 }
@@ -284,7 +297,7 @@ struct TestDetails<Tab: Hashable, Content: View>: View {
                     } label: {
                         UnderlineTab(title: tab.title, selected: selection == tab.id, bar: underline)
                     }
-                    .buttonStyle(.plain)
+                    .buttonStyle(.soft)
                 }
             }
         } content: {
@@ -362,7 +375,7 @@ struct TestRunRow: View {
             Text(date.formatted(date: .abbreviated, time: .shortened)).font(.uiCallout.monospacedDigit()).frame(width: 170, alignment: .leading)
             Text(title).font(.uiCallout).lineLimit(1)
             if let tag {
-                Text(tag).font(.uiCaption2).foregroundStyle(.tertiary)
+                Text(tag).font(.uiCaption2).foregroundStyle(.secondary)
             }
             Spacer()
             Text(result).font(.uiCallout.monospacedDigit()).foregroundStyle(.secondary)
@@ -389,8 +402,8 @@ struct MetricTile: View {
     var level: HealthLevel?
 
     var body: some View {
-        Card(padding: 12) {
-            VStack(alignment: .leading, spacing: 6) {
+        Card(padding: 16) {
+            VStack(alignment: .leading, spacing: 4) {
                 HStack(spacing: 6) {
                     if let symbol { Image(systemName: symbol).font(.uiCaption).foregroundStyle(Palette.accent) }
                     Text(title).font(.uiCaption.weight(.medium)).foregroundStyle(.secondary).lineLimit(1)
@@ -402,7 +415,8 @@ struct MetricTile: View {
                         .font(.uiDisplay(size: 26, weight: .semibold))
                         .monospacedDigit()
                         .lineLimit(1)
-                        .minimumScaleFactor(0.7)
+                        .minimumScaleFactor(0.85)
+                        .layoutPriority(1)
                     if let unit { Text(unit).font(.uiCallout).foregroundStyle(.secondary).lineLimit(1) }
                 }
                 if let caption {
@@ -421,8 +435,8 @@ struct ProgressStrip: View {
     var body: some View {
         GeometryReader { geo in
             ZStack(alignment: .leading) {
-                Capsule().fill(Color.primary.opacity(0.08))
-                Capsule().fill(Palette.gradient).frame(width: max(geo.size.width * min(max(fraction, 0), 1), 6))
+                Capsule(style: .circular).fill(Color.primary.opacity(0.08))
+                Capsule(style: .circular).fill(Palette.gradient).frame(width: max(geo.size.width * min(max(fraction, 0), 1), 6))
             }
         }
         .frame(height: 6)
@@ -470,7 +484,6 @@ struct RunTestButton: View {
         }
         .buttonStyle(AccentButtonStyle(compact: true))
         .controlSize(.large)
-        .opacity(disabled ? 0.45 : 1)
         .disabled(disabled)
     }
 }

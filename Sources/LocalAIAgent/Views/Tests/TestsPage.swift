@@ -86,7 +86,7 @@ private struct TestTabBar: View {
             }
             .contentShape(Rectangle())
         }
-        .buttonStyle(.plain)
+        .buttonStyle(.soft)
         .help(tab == .publish ? "Share your results on GitHub" : "Show the \(tab.title.lowercased()) test results")
     }
 

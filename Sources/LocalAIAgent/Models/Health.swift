@@ -131,6 +131,12 @@ struct Threshold {
     let displayMax: Double
     var displayMin: Double = 0
 
+    /// Where the yellow and red parts of the bar start, in words, for a tooltip.
+    func scaleNote(unit: String) -> String {
+        higherIsWorse ? "The bar turns yellow at \(Int(warning))\(unit) and red at \(Int(critical))\(unit)."
+                      : "The bar turns yellow below \(Int(warning))\(unit) and red below \(Int(critical))\(unit)."
+    }
+
     func level(_ value: Double?) -> HealthLevel {
         guard let value, value.isFinite else { return .unknown }
         if higherIsWorse {

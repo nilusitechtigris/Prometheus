@@ -14,7 +14,8 @@ struct ModelLibraryView: View {
                 PageHeader(title: "Model Library", subtitle: subtitle, caption: frameworkCaption) { FrameworkSwitch() }
                 SafetyCallout()
                 filterBar
-                LazyVGrid(columns: [GridItem(.adaptive(minimum: 290, maximum: 420), spacing: 14)], spacing: 14) {
+                // Cards in a row share a top edge and a height, whatever each one's button is.
+                LazyVGrid(columns: [GridItem(.adaptive(minimum: 290, maximum: 420), spacing: 14, alignment: .top)], spacing: 14) {
                     ForEach(filtered) { model in
                         ModelCard(model: model)
                     }
@@ -71,10 +72,10 @@ struct ModelLibraryView: View {
                 .font(.uiCallout)
                 .padding(.horizontal, 10)
                 .padding(.vertical, 5)
-                .background(active ? AnyShapeStyle(Palette.accent.opacity(0.18)) : AnyShapeStyle(.quaternary.opacity(0.5)), in: Capsule())
+                .background(active ? AnyShapeStyle(Palette.accent.opacity(0.18)) : AnyShapeStyle(.quaternary.opacity(0.5)), in: Capsule(style: .circular))
                 .foregroundStyle(active ? Palette.accent : .primary)
         }
-        .buttonStyle(.plain)
+        .buttonStyle(.soft)
     }
 
     private var filtered: [CatalogModel] {
@@ -240,6 +241,8 @@ struct ModelCard: View {
                     Spacer(minLength: 6)
                     action(variant).fixedSize()
                 }
+                // As tall as its tallest button, so a card to use and a card to download are the same height.
+                .frame(minHeight: 28)
             }
         }
         .confirmationDialog("Remove \(model.displayName) \(variant.quant)?", isPresented: $confirmRemove, titleVisibility: .visible) {
@@ -267,7 +270,7 @@ struct ModelCard: View {
                         in: RoundedRectangle(cornerRadius: 6, style: .continuous))
             .foregroundStyle(selected ? Palette.onAccent : (isInstalled ? Palette.accent : Color.secondary))
         }
-        .buttonStyle(.plain)
+        .buttonStyle(.soft)
         .help("\(v.quant) · \(v.quality) · \(v.size)\(isInstalled ? " · installed" : "")")
     }
 
@@ -298,10 +301,16 @@ struct ModelCard: View {
             }
         } else if let installed {
             let inUse = backends.selectedModel?.id == installed.id
-            HStack(spacing: 4) {
-                Button(inUse ? "In Use" : "Use") { backends.select(installed) }
-                    .controlSize(.small)
-                    .disabled(inUse)
+            HStack(spacing: 6) {
+                if inUse {
+                    Label("In use", systemImage: "checkmark")
+                        .font(.uiCaption.weight(.semibold))
+                        .foregroundStyle(Palette.accent)
+                        .padding(.horizontal, 6)
+                } else {
+                    Button("Use") { backends.select(installed) }
+                        .buttonStyle(OutlineButtonStyle(compact: true))
+                }
                 if backends.kind.supportsModelDownloads {
                     Menu {
                         Button("Remove from Disk…", role: .destructive) { confirmRemove = true }

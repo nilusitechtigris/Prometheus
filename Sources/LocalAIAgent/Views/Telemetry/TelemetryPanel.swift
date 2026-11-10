@@ -33,7 +33,7 @@ struct TelemetryPanelToggle: View {
                 .frame(width: 22, height: 22)
                 .contentShape(Rectangle())
         }
-        .buttonStyle(.plain)
+        .buttonStyle(.soft)
         .help("Collapse the telemetry panel (⌥⌘1)")
     }
 }

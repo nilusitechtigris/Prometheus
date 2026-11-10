@@ -25,7 +25,7 @@ struct SettingsView: View {
                         } label: {
                             UnderlineTab(title: tab.title, selected: ui.settingsTab == tab, bar: underline)
                         }
-                        .buttonStyle(.plain)
+                        .buttonStyle(.soft)
                     }
                     Spacer()
                 }
@@ -48,9 +48,10 @@ struct SettingsView: View {
                 }
             }
             .scrollContentBackground(.hidden)
-            // The form keeps a comfortable width and lines up with the header.
+            // The form keeps a comfortable width. Its cards start 8 points further in than it does, so it is
+            // pulled back by that much to put their left edge under the page title's.
             .frame(maxWidth: 760, maxHeight: .infinity)
-            .padding(.leading, 4)
+            .padding(.leading, -4)
             .frame(maxWidth: 1180, alignment: .leading)
             .frame(maxWidth: .infinity)
         }
@@ -77,6 +78,8 @@ private struct AppearanceSettings: View {
                 Text("Themes change accents, the composer glow and the ambient background. Green, yellow and red always keep their health meaning.")
                     .font(.uiCaption)
                     .foregroundStyle(.secondary)
+                    .multilineTextAlignment(.leading)
+                    .frame(maxWidth: .infinity, alignment: .leading)
             }
         }
         .formStyle(.grouped)
@@ -112,7 +115,7 @@ private struct ThemeSwatch: View {
                 }
             }
         }
-        .buttonStyle(.plain)
+        .buttonStyle(.soft)
         .onHover { h in withAnimation(Motion.quick) { hovering = h } }
     }
 }
@@ -165,6 +168,8 @@ private struct FrameworkSettings: View {
                 Text("All frameworks run on this Mac. Ollama and MLX LM support one-click downloads and per-chat context windows, and the app starts MLX LM when you choose it. LM Studio and llama.cpp use their own OpenAI-compatible servers.")
                     .font(.uiCaption)
                     .foregroundStyle(.secondary)
+                    .multilineTextAlignment(.leading)
+                    .frame(maxWidth: .infinity, alignment: .leading)
             }
         }
         .formStyle(.grouped)
@@ -194,6 +199,7 @@ private struct FrameworkRow: View {
                 save()
                 backends.switchBackend(to: kind)
             }
+            .frame(width: 64)
             .disabled(kind == backends.kind)
         }
         .onAppear { url = settings.baseURLs[kind.rawValue] ?? "" }
@@ -221,6 +227,8 @@ private struct HarnessSettings: View {
                      + (backends.kind.supportsTools ? "" : " It works with Ollama and MLX LM, so it's resting while \(backends.kind.displayName) is chosen."))
                     .font(.uiCaption)
                     .foregroundStyle(.secondary)
+                    .multilineTextAlignment(.leading)
+                    .frame(maxWidth: .infinity, alignment: .leading)
             }
             Section {
                 WebLookupsPicker()
@@ -228,6 +236,8 @@ private struct HarnessSettings: View {
                 Text("A lookup sends search terms, written from your message, and the addresses of the pages it reads. The sites see those and your IP address, and nothing else from your chat. Pages come from a list of \(TrustedSites.all.count) trusted sites, and every search and page is listed with the reply.")
                     .font(.uiCaption)
                     .foregroundStyle(.secondary)
+                    .multilineTextAlignment(.leading)
+                    .frame(maxWidth: .infinity, alignment: .leading)
             }
             Section {
                 Picker("Version", selection: $settings.harnessVersion) {
@@ -244,6 +254,8 @@ private struct HarnessSettings: View {
                 Text("Every design of the harness stays in the app, so you can compare them on your own models in Tests. In \(HarnessVersion.loop.short) and \(HarnessVersion.thinking.short), rounds are how many times it may go back and try again when a reply fails its checks. In \(HarnessVersion.council.short), they're how many times the three agents may go round the shared notes. More rounds can fix more replies, and take longer.")
                     .font(.uiCaption)
                     .foregroundStyle(.secondary)
+                    .multilineTextAlignment(.leading)
+                    .frame(maxWidth: .infinity, alignment: .leading)
             }
         }
         .formStyle(.grouped)
@@ -274,6 +286,8 @@ private struct SafetySettings: View {
                 Text("Only enable this if you trust where a model came from. Unverified models show an orange shield.")
                     .font(.uiCaption)
                     .foregroundStyle(.secondary)
+                    .multilineTextAlignment(.leading)
+                    .frame(maxWidth: .infinity, alignment: .leading)
             }
             Section("Privacy") {
                 Label("Your chats are saved only on this Mac. The app goes online for three things: downloading a model you choose, through your framework; updating when you press Update; and the harness's web lookups, which ask first unless you've chosen otherwise in Settings › Harness. A lookup sends search terms, written from your message, and page addresses.", systemImage: "lock.shield")
@@ -291,7 +305,7 @@ private struct UpdateSettings: View {
         Form {
             Section {
                 LabeledContent("This version") {
-                    Text(AppUpdater.commit.map { String($0.prefix(7)) } ?? "Unknown").font(.geistMono(13))
+                    Text(AppUpdater.commit.map { String($0.prefix(7)) } ?? "Development build").font(.geistMono(13))
                 }
                 HStack(spacing: 10) {
                     status

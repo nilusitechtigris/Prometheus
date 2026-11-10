@@ -45,7 +45,7 @@ struct ComposerView: View {
                             .background(Circle().fill(.primary.opacity(0.85)))
                             .foregroundStyle(Color(nsColor: .windowBackgroundColor))
                     }
-                    .buttonStyle(.plain)
+                    .buttonStyle(.soft)
                     .help("Stop generating (⌘.)")
                     .transition(.scale.combined(with: .opacity))
                 } else {
@@ -56,7 +56,7 @@ struct ComposerView: View {
                             .foregroundStyle(canCompare ? Palette.accent : Color.secondary.opacity(0.5))
                             .contentShape(Circle())
                     }
-                    .buttonStyle(.plain)
+                    .buttonStyle(.soft)
                     .disabled(!canCompare)
                     .help(backends.kind.supportsTools
                           ? "Side by side: ask the plain model and the harness the same thing (⇧⌘↩)"
@@ -73,7 +73,7 @@ struct ComposerView: View {
                             .foregroundStyle(Palette.onAccent)
                             .shadow(color: canSend ? Palette.accent.opacity(0.45) : .clear, radius: 6, y: 2)
                     }
-                    .buttonStyle(.plain)
+                    .buttonStyle(.soft)
                     .disabled(!canSend)
                     .help("Send (↩) · new line with ⌥↩")
                     .transition(.scale.combined(with: .opacity))
@@ -122,26 +122,29 @@ struct ComposerView: View {
         .onChange(of: ui.composerFocusRequest) { focused = true }
     }
 
-    /// `narrow` lets the row shrink to fit, shortening the model name, for tight panels.
+    /// One line of pills. When even the short ones don't fit, as in the smallest window with the chat list open,
+    /// `narrow` puts them on a second line. Squeezing them instead stood the model's quant tag on end.
     private func controlRow(compact: Bool, narrow: Bool = false) -> some View {
         HStack(spacing: 0) {
-            let controls = GlassGroup(spacing: 6) {
-                FrameworkPickerButton(compact: compact)
-                ModelPickerButton(narrow: narrow)
-                ContextPickerButton(compact: compact)
-                if backends.supportsThinking { ThinkPill(compact: compact) }
-                HarnessPill(compact: compact)
-                temperaturePill(compact: compact)
-                TelemetryPill(compact: compact)
-                DevPill(compact: compact)
-            }
             if narrow {
-                controls
+                FlowLayout(spacing: 6, lineSpacing: 6) { pills(compact: true, narrow: true) }
             } else {
-                controls.fixedSize()
+                GlassGroup(spacing: 6) { pills(compact: compact, narrow: false) }.fixedSize()
             }
             Spacer(minLength: 0)
         }
+    }
+
+    @ViewBuilder
+    private func pills(compact: Bool, narrow: Bool) -> some View {
+        FrameworkPickerButton(compact: compact)
+        ModelPickerButton(narrow: narrow)
+        ContextPickerButton(compact: compact)
+        if backends.supportsThinking { ThinkPill(compact: compact) }
+        HarnessPill(compact: compact)
+        temperaturePill(compact: compact)
+        TelemetryPill(compact: compact)
+        DevPill(compact: compact)
     }
 
     private func temperaturePill(compact: Bool) -> some View {
@@ -156,9 +159,9 @@ struct ComposerView: View {
             .font(.uiCallout)
             .padding(.horizontal, 11)
             .padding(.vertical, 5)
-            .contentShape(Capsule())
+            .contentShape(Capsule(style: .circular))
         }
-        .buttonStyle(.plain)
+        .buttonStyle(.soft)
         .glassCapsule(interactive: true)
         .help("Temperature, response length and system instructions")
         .popover(isPresented: $showOptions, arrowEdge: .top) {
@@ -224,12 +227,12 @@ private struct ThinkPill: View {
             .foregroundStyle(on ? Palette.accent : .secondary)
             .padding(.horizontal, 11)
             .padding(.vertical, 5)
-            .contentShape(Capsule())
+            .contentShape(Capsule(style: .circular))
         }
-        .buttonStyle(.plain)
+        .buttonStyle(.soft)
         // Plain glass + accent outline: tinted glass made the whole chat column drop out of window captures.
         .glassCapsule(interactive: true)
-        .overlay(Capsule().strokeBorder(on ? Palette.accent.opacity(0.6) : .clear, lineWidth: 1))
+        .overlay(Capsule(style: .circular).strokeBorder(on ? Palette.accent.opacity(0.6) : .clear, lineWidth: 1))
         .disabled(!backends.kind.supportsThinkingControl)
         .help(backends.kind.supportsThinkingControl
               ? (on ? "Thinking on — the model reasons before answering" : "Thinking off — faster, direct answers")
@@ -262,9 +265,9 @@ private struct HarnessPill: View {
             .font(.uiCallout.weight(on ? .semibold : .regular))
             .foregroundStyle(on ? Palette.accent : .secondary)
         }
-        .buttonStyle(.plain)
+        .buttonStyle(.soft)
         .glassCapsule(interactive: true)
-        .overlay(Capsule().strokeBorder(on ? Palette.accent.opacity(0.6) : .clear, lineWidth: 1))
+        .overlay(Capsule(style: .circular).strokeBorder(on ? Palette.accent.opacity(0.6) : .clear, lineWidth: 1))
         .disabled(!backends.kind.supportsTools)
         .help(backends.kind.supportsTools
               ? (on ? "Harness on: code runs the math, checks each reply and can look facts up. Click to change it or turn it off."
@@ -332,7 +335,7 @@ struct HarnessPopover: View {
                 .padding(.bottom, 2)
                 .contentShape(Rectangle())
             }
-            .buttonStyle(.plain)
+            .buttonStyle(.soft)
             .help("Earlier and newer designs of the harness, kept so you can compare them")
 
             if showVersions {
@@ -458,11 +461,11 @@ private struct TelemetryPill: View {
             .foregroundStyle(on ? Palette.accent : .secondary)
             .padding(.horizontal, 11)
             .padding(.vertical, 5)
-            .contentShape(Capsule())
+            .contentShape(Capsule(style: .circular))
         }
-        .buttonStyle(.plain)
+        .buttonStyle(.soft)
         .glassCapsule(interactive: true)
-        .overlay(Capsule().strokeBorder(on ? Palette.accent.opacity(0.6) : .clear, lineWidth: 1))
+        .overlay(Capsule(style: .circular).strokeBorder(on ? Palette.accent.opacity(0.6) : .clear, lineWidth: 1))
         .help("\(on ? "Collapse" : "Open") the hardware telemetry (⌥⌘1)")
         .accessibilityLabel("Telemetry, \(on ? "on" : "off")")
     }

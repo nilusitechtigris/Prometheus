@@ -155,7 +155,7 @@ struct ModelTestDashboard: View {
                     }
                 }
         }
-        .buttonStyle(.plain)
+        .buttonStyle(.soft)
         .help(item?.title ?? "")
     }
 
@@ -304,7 +304,7 @@ struct ModelTestDashboard: View {
     private func history(selected: ModelTestResult) -> some View {
         TestRunList(runs: lab.fullRuns) { run in
             TestRunRow(level: TestScoring.modelScore.level(run.score), date: run.date,
-                       title: "\(run.displayName) · \(run.quant)\(run.setupLabel)", tag: run.isCurrentSuite ? nil : "Old test",
+                       title: "\(run.displayName) · \(run.quant)\(run.setupLabel)", tag: run.isCurrentSuite ? nil : "old test",
                        result: "\(run.isCurrentSuite ? TestFormat.score(run.score) : Format.percent(run.score)) · \(Format.rate(run.tokensPerSecond)) tok/s",
                        selected: run.id == selected.id, onSelect: { lab.show(run) }, onDelete: { lab.delete(modelRun: run.id) })
         }
@@ -325,7 +325,7 @@ struct QuestionRow: View {
             } label: {
                 header.contentShape(Rectangle())
             }
-            .buttonStyle(.plain)
+            .buttonStyle(.soft)
             .help(expanded ? "Hide the details" : "Show what was asked and what the model replied")
             if expanded {
                 details.transition(.opacity)
@@ -349,7 +349,7 @@ struct QuestionRow: View {
                     .foregroundStyle(.secondary)
                     .padding(.horizontal, 6)
                     .padding(.vertical, 1.5)
-                    .background(Color.primary.opacity(0.07), in: Capsule())
+                    .background(Color.primary.opacity(0.07), in: Capsule(style: .circular))
             }
             Spacer(minLength: 12)
             if !expanded {
@@ -445,11 +445,9 @@ struct TestFrameworkPicker: View {
                 Text(backends.kind.displayName).fontWeight(.medium).lineLimit(1)
             }
         }
-        .buttonStyle(.plain)
+        .buttonStyle(.soft)
         .foregroundStyle(.primary)
-        .background(Color.primary.opacity(0.08), in: Capsule())
-        .overlay(Capsule().strokeBorder(Color.primary.opacity(0.12), lineWidth: 0.5))
-        .opacity(lab.isRunning ? 0.5 : 1)
+        .glassCapsule(interactive: true)
         .disabled(lab.isRunning)
         .help("The framework the test runs on. Chats switch to it too.")
         .popover(isPresented: $show, arrowEdge: .bottom) {
@@ -477,11 +475,9 @@ struct TestModelPicker: View {
                 }
             }
         }
-        .buttonStyle(.plain)
+        .buttonStyle(.soft)
         .foregroundStyle(.primary)
-        .background(Color.primary.opacity(0.08), in: Capsule())
-        .overlay(Capsule().strokeBorder(Color.primary.opacity(0.12), lineWidth: 0.5))
-        .opacity(lab.isRunning ? 0.5 : 1)
+        .glassCapsule(interactive: true)
         .disabled(lab.isRunning)
         .help("Choose the model to test")
         .popover(isPresented: $ui.showTestModelPicker, arrowEdge: .bottom) {

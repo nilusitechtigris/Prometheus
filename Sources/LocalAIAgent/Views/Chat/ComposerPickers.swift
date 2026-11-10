@@ -14,7 +14,7 @@ struct PickerPill<Label: View>: View {
         .font(.uiCallout)
         .padding(.horizontal, 11)
         .padding(.vertical, 5)
-        .contentShape(Capsule())
+        .contentShape(Capsule(style: .circular))
     }
 }
 
@@ -35,7 +35,7 @@ struct FrameworkPickerButton: View {
                 if !compact { Text(backends.kind.displayName).lineLimit(1) }
             }
         }
-        .buttonStyle(.plain)
+        .buttonStyle(.soft)
         .glassCapsule(interactive: true)
         .help("Framework: \(backends.kind.displayName) — \(statusText)")
         .popover(isPresented: $show, arrowEdge: .top) {
@@ -125,7 +125,7 @@ struct ContextPickerButton: View {
                 if !compact { Text("context").foregroundStyle(.secondary) }
             }
         }
-        .buttonStyle(.plain)
+        .buttonStyle(.soft)
         .glassCapsule(interactive: true)
         .help("Context window — how much of the conversation the model can see")
         .popover(isPresented: $show, arrowEdge: .top) {
@@ -220,7 +220,7 @@ struct PopoverRow<Content: View>: View {
             )
             .contentShape(Rectangle())
         }
-        .buttonStyle(.plain)
+        .buttonStyle(.soft)
         .onHover { hovering = $0 }
     }
 }

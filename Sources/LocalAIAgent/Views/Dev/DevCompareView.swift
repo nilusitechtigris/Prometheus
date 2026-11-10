@@ -90,7 +90,6 @@ struct DevCompareStarter: View {
                 }
                 .buttonStyle(AccentButtonStyle(compact: true))
                 .disabled(!ready)
-                .opacity(ready ? 1 : 0.5)
                 .help(dev.blockedReason ?? "Build it with the harness off, then on")
             }
             if let reason = dev.isComparing ? "A comparison is running." : (dev.canCompare ? nil : dev.blockedReason) {
@@ -98,7 +97,7 @@ struct DevCompareStarter: View {
             }
             if !compact, !dev.comparisons.isEmpty {
                 Button("Earlier comparisons (\(dev.comparisons.count))") { dev.showComparison(dev.comparisons[0].id) }
-                    .buttonStyle(.plain)
+                    .buttonStyle(.soft)
                     .font(.uiCaption)
                     .foregroundStyle(Palette.accent)
             }
@@ -135,7 +134,7 @@ private struct DevCompareHeader: View {
                 Button(action: dev.stopCompare) {
                     Label("Stop", systemImage: "stop.fill")
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(.soft)
                 .font(.uiCaption)
                 .foregroundStyle(Palette.critical)
                 .help("Stop the comparison. What's done so far is kept.")
@@ -160,7 +159,7 @@ private struct DevCompareHeader: View {
             } label: {
                 Image(systemName: "folder")
             }
-            .buttonStyle(.plain)
+            .buttonStyle(.soft)
             .foregroundStyle(Forge.dim)
             .help("Show both folders in Finder")
         }
@@ -218,7 +217,7 @@ private struct DevCompareColumn: View {
                     } label: {
                         Image(systemName: "arrow.clockwise").font(.system(size: 11, weight: .semibold))
                     }
-                    .buttonStyle(.plain)
+                    .buttonStyle(.soft)
                     .foregroundStyle(Forge.dim)
                     .help("Start the page again")
                 }
@@ -237,11 +236,11 @@ private struct DevCompareColumn: View {
                             .foregroundStyle(fit ? Palette.onAccent : Forge.dim)
                             .padding(.horizontal, 9)
                             .padding(.vertical, 2)
-                            .background(Capsule().fill(fit ? AnyShapeStyle(Palette.accent) : AnyShapeStyle(Color.white.opacity(0.06))))
-                            .overlay(Capsule().strokeBorder(fit ? Color.clear : Forge.line, lineWidth: 1))
-                            .contentShape(Capsule())
+                            .background(Capsule(style: .circular).fill(fit ? AnyShapeStyle(Palette.accent) : AnyShapeStyle(Color.white.opacity(0.06))))
+                            .overlay(Capsule(style: .circular).strokeBorder(fit ? Color.clear : Forge.line, lineWidth: 1))
+                            .contentShape(Capsule(style: .circular))
                     }
-                    .buttonStyle(.plain)
+                    .buttonStyle(.soft)
                     .help(fit ? "Showing all of the page, zoomed out to fit. Click for full size." : "Zoom the page out until all of it fits, for a screenshot")
                     .accessibilityLabel("Fit the page to the window")
                     .accessibilityValue(fit ? "On" : "Off")
@@ -253,7 +252,7 @@ private struct DevCompareColumn: View {
                     Image(systemName: fills ? "arrow.down.right.and.arrow.up.left" : "arrow.up.left.and.arrow.down.right")
                         .font(.system(size: 11, weight: .semibold))
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(.soft)
                 .foregroundStyle(fills ? Palette.accent : Forge.dim)
                 .help(fills ? "Show both sides" : "Fill the window with this side")
                 .accessibilityLabel(fills ? "Show both sides" : "Fill the window")
@@ -319,7 +318,7 @@ private struct DevCompareColumn: View {
                 Text(summary).font(.uiCaption2).foregroundStyle(Forge.faint).lineLimit(2).help(side.files.map { "\($0.path): \($0.lines) lines" }.joined(separator: "\n"))
                 Spacer(minLength: 4)
                 Button("Open as Project") { dev.openSide(side) }
-                    .buttonStyle(.plain)
+                    .buttonStyle(.soft)
                     .font(.uiCaption)
                     .foregroundStyle(Palette.accent)
                     .disabled(isLive)
@@ -384,8 +383,8 @@ private struct DevCompareSideSwitch: View {
                 segment("On", on: true)
             }
             .padding(2)
-            .background(Color.white.opacity(0.05), in: Capsule())
-            .overlay(Capsule().strokeBorder(Forge.line, lineWidth: 1))
+            .background(Color.white.opacity(0.05), in: Capsule(style: .circular))
+            .overlay(Capsule(style: .circular).strokeBorder(Forge.line, lineWidth: 1))
         }
         .help("Show the other side at the same size")
     }
@@ -400,10 +399,10 @@ private struct DevCompareSideSwitch: View {
                 .foregroundStyle(selected ? (on ? Palette.onAccent : Forge.ink) : Forge.dim)
                 .padding(.horizontal, 10)
                 .padding(.vertical, 3)
-                .background(Capsule().fill(selected ? (on ? AnyShapeStyle(Palette.accent) : AnyShapeStyle(Color.white.opacity(0.16))) : AnyShapeStyle(Color.clear)))
-                .contentShape(Capsule())
+                .background(Capsule(style: .circular).fill(selected ? (on ? AnyShapeStyle(Palette.accent) : AnyShapeStyle(Color.white.opacity(0.16))) : AnyShapeStyle(Color.clear)))
+                .contentShape(Capsule(style: .circular))
         }
-        .buttonStyle(.plain)
+        .buttonStyle(.soft)
         .accessibilityLabel("Harness \(title)")
     }
 }
@@ -433,7 +432,7 @@ private struct DevCompareShotButton: View {
                 Image(systemName: "camera")
             }
         }
-        .buttonStyle(.plain)
+        .buttonStyle(.soft)
         .foregroundStyle(Forge.dim)
         .disabled(working || isLive)
         .help(isLive ? "Wait for the comparison to finish" : "One picture of both apps at full length, nothing cut off: copied, and saved in the comparison's folder")

@@ -18,7 +18,7 @@ struct HarnessTestDashboard: View {
     var body: some View {
         let run = lab.harnessRun(for: testModel?.id)
         let baseline = run.flatMap { lab.baseline(of: $0) }
-        TestPage(title: "Harness - \(lab.harnessSize.title)",
+        TestPage(title: "Harness · \(lab.harnessSize.title)",
                  subtitle: subtitle,
                  caption: backends.kind.supportsTools ? setupCaption : "Harness tools need Ollama or MLX LM for now",
                  notice: notice(showing: run),
@@ -386,7 +386,8 @@ struct HarnessTestDashboard: View {
         Text(text ?? "—")
             .monospacedDigit()
             .fontWeight(chosen ? .semibold : .regular)
-            .foregroundStyle(chosen ? AnyShapeStyle(Palette.accent) : AnyShapeStyle(.secondary))
+            // A version that wasn't run steps back, so the eye goes to the numbers.
+            .foregroundStyle(chosen ? AnyShapeStyle(Palette.accent) : text == nil ? AnyShapeStyle(.quaternary) : AnyShapeStyle(.secondary))
     }
 
     // MARK: Versions
@@ -549,6 +550,8 @@ private struct HarnessSizePicker: View {
         }
         .pickerStyle(.segmented)
         .labelsHidden()
+        // As tall as the pills beside it.
+        .controlSize(.large)
         .fixedSize()
         .disabled(lab.isRunning)
         .help("Normal: \(ModelTestSuite.quickIDs.count) tasks, to check a change quickly. Max: all \(ModelTestSuite.questionCount) questions and the poisoned pages. Held-out: \(HeldOut.size()) public questions the harness was never tuned on. Practice: \(HeldOut.size(HeldOut.practice)) more like them, for finding what fails. Scores from different sizes don't compare.")
@@ -558,17 +561,45 @@ private struct HarnessSizePicker: View {
 /// How many times the next test runs everything.
 private struct HarnessRepeatsPicker: View {
     @Environment(TestLab.self) private var lab
+    @State private var show = false
+
+    private func title(_ count: Int) -> String { count == 1 ? "1 run" : "\(count) runs" }
 
     var body: some View {
-        @Bindable var lab = lab
-        Picker("Runs", selection: $lab.harnessRepeats) {
-            ForEach(TestLab.repeatOptions, id: \.self) { Text($0 == 1 ? "1 run" : "\($0) runs").tag($0) }
+        // The same pill and list as the version beside it, so the row reads as one set of controls.
+        Button {
+            show.toggle()
+        } label: {
+            PickerPill {
+                Text(title(lab.harnessRepeats)).fontWeight(.medium).lineLimit(1)
+            }
         }
-        .pickerStyle(.menu)
-        .labelsHidden()
-        .fixedSize()
+        .buttonStyle(.soft)
+        .foregroundStyle(.primary)
+        .glassCapsule(interactive: true)
         .disabled(lab.isRunning)
-        .help("3 runs asks everything three times over, so you can see how much a score moves from one run to the next. With Harness off too, every round has its own harness-off run. Another version on the same setup joins the set and reuses those.")
+        .help("How many times the test asks everything")
+        .popover(isPresented: $show, arrowEdge: .bottom) {
+            VStack(alignment: .leading, spacing: 4) {
+                Text("How many runs").font(.uiHeadline).padding(.horizontal, 8).padding(.bottom, 4)
+                ForEach(TestLab.repeatOptions, id: \.self) { count in
+                    PopoverRow(selected: lab.harnessRepeats == count) {
+                        lab.harnessRepeats = count
+                        show = false
+                    } content: {
+                        VStack(alignment: .leading, spacing: 1) {
+                            Text(title(count)).font(.uiCallout.weight(.semibold))
+                            Text(count == 1 ? "Asks everything once."
+                                 : "Asks everything \(count) times over, so you can see how much a score moves from one run to the next. With Harness off too, every round has its own harness-off run.")
+                                .font(.uiCaption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                        }
+                        Spacer(minLength: 0)
+                    }
+                }
+            }
+            .padding(12)
+            .frame(width: 340)
+        }
     }
 }
 
@@ -602,11 +633,9 @@ private struct HarnessVersionPicker: View {
                 Text(lab.harnessChoice?.title ?? "All versions").fontWeight(.medium).lineLimit(1)
             }
         }
-        .buttonStyle(.plain)
+        .buttonStyle(.soft)
         .foregroundStyle(.primary)
-        .background(Color.primary.opacity(0.08), in: Capsule())
-        .overlay(Capsule().strokeBorder(Color.primary.opacity(0.12), lineWidth: 0.5))
-        .opacity(lab.isRunning ? 0.5 : 1)
+        .glassCapsule(interactive: true)
         .disabled(lab.isRunning)
         .help("Choose which version of the harness to test")
         .popover(isPresented: $show, arrowEdge: .bottom) {
@@ -710,7 +739,7 @@ private struct VersionCard: View {
             .overlay(shape.strokeBorder(selected ? Palette.accent.opacity(0.45) : .clear, lineWidth: 1))
             .contentShape(shape)
         }
-        .buttonStyle(.plain)
+        .buttonStyle(.soft)
         .disabled(run == nil)
     }
 
@@ -827,7 +856,7 @@ private struct InjectionRow: View {
                 .padding(.vertical, 6)
                 .contentShape(Rectangle())
             }
-            .buttonStyle(.plain)
+            .buttonStyle(.soft)
             if expanded {
                 VStack(alignment: .leading, spacing: 8) {
                     Text(with.summary).font(.uiCallout).fixedSize(horizontal: false, vertical: true)

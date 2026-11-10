@@ -22,7 +22,6 @@ struct PublishPage: View {
             }
             .buttonStyle(AccentButtonStyle(compact: true))
             .controlSize(.large)
-            .opacity(canPublish ? 1 : 0.45)
             .disabled(!canPublish)
         } content: {
             if let failure {

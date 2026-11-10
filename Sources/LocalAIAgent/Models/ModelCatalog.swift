@@ -14,7 +14,7 @@ struct QuantVariant: Identifiable, Hashable {
     var aliases: [String] = []
     var isDefault = false
 
-    var size: String { ByteCountFormatter.string(fromByteCount: bytes, countStyle: .file) }
+    var size: String { Format.bytes(bytes, binary: false) }
 
     var quality: String {
         switch quant {
@@ -43,8 +43,8 @@ struct QuantVariant: Identifiable, Hashable {
 /// safetensors with no code files.
 struct CatalogModel: Identifiable, Hashable {
     enum Category: String, CaseIterable, Identifiable {
-        case small = "Small & Fast"
-        case everyday = "Everyday Assistants"
+        case small = "Small and fast"
+        case everyday = "Everyday assistants"
         case reasoning = "Reasoning"
         case coding = "Coding"
         case large = "Large"

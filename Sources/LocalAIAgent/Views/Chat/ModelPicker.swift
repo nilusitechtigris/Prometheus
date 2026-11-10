@@ -36,11 +36,10 @@ struct ModelPickerButton: View {
             .font(.uiCallout)
             .padding(.horizontal, 11)
             .padding(.vertical, 5)
-            .contentShape(Capsule())
+            .contentShape(Capsule(style: .circular))
         }
-        .buttonStyle(.plain)
+        .buttonStyle(.soft)
         .glassCapsule(interactive: true)
-        .layoutPriority(narrow ? -1 : 0)
         .help("Choose the model and its quantization (⇧⌘M)")
         .popover(isPresented: $ui.showModelPicker, arrowEdge: .top) {
             ModelPickerPopover { ui.showModelPicker = false }
@@ -55,6 +54,9 @@ struct QuantBadge: View {
     var body: some View {
         Text(text)
             .font(.system(size: 10.5, weight: .semibold, design: .monospaced))
+            // A tag is one word. It never wraps or shrinks, however tight its row gets.
+            .lineLimit(1)
+            .fixedSize()
             .padding(.horizontal, 6)
             .padding(.vertical, 2)
             .background(selected ? AnyShapeStyle(Palette.accent) : AnyShapeStyle(Palette.accent.opacity(0.16)),
@@ -238,15 +240,15 @@ private struct QuantChip: View {
             .padding(.horizontal, 8)
             .padding(.vertical, 4)
             .background(
-                Capsule().fill(isSelected ? AnyShapeStyle(Palette.accent) : AnyShapeStyle(Color.primary.opacity(isInstalled ? 0.08 : 0.03)))
+                Capsule(style: .circular).fill(isSelected ? AnyShapeStyle(Palette.accent) : AnyShapeStyle(Color.primary.opacity(isInstalled ? 0.08 : 0.03)))
             )
             .overlay(
-                Capsule().strokeBorder(isInstalled || isSelected ? Color.clear : Color.secondary.opacity(0.35),
+                Capsule(style: .circular).strokeBorder(isInstalled || isSelected ? Color.clear : Color.secondary.opacity(0.35),
                                        style: StrokeStyle(lineWidth: 1, dash: [3, 2]))
             )
             .foregroundStyle(isSelected ? Palette.onAccent : (isInstalled ? Color.primary : Color.secondary))
         }
-        .buttonStyle(.plain)
+        .buttonStyle(.soft)
         .disabled(!isInstalled && !backends.kind.supportsModelDownloads)
         .help(pull?.error ?? "\(variant.quant) · \(variant.quality) · \(variant.size) · quantized by \(variant.quantizedBy)\n"
               + "≈ \(Format.gigabytes(estimate)) with \(Format.tokens(backends.effectiveContext)) context — \(verdict.label)"

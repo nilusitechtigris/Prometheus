@@ -124,16 +124,20 @@ private struct ForgeSidebar: View {
             Spacer()
             status
                 .padding(.horizontal, 14)
-                .padding(.bottom, 14)
+                // The same gap under it as under the page beside it, so the two end on one line.
+                .padding(.bottom, 10)
         }
         .frame(width: 216)
+        // The artwork runs behind this column, and its brightest streak crosses the page names. A little
+        // shade keeps them readable without hiding the picture.
+        .background(LinearGradient(colors: [.black.opacity(0.42), .black.opacity(0.18)], startPoint: .leading, endPoint: .trailing))
         .animation(Motion.page, value: ui.destination)
     }
 
     private func item(_ symbol: String, _ title: String, selected: Bool, lit: Bool = false, busy: Bool = false,
                       action: @escaping () -> Void) -> some View {
         Button(action: action) { row(symbol, title, selected: selected, lit: lit, busy: busy) }
-            .buttonStyle(.plain)
+            .buttonStyle(.soft)
     }
 
     private func row(_ symbol: String, _ title: String, selected: Bool, lit: Bool = false, busy: Bool = false) -> some View {
@@ -166,6 +170,8 @@ private struct ForgeSidebar: View {
                 .matchedGeometryEffect(id: "row", in: highlight)
             }
         }
+        // A page that isn't open shows where a click would land.
+        .hoverFill(shape, when: !selected)
         .contentShape(shape)
     }
 

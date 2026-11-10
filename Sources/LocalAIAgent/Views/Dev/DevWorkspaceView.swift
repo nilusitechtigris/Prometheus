@@ -137,9 +137,9 @@ private struct DevTopBar: View {
                     .foregroundStyle(dev.showsCompare ? Palette.accent : Forge.ink)
                     .padding(.horizontal, 11)
                     .padding(.vertical, 5)
-                    .contentShape(Capsule())
+                    .contentShape(Capsule(style: .circular))
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(.soft)
                 .glassCapsule(interactive: true)
                 .help("The same request built with the harness off and on, side by side")
             }
@@ -156,9 +156,9 @@ private struct DevTopBar: View {
                     .font(.uiCallout)
                     .padding(.horizontal, 11)
                     .padding(.vertical, 5)
-                    .contentShape(Capsule())
+                    .contentShape(Capsule(style: .circular))
             }
-            .buttonStyle(.plain)
+            .buttonStyle(.soft)
             .glassCapsule(interactive: true)
             .help("Leave Dev mode. Your project stays open here.")
         }
@@ -205,7 +205,7 @@ private struct DevWelcome: View {
                                 .frame(maxWidth: .infinity, alignment: .leading)
                                 .contentShape(Rectangle())
                         }
-                        .buttonStyle(.plain)
+                        .buttonStyle(.soft)
                         .help(path)
                     }
                 }
@@ -239,7 +239,7 @@ private struct DevFilesColumn: View {
                 Spacer()
                 if !dev.testFiles.isEmpty {
                     Button(action: dev.runTests) { Image(systemName: "checkmark.diamond") }
-                        .buttonStyle(.plain)
+                        .buttonStyle(.soft)
                         .foregroundStyle(Forge.dim)
                         .help("Run the tests")
                 }
@@ -249,11 +249,11 @@ private struct DevFilesColumn: View {
                 } label: {
                     Image(systemName: "plus")
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(.soft)
                 .foregroundStyle(Forge.dim)
                 .help("New file")
                 Button(action: dev.refreshFromDisk) { Image(systemName: "arrow.clockwise") }
-                    .buttonStyle(.plain)
+                    .buttonStyle(.soft)
                     .foregroundStyle(Forge.dim)
                     .help("Reload the file list")
             }
@@ -333,7 +333,7 @@ private struct DevFileRow: View {
                         .frame(width: 20, height: 20)
                         .contentShape(Rectangle())
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(.soft)
                 .disabled(dev.isWorking && !entry.isPage)
                 .help(entry.isPage ? "Open \(entry.name) in Preview" : dev.isWorking ? "The agent is working on this folder" : "Run \(entry.name) in the Terminal")
             }
@@ -386,7 +386,7 @@ private struct DevEditorPane: View {
                     } label: {
                         Image(systemName: dev.previewFills ? "arrow.down.right.and.arrow.up.left" : "arrow.up.left.and.arrow.down.right")
                     }
-                    .buttonStyle(.plain)
+                    .buttonStyle(.soft)
                     .foregroundStyle(Forge.dim)
                     .help(dev.previewFills ? "Show the other panes" : "Fill the window")
                     Button {
@@ -466,12 +466,12 @@ private struct DevTerminalPane: View {
                     Button(action: dev.stopRun) {
                         Label("Stop", systemImage: "stop.fill").font(.uiCaption)
                     }
-                    .buttonStyle(.plain)
+                    .buttonStyle(.soft)
                     .foregroundStyle(Palette.critical)
                     .help("Stop the program")
                 } else if !dev.runs.isEmpty {
                     Button("Clear", action: dev.clearTerminal)
-                        .buttonStyle(.plain)
+                        .buttonStyle(.soft)
                         .font(.uiCaption)
                         .foregroundStyle(Forge.dim)
                 }
@@ -588,7 +588,7 @@ private struct DevRunView: View {
             if let failure = run.failure {
                 if let file = failure.file, let line = failure.line {
                     Button("\(file):\(line)") { dev.openFile(file, line: line) }
-                        .buttonStyle(.plain)
+                        .buttonStyle(.soft)
                         .foregroundStyle(Forge.dim)
                         .underline()
                         .help("Show this line in the editor")
@@ -598,7 +598,7 @@ private struct DevRunView: View {
                 } label: {
                     Label("Fix with Agent", systemImage: "wrench.and.screwdriver")
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(.soft)
                 .foregroundStyle(Palette.accent)
                 .disabled(!dev.canSend)
                 .help(dev.blockedReason ?? "Ask the agent to fix this")
@@ -621,7 +621,7 @@ private struct DevAgentColumn: View {
                 DevHarnessSwitch()
                 if !dev.messages.isEmpty, !dev.isWorking {
                     Button("Clear", action: dev.clearConversation)
-                        .buttonStyle(.plain)
+                        .buttonStyle(.soft)
                         .font(.uiCaption)
                         .foregroundStyle(Forge.dim)
                 }
@@ -691,7 +691,7 @@ private struct DevSuggestions: View {
                         .background(Forge.card, in: RoundedRectangle(cornerRadius: 8))
                         .contentShape(Rectangle())
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(.soft)
             }
             Spacer()
         }
@@ -766,7 +766,7 @@ private struct DevReplyView: View {
                         Text("Undone").font(.uiCaption).foregroundStyle(Forge.faint)
                     } else {
                         Button("Undo") { dev.undo(message) }
-                            .buttonStyle(.plain)
+                            .buttonStyle(.soft)
                             .font(.uiCaption)
                             .foregroundStyle(dev.canUndo(message) ? Forge.dim : Forge.faint)
                             .disabled(!dev.canUndo(message) || dev.isWorking)
@@ -815,7 +815,7 @@ struct DevStepRow: View {
                 }
                 .contentShape(Rectangle())
             }
-            .buttonStyle(.plain)
+            .buttonStyle(.soft)
             if open, let output = step.output {
                 Text(output)
                     .font(.geistMono(11))
@@ -863,7 +863,7 @@ private struct DevChangeRow: View {
                         .frame(width: 14, height: 18)
                         .contentShape(Rectangle())
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(.soft)
                 .help("Show what changed")
                 Button {
                     dev.openFile(change.path)
@@ -875,7 +875,7 @@ private struct DevChangeRow: View {
                         .lineLimit(1)
                         .truncationMode(.middle)
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(.soft)
                 Spacer(minLength: 2)
                 let counts = change.counts
                 Text("+\(counts.added)").foregroundStyle(Palette.good)
@@ -975,7 +975,7 @@ private struct DevComposer: View {
                             .background(Circle().fill(.primary.opacity(0.85)))
                             .foregroundStyle(Color(nsColor: .windowBackgroundColor))
                     }
-                    .buttonStyle(.plain)
+                    .buttonStyle(.soft)
                     .help("Stop the agent. Nothing it was working on gets saved.")
                 } else {
                     Button {
@@ -987,7 +987,7 @@ private struct DevComposer: View {
                             .background(Circle().fill(Color.white.opacity(canCompare ? 0.1 : 0.04)))
                             .foregroundStyle(canCompare ? Forge.ink : Forge.faint)
                     }
-                    .buttonStyle(.plain)
+                    .buttonStyle(.soft)
                     .disabled(!canCompare)
                     .help("Compare: build this twice in new folders, with the harness off and on, and score both")
                     Button {
@@ -999,7 +999,7 @@ private struct DevComposer: View {
                             .background(Circle().fill(canSend ? AnyShapeStyle(Palette.gradient) : AnyShapeStyle(.quaternary)))
                             .foregroundStyle(Palette.onAccent)
                     }
-                    .buttonStyle(.plain)
+                    .buttonStyle(.soft)
                     .disabled(!canSend)
                     .help("Send (↩)")
                 }
@@ -1027,9 +1027,9 @@ struct DevPill: View {
             .foregroundStyle(dev.isOn ? Palette.accent : .secondary)
             .padding(.horizontal, 11)
             .padding(.vertical, 5)
-            .contentShape(Capsule())
+            .contentShape(Capsule(style: .circular))
         }
-        .buttonStyle(.plain)
+        .buttonStyle(.soft)
         .glassCapsule(interactive: true)
         .help("Dev mode: open a project folder and build it with the agent")
         .accessibilityLabel("Dev mode")
@@ -1049,8 +1049,8 @@ private struct DevHarnessSwitch: View {
                 ForEach(DevHarnessVersion.allCases) { segment($0.short, version: $0) }
             }
             .padding(2)
-            .background(Color.white.opacity(0.05), in: Capsule())
-            .overlay(Capsule().strokeBorder(Forge.line, lineWidth: 1))
+            .background(Color.white.opacity(0.05), in: Capsule(style: .circular))
+            .overlay(Capsule(style: .circular).strokeBorder(Forge.line, lineWidth: 1))
         }
         .disabled(dev.isWorking || dev.isComparing)
         .help(dev.harnessOn ? "Harness \(dev.harnessVersion.title): the agent \(dev.harnessVersion.summary). Click Off to see what the model does alone."
@@ -1071,10 +1071,10 @@ private struct DevHarnessSwitch: View {
                 .foregroundStyle(selected ? (on ? Palette.onAccent : Forge.ink) : Forge.dim)
                 .padding(.horizontal, 8)
                 .padding(.vertical, 2)
-                .background(Capsule().fill(selected ? (on ? AnyShapeStyle(Palette.accent) : AnyShapeStyle(Color.white.opacity(0.16))) : AnyShapeStyle(Color.clear)))
-                .contentShape(Capsule())
+                .background(Capsule(style: .circular).fill(selected ? (on ? AnyShapeStyle(Palette.accent) : AnyShapeStyle(Color.white.opacity(0.16))) : AnyShapeStyle(Color.clear)))
+                .contentShape(Capsule(style: .circular))
         }
-        .buttonStyle(.plain)
+        .buttonStyle(.soft)
         .help(version.map { "\($0.title): \($0.summary)" } ?? "One reply from the model, with nothing run or checked")
         .accessibilityLabel("Harness \(version?.title ?? "off")")
     }

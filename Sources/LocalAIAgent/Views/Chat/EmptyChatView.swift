@@ -77,7 +77,7 @@ private struct WelcomeHero: View {
                     .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).strokeBorder(Palette.accent.opacity(0.5), lineWidth: 1))
                     .contentShape(Rectangle())
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(.soft)
                 .disabled(!chat.canCompare)
                 .help("Runs on your own model. Nothing leaves this Mac for these three")
             }
@@ -102,7 +102,7 @@ private struct WelcomeHero: View {
                         .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).strokeBorder(.separator, lineWidth: 0.5))
                         .contentShape(Rectangle())
                     }
-                    .buttonStyle(.plain)
+                    .buttonStyle(.soft)
                     .disabled(!chat.canSend)
                 }
             }

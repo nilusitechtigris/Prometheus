@@ -26,8 +26,8 @@ struct HardwareTestDashboard: View {
                 .font(.uiCallout.weight(.medium))
                 .padding(.horizontal, 11)
                 .padding(.vertical, 5)
-                .background(Color.primary.opacity(0.08), in: Capsule())
-                .overlay(Capsule().strokeBorder(Color.primary.opacity(0.12), lineWidth: 0.5))
+                .background(Color.primary.opacity(0.08), in: Capsule(style: .circular))
+                .overlay(Capsule(style: .circular).strokeBorder(Color.primary.opacity(0.12), lineWidth: 0.5))
             RunTestButton(title: "Run test", disabled: lab.isRunning || chat.isGenerating) {
                 lab.runHardwareTest(monitor: monitor, backends: backends)
             }
@@ -54,6 +54,17 @@ struct HardwareTestDashboard: View {
         }
     }
 
+    /// The hottest macOS said the Mac got during a run, in plain words. Runs save macOS's own word for it.
+    static func heatCaption(_ worst: String?) -> String {
+        switch worst?.lowercased() {
+        case "nominal": "The Mac stayed cool throughout"
+        case "fair": "The Mac got warm, at full speed"
+        case "serious", "throttling": "The Mac got hot and was slowed down"
+        case "critical": "The Mac got too hot"
+        default: "Heat wasn't recorded"
+        }
+    }
+
     // MARK: Overview
 
     private func tiles(_ run: HardwareTestResult) -> (MetricTile, MetricTile, MetricTile, MetricTile) {
@@ -64,7 +75,7 @@ struct HardwareTestDashboard: View {
          MetricTile(title: "Disk read", value: TestFormat.gbPerSecond(run.diskRead), unit: "GB/s",
                     caption: run.diskRead.map { "Reads a 5 GB model in ≈ \(Format.seconds(5 / max($0, 0.01)))" }, symbol: "internaldrive"),
          MetricTile(title: "Test time", value: Format.seconds(run.duration),
-                    caption: "Thermal state stayed \((run.worstThermalState ?? "unknown").lowercased())", symbol: "clock"))
+                    caption: Self.heatCaption(run.worstThermalState), symbol: "clock"))
     }
 
     private func hero(_ run: HardwareTestResult) -> some View {
@@ -216,8 +227,8 @@ struct HardwareTestDashboard: View {
                         .frame(width: 210, alignment: .leading)
                         GeometryReader { geo in
                             ZStack(alignment: .leading) {
-                                Capsule().fill(Color.primary.opacity(0.05))
-                                Capsule().fill(row.fit.level.color.opacity(0.8).gradient)
+                                Capsule(style: .circular).fill(Color.primary.opacity(0.05))
+                                Capsule(style: .circular).fill(row.fit.level.color.opacity(0.8).gradient)
                                     .frame(width: max(geo.size.width * row.tokensPerSecond / top, 4))
                                 if let measured = row.measured {
                                     Circle().fill(.white)

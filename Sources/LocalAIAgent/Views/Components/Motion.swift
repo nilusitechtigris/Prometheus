@@ -10,6 +10,9 @@ enum Motion {
     static var page: Animation? { reduced ? nil : .snappy(duration: 0.28) }
     /// Panels, rows and small things opening, closing, appearing and going.
     static var quick: Animation? { reduced ? nil : .snappy(duration: 0.2) }
+    /// A control answering the pointer: lighting up under it, dimming while pressed. Faster than anything
+    /// else, because it has to be seen before the click is over.
+    static var press: Animation? { reduced ? nil : .easeOut(duration: 0.12) }
 }
 
 extension AnyTransition {

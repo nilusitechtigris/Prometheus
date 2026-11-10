@@ -101,7 +101,7 @@ struct ChatsColumn: View {
 
     private func barButton(_ title: String, enabled: Bool, action: @escaping () -> Void) -> some View {
         Button(title, action: action)
-            .buttonStyle(.plain)
+            .buttonStyle(.soft)
             .font(.uiCaption.weight(.medium))
             .foregroundStyle(enabled ? Palette.accent : Forge.faint)
             .disabled(!enabled)
@@ -120,7 +120,7 @@ struct ChatsColumn: View {
                 .background(Palette.critical.opacity(count == 0 ? 0.05 : 0.15), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
                 .contentShape(Rectangle())
         }
-        .buttonStyle(.plain)
+        .buttonStyle(.soft)
         .disabled(count == 0)
         .padding(10)
     }
@@ -175,7 +175,7 @@ struct ChatsColumn: View {
                 } label: {
                     Image(systemName: "xmark.circle.fill").foregroundStyle(Forge.dim)
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(.soft)
                 .help("Clear the search")
             }
         }
@@ -245,7 +245,7 @@ struct ChatsColumn: View {
             }
             .contentShape(Rectangle())
         }
-        .buttonStyle(.plain)
+        .buttonStyle(.soft)
         .accessibilityLabel("\(conv.title), \(isPicked ? "selected" : "not selected")")
     }
 
@@ -313,7 +313,7 @@ private struct ConversationRow: View {
                 Button(action: onDelete) {
                     Image(systemName: "trash").font(.system(size: 12)).foregroundStyle(Forge.dim)
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(.soft)
                 .help("Delete this chat")
             }
         }

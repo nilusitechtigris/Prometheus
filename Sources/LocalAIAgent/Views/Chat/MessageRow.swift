@@ -54,7 +54,7 @@ private struct AssistantMessage: View {
                         .font(.uiCallout.weight(.semibold))
                     Text(message.createdAt, style: .time)
                         .font(.uiCaption)
-                        .foregroundStyle(.tertiary)
+                        .foregroundStyle(.secondary)
                     Spacer(minLength: 8)
                     // Up here so the stats card below can use the full width.
                     if !isStreaming && !message.content.isEmpty {
@@ -281,7 +281,7 @@ private struct HarnessStepsView: View {
                 .font(.uiCallout)
                 .foregroundStyle(.secondary)
             }
-            .buttonStyle(.plain)
+            .buttonStyle(.soft)
 
             if isOpen {
                 VStack(alignment: .leading, spacing: 3) {
@@ -335,7 +335,7 @@ private struct SharedNotesView: View {
                 .font(.uiCallout)
                 .foregroundStyle(.secondary)
             }
-            .buttonStyle(.plain)
+            .buttonStyle(.soft)
 
             if isOpen {
                 ScrollView {
@@ -393,7 +393,7 @@ private struct ThinkingView: View {
                 .font(.uiCallout)
                 .foregroundStyle(.secondary)
             }
-            .buttonStyle(.plain)
+            .buttonStyle(.soft)
 
             if isOpen {
                 ScrollView {
@@ -497,6 +497,8 @@ struct MetricsFooter: View {
                 }
             }
             .fixedSize()
+            // Room on the right for the collapse button, which sits on this corner.
+            .padding(.trailing, 14)
             .statsCard()
             .overlay(alignment: .topTrailing) { collapseButton.offset(x: 7, y: -7) }
 
@@ -516,6 +518,8 @@ struct MetricsFooter: View {
                 }
             }
             .fixedSize()
+            // Room on the right for the collapse button, which sits on this corner.
+            .padding(.trailing, 14)
             .statsCard()
             .overlay(alignment: .topTrailing) { collapseButton.offset(x: 7, y: -7) }
         }
@@ -532,7 +536,7 @@ struct MetricsFooter: View {
                 .foregroundStyle(.secondary)
                 .contentShape(Circle())
         }
-        .buttonStyle(.plain)
+        .buttonStyle(.soft)
         .help("Collapse stats")
     }
 
@@ -546,7 +550,7 @@ struct MetricsFooter: View {
                 .foregroundStyle(.secondary)
                 .contentShape(Circle())
         }
-        .buttonStyle(.plain)
+        .buttonStyle(.soft)
         .help("Show stats")
     }
 
@@ -615,7 +619,8 @@ struct MetricsFooter: View {
     /// The sampling temperature this reply was generated with.
     @ViewBuilder private var temperature: some View {
         if let t = metrics.temperature {
-            StatSegment(label: "Model temp", symbol: "slider.horizontal.3",
+            // "Sampling", so nobody reads it as how hot the Mac got.
+            StatSegment(label: "Sampling temp", symbol: "slider.horizontal.3",
                         help: "Sampling temperature for this reply — lower is more precise, higher is more creative") {
                 Text(Format.samplingTemperature(t))
             }
@@ -722,7 +727,7 @@ private struct SplitBar: View {
             HStack(spacing: gap) {
                 ForEach(parts.indices, id: \.self) { i in
                     let width = max(available * CGFloat(parts[i].share / total), parts[i].share > 0 ? 3 : 0)
-                    Capsule().fill(parts[i].color.opacity(0.85)).frame(width: width)
+                    Capsule(style: .circular).fill(parts[i].color.opacity(0.85)).frame(width: width)
                 }
             }
         }

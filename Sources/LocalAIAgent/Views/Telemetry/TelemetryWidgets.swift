@@ -41,16 +41,17 @@ struct HardwareWidget: View {
     var body: some View {
         let s = monitor.snapshot
         PanelWidget(title: "Hardware", symbol: "cpu.fill") {
-            LevelPill(level: thermalLevel(s.thermalState), text: "Thermal: \(thermalText(s.thermalState))")
+            LevelPill(level: thermalLevel(s.thermalState), text: "Heat: \(thermalText(s.thermalState))")
+                .help(thermalHelp(s.thermalState))
             TelemetryPanelToggle()
         } content: {
             HStack(alignment: .top, spacing: 8) {
             // GPU — runs the model.
             ComponentCard(title: "GPU", symbol: "square.stack.3d.up.fill",
-                          subtitle: monitor.gpuCoreCount.map { "\($0)-core" }) {
+                          subtitle: monitor.gpuCoreCount.map { "\($0) cores" }) {
                 MiniStat(label: "Load", value: Format.percent(s.gpuUsage), threshold: Thresholds.gpuUsage,
                          raw: s.gpuUsage, series: monitor.gpu.points, domain: 0...100)
-                MiniStat(label: "Temp", value: Format.temp(s.gpuTemp), detail: s.gpuTempMax.map { "max \(Int($0))°" },
+                MiniStat(label: "Temp", value: Format.temp(s.gpuTemp), detail: s.gpuTempMax.map { "hottest \(Format.temp($0))" },
                          threshold: Thresholds.gpuTemp, raw: s.gpuTemp, series: monitor.gpuTemp.points, domain: 20...110)
             } footer: {
                 FooterRow(items: [("GPU memory", Format.bytes(s.gpuMemoryInUse), nil)])
@@ -78,7 +79,7 @@ struct HardwareWidget: View {
             ComponentCard(title: "CPU", symbol: "cpu", subtitle: "\(s.perCoreUsage.count) cores") {
                 MiniStat(label: "Load", value: Format.percent(s.cpuUsage), threshold: Thresholds.cpuUsage,
                          raw: s.cpuUsage, series: monitor.cpu.points, domain: 0...100)
-                MiniStat(label: "Temp", value: Format.temp(s.cpuTemp), detail: s.cpuTempMax.map { "max \(Int($0))°" },
+                MiniStat(label: "Temp", value: Format.temp(s.cpuTemp), detail: s.cpuTempMax.map { "hottest \(Format.temp($0))" },
                          threshold: Thresholds.cpuTemp, raw: s.cpuTemp, series: monitor.cpuTemp.points, domain: 20...110)
             } footer: {
                 CoreBars(values: s.perCoreUsage)
@@ -93,11 +94,22 @@ struct HardwareWidget: View {
 
     private func thermalText(_ s: ProcessInfo.ThermalState) -> String {
         switch s {
-        case .nominal: return "Nominal"
-        case .fair: return "Fair"
-        case .serious: return "Throttling"
-        case .critical: return "Critical"
-        @unknown default: return "Unknown"
+        case .nominal: return "normal"
+        case .fair: return "warm"
+        case .serious: return "slowing down"
+        case .critical: return "too hot"
+        @unknown default: return "unknown"
+        }
+    }
+
+    /// What macOS's own heat reading means for the person waiting on a reply.
+    private func thermalHelp(_ s: ProcessInfo.ThermalState) -> String {
+        switch s {
+        case .nominal: return "This is what macOS reports. The Mac is cool enough to run at full speed."
+        case .fair: return "This is what macOS reports. The Mac is warm, and still running at full speed."
+        case .serious: return "This is what macOS reports. The Mac is hot, so macOS is slowing the chips down and replies take longer."
+        case .critical: return "This is what macOS reports. The Mac is too hot. Stop the model and let it cool."
+        @unknown default: return "macOS didn't report how hot the Mac is."
         }
     }
 
@@ -169,7 +181,7 @@ private struct MiniStat: View {
             RangeBar(value: raw, threshold: threshold, height: 4)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-        .help("\(label): \(value) — \(level.label)")
+        .help("\(label): \(value), \(level.label.lowercased()). \(threshold.scaleNote(unit: value.hasSuffix("%") ? "%" : "°C"))")
     }
 }
 
