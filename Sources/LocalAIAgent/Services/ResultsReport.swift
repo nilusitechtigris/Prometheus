@@ -26,23 +26,45 @@ enum ResultsReport {
         var parts = ["\(run.displayName) \(run.quant)", run.backend, "\(run.contextLength / 1_024)K context"]
         parts.append(run.thinking ? "thinking on" : "thinking off")
         parts.append(run.version.map { "harness \($0.short)" } ?? "harness off")
-        if run.isQuick { parts.append("Normal") }
+        if run.size != .max { parts.append(run.askedSet.map { "\(run.size.title) (\($0))" } ?? run.size.title) }
+        if let index = run.repeatIndex { parts.append("round \(index)") }
         return parts.joined(separator: " · ")
     }
 
     private static func overview(_ runs: [ModelTestResult]) -> [String] {
         var lines = ["## Runs", "", "| Run | Test version | Score | Points | Time |", "| --- | --- | --- | --- | --- |"]
         for run in runs {
-            lines.append("| \(cell(title(run))) | \(run.suiteVersion.map(String.init) ?? "old") | \(Int(run.score)) | \(run.points)/\(run.maxPoints) | \(Format.seconds(run.duration)) |")
+            // On a public set the score is a share, so one decimal says more than a rounded number.
+            let score = run.askedSet == nil ? "\(Int(run.score))" : String(format: "%.1f%%", run.score)
+            lines.append("| \(cell(title(run))) | \(run.suiteVersion.map(String.init) ?? "old") | \(score) | \(run.points)/\(run.maxPoints) | \(Format.seconds(run.duration)) |")
         }
         return lines + [""]
     }
 
     private static func section(_ run: ModelTestResult) -> [String] {
         var lines = ["## \(title(run))", ""]
-        var summary = ["Score **\(Int(run.score))**", "\(run.points) of \(run.maxPoints) points", "\(run.passed) of \(run.items.count) tasks", Format.seconds(run.duration)]
+        let publicSet = run.askedSet != nil
+        var summary = publicSet
+            ? [String(format: "**%d of %d right** (%.1f%%)", run.passed, run.items.count, run.score)]
+            : ["Score **\(Int(run.score))**", "\(run.points) of \(run.maxPoints) points", "\(run.passed) of \(run.items.count) tasks"]
+        summary.append(Format.seconds(run.duration))
         if let speed = run.tokensPerSecond { summary.append(String(format: "%.1f tokens/s", speed)) }
+        if let python = run.pythonVersion { summary.append("code graded on Python \(python)") }
+        if run.errorCount > 0 { summary.append("\(run.errorCount) with no reply because of an error, counted as wrong") }
         lines += [summary.joined(separator: " · "), ""]
+        if publicSet {
+            lines += ["| Source | Right |", "| --- | --- |"]
+            for source in HeldOut.sources {
+                let items = run.items.filter { $0.id.hasPrefix(source.prefix) }
+                if !items.isEmpty { lines.append("| \(source.name) | \(items.filter(\.passed).count) of \(items.count) |") }
+            }
+            lines.append("")
+        }
+        // The held-out questions and replies stay out of the page people read, so nobody tunes the harness on
+        // them by accident. The JSON beside this file has every reply, for anyone who wants to check the grading.
+        if run.size == .heldOut {
+            return lines + ["The replies aren't printed here. They are in the `.json` file with the same name, for checking the grading. If you work on the harness, don't read them: see `benchmarks/heldout/README.md`.", ""]
+        }
         lines.append("| Task | Level | Result | Points | Seconds | Thinking tokens | Output tokens | Stopped | Expected | Answer |")
         lines.append("| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |")
         for item in run.items {

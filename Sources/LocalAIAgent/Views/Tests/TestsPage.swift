@@ -103,7 +103,7 @@ private struct TestTabBar: View {
         switch tab {
         case .model: return lab.selectedModelRun.map { "\(TestFormat.score($0.score))/100" }
         case .hardware: return lab.selectedHardwareRun?.gpuBandwidth.map { "\(TestFormat.gbPerSecond($0)) GB/s" }
-        case .harness: return lab.harnessRun(for: lab.testModel(in: backends)?.id).map { "\(TestFormat.score($0.score))/100" }
+        case .harness: return lab.harnessRun(for: lab.testModel(in: backends)?.id).map { "\(TestFormat.score($0.score))\($0.askedSet == nil ? "/100" : "%")" }
         case .publish: return nil
         }
     }

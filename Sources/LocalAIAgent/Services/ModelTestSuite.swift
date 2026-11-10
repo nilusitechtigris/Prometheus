@@ -30,6 +30,17 @@ struct ModelTestQuestion: Identifiable {
     var shortPrompt: String?
     let expected: String
     let check: Check
+    /// For a question whose check has to run something, such as code against its tests. It replaces `check`.
+    var asyncCheck: ((String) async -> Bool)?
+    /// True for a question worth one point whatever its level, so a score is the share answered right. The
+    /// level then only sets how much room the reply gets.
+    var unweighted = false
+
+    /// Whether a reply answers the question, by whichever check it has.
+    func passes(_ raw: String) async -> Bool {
+        if let asyncCheck { return await asyncCheck(raw) }
+        return grade(raw)
+    }
 
     func grade(_ raw: String) -> Bool {
         let answer = ModelTestSuite.finalAnswer(raw)
@@ -55,9 +66,21 @@ struct ModelTestQuestion: Identifiable {
 /// How much of the Harness Test runs.
 enum HarnessTestSize: String, CaseIterable, Identifiable {
     case normal, max
+    /// Public questions the harness was never tuned on. See `HeldOut`.
+    case heldOut
+    /// Public questions of the same kinds, for looking at failures. The harness may be tuned on these.
+    case practice
 
     var id: String { rawValue }
-    var title: String { rawValue.capitalized }
+    var title: String { self == .heldOut ? "Held-out" : rawValue.capitalized }
+    /// The file of public questions this size asks, when it asks one.
+    var questionSet: String? {
+        switch self {
+        case .heldOut: HeldOut.current
+        case .practice: HeldOut.practice
+        case .normal, .max: nil
+        }
+    }
 }
 
 /// The model test: six topics, each with four levels of difficulty. A question is worth twice the

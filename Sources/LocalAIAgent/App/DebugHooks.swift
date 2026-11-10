@@ -9,6 +9,10 @@ import WebKit
 ///                                   LOCALAI_SIDE_BY_SIDE=1 asks the plain model and the harness each one
 ///   LOCALAI_VERDICT_CHECK=/path.txt check what code says about a plain reply and a harness reply
 ///   LOCALAI_V6_CHECK=/path.txt      check v6's routing, sentences and loop with a scripted model and canned pages
+///   LOCALAI_IFEVAL_CROSS=/in.json   run the ported IFEval checks on cases made by the reference logic, writing /in.json.out.txt;
+///                                   LOCALAI_HELDOUT_CHECK=/path.txt checks the held-out loader and graders;
+///                                   LOCALAI_HELDOUT_GRADE=/replies.json grades {"id": "reply"} made outside the app for
+///                                   LOCALAI_HELDOUT_SET (practice-v1 unless given), writing /replies.json.graded.txt
 ///   LOCALAI_DEV_V2_CHECK=/path.txt  check Dev harness v2 with a scripted model and canned page reports;
 ///                                   LOCALAI_DEV_VERSION=v1|v2 picks the Dev harness for this run
 ///   LOCALAI_DEMO=1                  run the harness demo after launch; LOCALAI_SHARE_CARD=/path.png writes the
@@ -239,6 +243,43 @@ enum DebugHooks {
                                              machine: monitor.chipName, date: reply.createdAt,
                                              plainSeconds: plain.metrics?.totalDuration, harnessSeconds: reply.harnessSeconds)
                 try? ShareCard.png(card)?.write(to: URL(fileURLWithPath: path))
+            }
+        }
+        if let path = env["LOCALAI_IFEVAL_CROSS"], let data = FileManager.default.contents(atPath: path) {
+            struct Case: Decodable {
+                let key: Int
+                let id: String
+                let kwargs: [String: HeldOut.Value]
+                let response: String
+                let expected: Bool
+            }
+            var lines: [String] = []
+            if let cases = try? JSONDecoder().decode([Case].self, from: data) {
+                var differ = 0
+                for item in cases {
+                    let got = IFEvalChecks.followed(HeldOut.Instruction(id: item.id, kwargs: item.kwargs), in: item.response)
+                    if got != item.expected {
+                        differ += 1
+                        lines.append("DIFFERS \(item.key) \(item.id): the port says \(got), the reference \(item.expected)")
+                    }
+                }
+                lines.insert("\(cases.count) cases, \(differ) where the port and the reference differ", at: 0)
+            } else {
+                lines.append("couldn't read the cases")
+            }
+            try? lines.joined(separator: "\n").write(toFile: path + ".out.txt", atomically: true, encoding: .utf8)
+        }
+        if let path = env["LOCALAI_HELDOUT_GRADE"], let data = FileManager.default.contents(atPath: path),
+           let replies = try? JSONDecoder().decode([String: String].self, from: data) {
+            Task {
+                let lines = await HeldOutCheck.grade(replies, set: env["LOCALAI_HELDOUT_SET"] ?? HeldOut.practice)
+                try? lines.joined(separator: "\n").write(toFile: path + ".graded.txt", atomically: true, encoding: .utf8)
+            }
+        }
+        if let path = env["LOCALAI_HELDOUT_CHECK"] {
+            Task {
+                let lines = await HeldOutCheck.run()
+                try? lines.joined(separator: "\n").write(toFile: path, atomically: true, encoding: .utf8)
             }
         }
         if let path = env["LOCALAI_DEV_V2_CHECK"] {

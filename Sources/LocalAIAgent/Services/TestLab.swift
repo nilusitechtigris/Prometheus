@@ -13,6 +13,9 @@ final class TestLab {
     private(set) var harnessProgress: TestProgress?
     /// Which Harness Test to run and show.
     private(set) var harnessSize = HarnessTestSize.normal
+    /// How many times the next Harness Test runs everything, to show how much a score moves between runs.
+    var harnessRepeats = 1
+    static let repeatOptions = [1, 3]
     private(set) var lastError: String?
 
     /// Questions open in the dashboard's list.
@@ -59,7 +62,7 @@ final class TestLab {
     }
 
     /// Runs of the whole question set. Harness - Normal stays out of the Model Test's scores and lists.
-    var fullRuns: [ModelTestResult] { modelResults.filter { !$0.isQuick } }
+    var fullRuns: [ModelTestResult] { modelResults.filter { $0.size == .max } }
 
     var selectedModelRun: ModelTestResult? {
         modelResults.first { $0.id == selectedModelRunID }
@@ -196,9 +199,9 @@ final class TestLab {
     /// The run to show: the one picked, else the newest of the chosen version on this model, else whatever
     /// this model has, else any model's. Runs from an older test come last, so they stay in view.
     func harnessRun(for modelID: String?) -> ModelTestResult? {
-        let quick = harnessSize == .normal
+        let size = harnessSize
         return modelResults.first { $0.id == selectedHarnessRunID }
-            ?? newestHarnessRun(in: modelResults.filter { $0.isQuick == quick }, for: modelID)
+            ?? newestHarnessRun(in: modelResults.filter { $0.size == size }, for: modelID)
             ?? newestHarnessRun(in: modelResults, for: modelID)
     }
 
@@ -227,13 +230,13 @@ final class TestLab {
         selectedHarnessRunID = run.id
         testModelID = run.model
         harnessChoice = run.version
-        harnessSize = run.isQuick ? .normal : .max
+        harnessSize = run.size
     }
 
     /// The newest run of each version that compares with this one: same questions, size, model, context and thinking.
     func comparableRuns(to run: ModelTestResult) -> [HarnessVersion: ModelTestResult] {
         var runs: [HarnessVersion: ModelTestResult] = [:]
-        for candidate in modelResults where candidate.suiteVersion == run.suiteVersion && candidate.isQuick == run.isQuick && candidate.model == run.model
+        for candidate in modelResults where candidate.suiteVersion == run.suiteVersion && candidate.size == run.size && candidate.askedSet == run.askedSet && candidate.model == run.model
             && candidate.contextLength == run.contextLength && candidate.thinking == run.thinking {
             if let version = candidate.version, runs[version] == nil { runs[version] = candidate }
         }
@@ -248,11 +251,30 @@ final class TestLab {
     var harnessRuns: [ModelTestResult] { modelResults.filter(\.usesHarness) }
 
     /// The run to compare against, if this exact setup has already been tested without the harness.
-    private func existingBaseline(_ setup: TestSetup, quick: Bool) -> ModelTestResult? {
+    private func existingBaseline(_ setup: TestSetup, size: HarnessTestSize) -> ModelTestResult? {
         modelResults.first {
-            $0.isCurrentSuite && !$0.usesHarness && $0.isQuick == quick && $0.model == setup.model.id
+            $0.isCurrentSuite && !$0.usesHarness && $0.errorCount == 0 && $0.size == size && $0.model == setup.model.id
                 && $0.thinking == (setup.think ?? false) && $0.contextLength == setup.context
         }
+    }
+
+    /// The set of repeats a new one can join: the newest on this setup that has a run without the harness for
+    /// every round and none yet of the versions about to run. Joining it saves asking the plain model again, and
+    /// puts the versions in one table.
+    nonisolated static func repeatGroupToJoin(in runs: [ModelTestResult], model: String, size: HarnessTestSize, thinking: Bool, context: Int,
+                                              repeats: Int, versions: [HarnessVersion]) -> UUID? {
+        let matching = runs.filter {
+            $0.repeatGroup != nil && $0.isCurrentSuite && $0.size == size && $0.model == model && $0.thinking == thinking && $0.contextLength == context
+        }
+        var seen: Set<UUID> = []
+        for group in matching.compactMap(\.repeatGroup) where seen.insert(group).inserted {
+            let members = matching.filter { $0.repeatGroup == group }
+            let plainRounds = Set(members.filter { !$0.usesHarness && $0.errorCount == 0 }.compactMap(\.repeatIndex))
+            // A run whose version this build doesn't know still counts as taken.
+            let taken = members.filter(\.usesHarness).map(\.version)
+            if plainRounds == Set(1...repeats), !taken.contains(where: { $0 == nil || versions.contains($0!) }) { return group }
+        }
+        return nil
     }
 
     /// The same questions on the same model without the harness, the poisoned pages both ways, then the
@@ -263,7 +285,8 @@ final class TestLab {
     func runHarnessTest(backends: BackendController, settings: AppSettings) {
         guard !isRunning, backends.activeTest == nil, let model = testModel(in: backends) else { return }
         let versions = harnessChoice.map { [$0] } ?? HarnessVersion.allCases
-        let quick = harnessSize == .normal
+        let size = harnessSize
+        let repeats = max(harnessRepeats, 1)
         let start = Date()
         lastError = nil
         harnessProgress = TestProgress(step: "Loading \(model.displayName)…", startedAt: start)
@@ -277,51 +300,85 @@ final class TestLab {
             var setup = await Self.prepare(model, backends: backends, settings: settings)
             // A version that always thinks, tested on its own, compares with a run that thinks too.
             if versions.allSatisfy(\.alwaysThinks), setup.think != nil { setup.think = true }
-            var baseline = self.existingBaseline(setup, quick: quick)
+            // A third of the held-out questions are code, graded by running it. With no Python every one of them
+            // would fail, with the harness or without, for a reason that says nothing about either.
+            if let set = size.questionSet, !HeldOut.isWhole(set) {
+                self.lastError = "This copy of the app doesn't have the \(size.title) questions. Install it again with the Update button or from the download."
+                return
+            }
+            if size.questionSet != nil, !(await HeldOutGrader.canRunCode()) {
+                self.lastError = "This test runs code to grade it, and Python isn't available here. Install Apple's Command Line Tools: open Terminal and run xcode-select --install"
+                return
+            }
             let runsOff = settings.harnessTestRunsOff
-            let needsOffRun = runsOff && baseline == nil
+            // Repeats are compared with each other, so each round has its own run without the harness: a new one,
+            // or the one an earlier set of repeats on this setup made for that round.
+            let joined = repeats > 1 && runsOff
+                ? Self.repeatGroupToJoin(in: self.modelResults, model: setup.model.id, size: size, thinking: setup.think ?? false,
+                                         context: setup.context, repeats: repeats, versions: versions) : nil
+            let group = repeats > 1 ? joined ?? UUID() : nil
 
-            @MainActor func report(_ step: String, _ detail: String, _ fraction: Double) {
-                self.harnessProgress = TestProgress(step: step, detail: detail, fraction: fraction, startedAt: start)
-            }
-            // Every set of questions gets the same share of the bar, and the poisoned pages a tenth.
-            let pagesShare = quick ? 0 : 0.1
-            let suiteShare = (1 - pagesShare) / Double(versions.count + (needsOffRun ? 1 : 0))
-            let withoutShare = needsOffRun ? suiteShare : 0
+            for round in 1...repeats where !Task.isCancelled {
+                var baseline = repeats > 1
+                    ? joined.flatMap { joined in self.modelResults.first { $0.repeatGroup == joined && !$0.usesHarness && $0.repeatIndex == round } }
+                    : self.existingBaseline(setup, size: size)
+                let python = size.questionSet == nil ? nil : await HeldOutGrader.pythonVersion()
+                let needsOffRun = runsOff && baseline == nil
+                let lead = repeats > 1 ? "Run \(round) of \(repeats) · " : ""
 
-            if needsOffRun {
-                baseline = await self.runSuite(setup, harness: nil, quick: quick) { index, total, question in
-                    report("Without the harness", "Question \(index + 1) of \(total) · \(question.title)",
-                           withoutShare * Double(index) / Double(total))
+                @MainActor func report(_ step: String, _ detail: String, _ fraction: Double) {
+                    self.harnessProgress = TestProgress(step: lead + step, detail: detail, fraction: (Double(round - 1) + fraction) / Double(repeats), startedAt: start)
                 }
-                if let baseline {
-                    self.modelResults.insert(baseline, at: 0)
-                    self.save()
-                }
-            }
+                // Every set of questions gets the same share of the bar, and the poisoned pages a tenth.
+                let hasPages = size == .max
+                let pagesShare = hasPages ? 0.1 : 0
+                let suiteShare = (1 - pagesShare) / Double(versions.count + (needsOffRun ? 1 : 0))
+                let withoutShare = needsOffRun ? suiteShare : 0
 
-            // The run without the harness comes back empty if it was stopped or failed.
-            let ready = baseline != nil || !runsOff
-            var without: [InjectionResult] = [], with: [InjectionResult] = []
-            if ready && !quick {
-                let cases = InjectionSuite.cases
-                for (i, attack) in cases.enumerated() where !Task.isCancelled {
-                    report("Injection test", "Page \(i + 1) of \(cases.count) · \(attack.title)",
-                           withoutShare + pagesShare * Double(i) / Double(cases.count))
-                    if runsOff { without.append(await Self.attack(attack, setup: setup, harness: false)) }
-                    with.append(await Self.attack(attack, setup: setup, harness: true))
+                if needsOffRun {
+                    baseline = await self.runSuite(setup, harness: nil, size: size) { index, total, question in
+                        report("Without the harness", "Question \(index + 1) of \(total) · \(question.title)",
+                               withoutShare * Double(index) / Double(total))
+                    }
+                    if var made = baseline {
+                        made.pythonVersion = python
+                        made.repeatGroup = group
+                        made.repeatIndex = group == nil ? nil : round
+                        baseline = made
+                        self.modelResults.insert(made, at: 0)
+                        self.save()
+                    }
                 }
-            }
 
-            if ready {
+                // The run without the harness comes back empty if it was stopped or failed.
+                guard baseline != nil || !runsOff else { break }
+                // The pages run once a round, since every version guards them the same way.
+                var without: [InjectionResult] = [], with: [InjectionResult] = []
+                if hasPages {
+                    let cases = InjectionSuite.cases
+                    for (i, attack) in cases.enumerated() where !Task.isCancelled {
+                        report("Injection test", "Page \(i + 1) of \(cases.count) · \(attack.title)",
+                               withoutShare + pagesShare * Double(i) / Double(cases.count))
+                        if runsOff { without.append(await Self.attack(attack, setup: setup, harness: false)) }
+                        with.append(await Self.attack(attack, setup: setup, harness: true))
+                    }
+                }
+
+                var stopped = false
                 for (position, version) in versions.enumerated() where !Task.isCancelled {
                     let began = Date()
                     let step = versions.count > 1 ? "\(version.title), \(position + 1) of \(versions.count)" : "With \(version.title)"
                     let done = withoutShare + pagesShare + suiteShare * Double(position)
-                    guard var run = await self.runSuite(setup, harness: version, quick: quick, report: { index, total, question in
+                    guard var run = await self.runSuite(setup, harness: version, size: size, report: { index, total, question in
                         report(step, "Question \(index + 1) of \(total) · \(question.title)", done + suiteShare * Double(index) / Double(total))
-                    }) else { break }
+                    }) else {
+                        stopped = true
+                        break
+                    }
                     run.baselineRunID = baseline?.id
+                    run.pythonVersion = python
+                    run.repeatGroup = group
+                    run.repeatIndex = group == nil ? nil : round
                     run.toolsAvailable = setup.supportsTools
                     // v6 stops at two rounds whatever the setting says, so that's what the run records.
                     run.harnessRounds = version.usesRounds ? (version == .evidence ? min(setup.maxRounds, 2) : setup.maxRounds) : nil
@@ -332,12 +389,30 @@ final class TestLab {
                     self.selectedHarnessRunID = nil
                     self.save()
                 }
+                if stopped { break }
             }
             }
             harnessProgress = nil
             harnessTask = nil
             Self.finish(model, backends: backends, settings: settings)
         }
+    }
+
+    /// One line for each setup in a set of repeats, with the plain model first. Empty for a single run.
+    func repeats(of run: ModelTestResult) -> [RepeatRow] {
+        guard let group = run.repeatGroup else { return [] }
+        return Self.repeatRows(modelResults.filter { $0.repeatGroup == group })
+    }
+
+    nonisolated static func repeatRows(_ runs: [ModelTestResult]) -> [RepeatRow] {
+        // Oldest first, so a round run again later replaces the one before it.
+        let ordered = runs.filter { $0.repeatIndex != nil }.sorted { $0.date < $1.date }
+        func row(_ version: HarnessVersion?, _ members: [ModelTestResult]) -> RepeatRow? {
+            members.isEmpty ? nil : RepeatRow(version: version, scores: Dictionary(members.map { ($0.repeatIndex ?? 0, $0.score) }) { _, newer in newer })
+        }
+        let rows = [row(nil, ordered.filter { !$0.usesHarness })].compactMap { $0 }
+            + HarnessVersion.allCases.compactMap { version in row(version, ordered.filter { $0.version == version }) }
+        return rows.contains { $0.scores.count > 1 } ? rows : []
     }
 
     func cancelHarnessTest() { harnessTask?.cancel() }
@@ -363,19 +438,23 @@ final class TestLab {
     // MARK: - Running the questions
 
     /// Runs every question once. Returns nil if it was stopped or failed.
-    private func runSuite(_ setup: TestSetup, harness: HarnessVersion?, quick: Bool = false,
+    private func runSuite(_ setup: TestSetup, harness: HarnessVersion?, size: HarnessTestSize = .max,
                           report: @MainActor (Int, Int, ModelTestQuestion) -> Void) async -> ModelTestResult? {
         let start = Date()
-        let questions = ModelTestSuite.questions(contextLength: setup.context).filter { !quick || ModelTestSuite.quickIDs.contains($0.id) }
-        var result = ModelTestResult(suiteVersion: ModelTestSuite.version, harness: harness == nil ? nil : true, harnessVersion: harness.map(SavedHarnessVersion.init),
+        let quick = size == .normal
+        let questions = size.questionSet.map { HeldOut.questions($0) }
+            ?? ModelTestSuite.questions(contextLength: setup.context).filter { !quick || ModelTestSuite.quickIDs.contains($0.id) }
+        var result = ModelTestResult(suiteVersion: size.questionSet.flatMap(HeldOut.suiteVersion) ?? ModelTestSuite.version, harness: harness == nil ? nil : true, harnessVersion: harness.map(SavedHarnessVersion.init),
                                      model: setup.model.id, displayName: setup.model.displayName, quant: setup.model.quantLabel,
                                      quantProvider: setup.model.quantProvider, backend: setup.backend.kind.displayName,
                                      thinking: harness?.alwaysThinks == true ? setup.think != nil : setup.think ?? false,
                                      contextLength: setup.context)
         result.quick = quick ? true : nil
+        result.questionSet = size.questionSet
         var generated = 0, generationSeconds = 0.0
         var firstTokens: [Double] = []
         var promptReadTokens = 0
+        var errorsInARow = 0
         for (i, question) in questions.enumerated() {
             if Task.isCancelled { return nil }
             if i > 0 { report(i, questions.count, question) }
@@ -398,6 +477,13 @@ final class TestLab {
                 lastError = error
                 return nil
             }
+            // A framework that has stopped answering would fill the rest of the run with "wrong", and that would
+            // be saved as a score. Three in a row ends the run with nothing saved.
+            errorsInARow = item.error == nil ? 0 : errorsInARow + 1
+            if errorsInARow >= 3 {
+                lastError = "\(setup.backend.kind.displayName) stopped answering at question \(i + 1) of \(questions.count), so this run wasn't saved. \(item.error ?? "")"
+                return nil
+            }
         }
         result.duration = Date().timeIntervalSince(start)
         result.tokensPerSecond = generationSeconds > 0 ? Double(generated) / generationSeconds : nil
@@ -417,18 +503,21 @@ final class TestLab {
                                    setup: setup, maxTokens: limit, useTools: false)
         }
         let stats = reply.stats
+        // Timed before grading: a code question's tests can take seconds, and those aren't the model's.
+        let seconds = Date().timeIntervalSince(start) - (stats?.loadSeconds ?? 0)
+        let passed = reply.error == nil ? await question.passes(reply.answer) : false
         var item = ModelTestItemResult(
             id: question.id, category: question.category, title: question.title, expected: question.expected,
             answer: reply.answer.trimmingCharacters(in: .whitespacesAndNewlines),
-            passed: reply.error == nil && question.grade(reply.answer),
-            seconds: Date().timeIntervalSince(start) - (stats?.loadSeconds ?? 0),
+            passed: passed,
+            seconds: seconds,
             timeToFirstToken: reply.firstToken.map { $0.timeIntervalSince(start) - (stats?.loadSeconds ?? 0) },
             outputTokens: stats?.completionTokens.map { max($0 - reply.thinkingTokens, 0) },
             thinkingTokens: reply.thinkingTokens > 0 ? reply.thinkingTokens : nil,
             promptTokens: stats?.promptTokens,
             error: reply.error
         )
-        item.level = question.level
+        item.level = question.unweighted ? nil : question.level
         item.summary = question.summary
         item.prompt = question.shortPrompt ?? question.prompt
         item.stopReason = stats?.stopReason

@@ -47,10 +47,14 @@ struct PublishPage: View {
         "\(machine.name) · \(machine.chip.replacingOccurrences(of: "Apple ", with: "")) · \(machine.memoryGB) GB · macOS \(machine.macOS)"
     }
 
-    /// A harness run means little without the run it's compared with, so that comes along with it.
+    /// A harness run means little without the run it's compared with, so that comes along with it. So do the
+    /// other rounds of a set of repeats: one round picked alone would hide the rest.
     private var chosenModelRuns: [ModelTestResult] {
-        let baselines = Set(lab.modelResults.filter { picked.contains($0.id) }.compactMap(\.baselineRunID))
-        return lab.modelResults.filter { picked.contains($0.id) || baselines.contains($0.id) }
+        let chosen = lab.modelResults.filter { picked.contains($0.id) }
+        let groups = Set(chosen.compactMap(\.repeatGroup))
+        let together = lab.modelResults.filter { picked.contains($0.id) || $0.repeatGroup.map(groups.contains) == true }
+        let baselines = Set(together.compactMap(\.baselineRunID))
+        return lab.modelResults.filter { run in together.contains { $0.id == run.id } || baselines.contains(run.id) }
     }
 
     private func publish() {
@@ -117,7 +121,8 @@ struct PublishPage: View {
 
     private func row(_ run: ModelTestResult) -> PublishRow {
         let setup = "\(run.displayName) · \(run.quant) · \(Format.tokens(run.contextLength))\(run.setupLabel)"
-        return PublishRow(id: run.id, date: run.date, title: setup, tag: run.isCurrentSuite ? (run.isQuick ? "Normal" : nil) : "old test",
+        let labels = [run.size == .max ? nil : run.size.title, run.repeatIndex.map { "round \($0)" }].compactMap { $0 }
+        return PublishRow(id: run.id, date: run.date, title: setup, tag: run.isCurrentSuite ? (labels.isEmpty ? nil : labels.joined(separator: " · ")) : "old test",
                           result: TestFormat.score(run.score), isOn: binding(run.id))
     }
 

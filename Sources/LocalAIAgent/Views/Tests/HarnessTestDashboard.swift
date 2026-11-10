@@ -3,7 +3,7 @@ import SwiftUI
 /// The same model with the harness off and through each version of it: tools from trusted sites plus
 /// prompt injection protection.
 struct HarnessTestDashboard: View {
-    enum Detail: Hashable { case howItWorks, versions, changes, tools, sites }
+    enum Detail: Hashable { case howItWorks, versions, changes, repeats, tools, sites }
 
     @Environment(TestLab.self) private var lab
     @Environment(BackendController.self) private var backends
@@ -19,9 +19,7 @@ struct HarnessTestDashboard: View {
         let run = lab.harnessRun(for: testModel?.id)
         let baseline = run.flatMap { lab.baseline(of: $0) }
         TestPage(title: "Harness - \(lab.harnessSize.title)",
-                 subtitle: lab.harnessSize == .normal
-                     ? "\(ModelTestSuite.quickIDs.count) quick tasks: Coding, Knowledge and Instructions."
-                     : "The same \(ModelTestSuite.questionCount) questions with each version, then \(InjectionSuite.cases.count) poisoned pages.",
+                 subtitle: subtitle,
                  caption: backends.kind.supportsTools ? setupCaption : "Harness tools need Ollama or MLX LM for now",
                  notice: notice(showing: run),
                  progress: lab.harnessProgress, onStop: { lab.cancelHarnessTest() }, scrollable: scrollable, shownRun: run?.id) {
@@ -29,6 +27,7 @@ struct HarnessTestDashboard: View {
             TestModelPicker()
             HarnessSizePicker()
             HarnessVersionPicker()
+            HarnessRepeatsPicker()
             HarnessOffToggle()
             RunTestButton(title: lab.harnessChoice == nil ? "Run all \(HarnessVersion.allCases.count)" : "Run test",
                           disabled: !canRun || !backends.kind.supportsTools) {
@@ -54,7 +53,17 @@ struct HarnessTestDashboard: View {
                 } left: {
                     topics(run, baseline)
                 } right: {
-                    injection(run)
+                    let rows = lab.repeats(of: run)
+                    if run.askedSet != nil, rows.isEmpty {
+                        sources(run, baseline)
+                    } else if !rows.isEmpty, !showsPages(run) {
+                        TestPanel(title: "Repeat runs", symbol: "repeat", note: "the same setup, round by round") {
+                            // The table can outgrow the panel when every version was run.
+                            ScrollView { repeatTable(rows, shown: run) }.frame(maxHeight: .infinity)
+                        }
+                    } else {
+                        injection(run)
+                    }
                 } runs: {
                     history(selected: run)
                 }
@@ -65,6 +74,15 @@ struct HarnessTestDashboard: View {
         }
     }
 
+    private var subtitle: String {
+        switch lab.harnessSize {
+        case .normal: "\(ModelTestSuite.quickIDs.count) quick tasks: Coding, Knowledge and Instructions."
+        case .max: "The same \(ModelTestSuite.questionCount) questions with each version, then \(InjectionSuite.cases.count) poisoned pages."
+        case .heldOut: "\(HeldOut.size()) public questions the harness was never tuned on: maths, writing to rules, and code."
+        case .practice: "\(HeldOut.size(HeldOut.practice)) more of the same kinds, for finding what fails. The harness may be tuned on these, so they prove nothing."
+        }
+    }
+
     private var testModel: LocalModel? { lab.testModel(in: backends) }
     private var canRun: Bool { !lab.isRunning && !chat.isGenerating && backends.status.isOnline && testModel != nil }
 
@@ -72,9 +90,10 @@ struct HarnessTestDashboard: View {
     private func notice(showing run: ModelTestResult?) -> String? {
         guard let model = testModel, let run, lab.harnessProgress == nil else { return nil }
         if !run.isCurrentSuite { return "From an older version of the test, so its score won't compare with new runs." }
-        if run.isQuick != (lab.harnessSize == .normal) {
-            return "No \(lab.harnessSize.title) run yet. Showing \(run.isQuick ? "Normal" : "Max")."
+        if run.errorCount > 0 {
+            return "\(run.errorCount) question\(run.errorCount == 1 ? "" : "s") got no reply because of an error, and count\(run.errorCount == 1 ? "s" : "") as wrong."
         }
+        if run.size != lab.harnessSize { return "No \(lab.harnessSize.title) run yet. Showing \(run.size.title)." }
         if model.id != run.model { return "Not tested yet. Showing \(run.displayName) \(run.quant)." }
         if let choice = lab.harnessChoice, let shown = run.version, choice != shown {
             return "\(choice.title) not tested on this model yet. Showing \(shown.title)."
@@ -86,12 +105,14 @@ struct HarnessTestDashboard: View {
         let context = testModel.map { Format.tokens(backends.estimatedContext(for: $0)) } ?? "—"
         let thinking = testModel?.catalog?.thinking == true && settings.thinkingEnabled && backends.kind.supportsThinkingControl
         let versions = lab.harnessChoice.map(\.testTimeWeight) ?? HarnessVersion.allCases.map(\.testTimeWeight).reduce(0, +)
-        let time: String
-        if lab.harnessSize == .normal {
-            time = thinking ? "Thinking on, can take \(versions * 15)+ minutes" : "Takes up to \(versions * 10) minutes"
-        } else {
-            time = thinking ? "Thinking on, can take \(versions * 2)+ hours" : "Takes up to \(versions == 1 ? "an hour" : "\(versions) hours")"
+        var time: String
+        switch lab.harnessSize {
+        case .normal: time = thinking ? "Thinking on, can take \(versions * 15)+ minutes" : "Takes up to \(versions * 10) minutes"
+        case .max: time = thinking ? "Thinking on, can take \(versions * 2)+ hours" : "Takes up to \(versions == 1 ? "an hour" : "\(versions) hours")"
+        // Nobody has timed these yet, so it says how much there is to ask instead of guessing.
+        case .heldOut, .practice: time = "\(lab.harnessSize.questionSet.map { HeldOut.size($0) } ?? 0) questions for each version"
         }
+        if lab.harnessRepeats > 1 { time += ", \(lab.harnessRepeats) times over" }
         let sameAsLoop = !thinking && lab.harnessChoice == .thinking ? " · Without thinking, \(HarnessVersion.thinking.short) runs like \(HarnessVersion.loop.short)" : ""
         return "\(backends.kind.displayName) · \(context) context · \(time)\(sameAsLoop)"
     }
@@ -111,7 +132,7 @@ struct HarnessTestDashboard: View {
                 MetricTile(title: "Tool calls", value: "\(toolLog.count)",
                            caption: toolCaption(run, questions: questionsWithTools, failed: failedCalls),
                            symbol: "wrench.and.screwdriver", level: failedCalls > 0 ? .warning : nil),
-                MetricTile(title: "Points", value: "\(run.points)", unit: "of \(run.maxPoints)",
+                MetricTile(title: run.askedSet != nil ? "Right answers" : "Points", value: "\(run.points)", unit: "of \(run.maxPoints)",
                            caption: baseline.map { "Was \($0.points) without the harness" } ?? Self.notRunOff, symbol: "star"),
                 MetricTile(title: "Test time", value: Format.seconds(run.duration),
                            caption: baseline.map { "Was \(Format.seconds($0.duration)) without the harness" } ?? Self.notRunOff,
@@ -129,23 +150,160 @@ struct HarnessTestDashboard: View {
         let on = TestFormat.score(run.score)
         let version = run.version?.title ?? "the harness"
         let cantCallTools = "This model can't call tools itself, so only the harness used them."
+        let publicSet = run.askedSet != nil
         let headline, note: String
         let aside: String?
         if let baseline {
             let off = TestFormat.score(baseline.score)
-            let delta = Int(run.score) - Int(baseline.score)
-            headline = delta == 0 ? "No change with \(version)" : "\(delta > 0 ? "+" : "")\(delta) with \(version)"
-            aside = "\(off) → \(on)"
+            if publicSet {
+                // Every question counts the same here, so the gain is counted in questions. A rounded score
+                // would call 90 against 91 right "no change".
+                let more = run.passed - baseline.passed
+                headline = more == 0 ? "No change with \(version)" : "\(abs(more)) \(more > 0 ? "more" : "fewer") right with \(version)"
+                aside = "\(baseline.passed) → \(run.passed) of \(run.items.count)"
+            } else {
+                let delta = Int(run.score) - Int(baseline.score)
+                headline = delta == 0 ? "No change with \(version)" : "\(delta > 0 ? "+" : "")\(delta) with \(version)"
+                aside = "\(off) → \(on)"
+            }
             note = run.toolsAvailable == false ? "\(off) off, \(on) on. \(cantCallTools)" : "\(off) with the harness off, \(on) with it on, on the same questions."
         } else {
-            headline = "\(on) with \(version)"
+            headline = publicSet ? "\(run.passed) of \(run.items.count) right with \(version)" : "\(on) with \(version)"
             aside = nil
             note = run.toolsAvailable == false ? cantCallTools : "Run with the harness on only, so there's no score to compare it with."
         }
-        return TestHero(score: run.score, headline: headline, aside: aside,
-                        detail: "\(run.quant) by \(run.quantProvider) · \(run.backend)", note: note) {
+        var single = note
+        if run.size == .practice {
+            single = "Practice questions. The harness may be tuned on these, so report Held-out numbers, not these."
+        } else if publicSet, run.toolsAvailable != false {
+            single = "The share of \(run.items.count) public questions answered right, in one run."
+        }
+        var card = TestHero(score: run.score, headline: headline, aside: aside,
+                            detail: "\(run.quant) by \(run.quantProvider) · \(run.backend)", note: repeatNote(run) ?? single) {
             ModelRunChips(run: run)
         }
+        if publicSet {
+            // The app's own test is scaled to a frontier model. This one is just the share answered right.
+            card.unit = "% right"
+            card.scale = ["0", "25", "50", "75", "100"]
+        }
+        return card
+    }
+
+    /// For a run that is one round of several: which one it is, and the means.
+    private func repeatNote(_ run: ModelTestResult) -> String? {
+        let rows = lab.repeats(of: run)
+        guard let index = run.repeatIndex, let mine = rows.first(where: { $0.version == run.version }), mine.scores.count > 1 else { return nil }
+        let mean = String(format: "%.1f", mine.mean)
+        let off = rows.first { $0.version == nil }.map { String(format: ", and %.1f with the harness off", $0.mean) } ?? ""
+        return "Round \(index). Mean over \(mine.scores.count) rounds: \(mean)\(off)."
+    }
+
+    // MARK: Repeats and sources
+
+    /// True when the panel beside By topic holds the poisoned pages, which only Max has.
+    private func showsPages(_ run: ModelTestResult) -> Bool { !(run.injectionWith ?? []).isEmpty }
+
+    /// Every score of every round, so a gain can be seen next to how much a score moves by itself.
+    private func repeatTable(_ rows: [RepeatRow], shown run: ModelTestResult) -> some View {
+        let rounds = Set(rows.flatMap(\.rounds)).sorted()
+        let off = rows.first { $0.version == nil }
+        let mine = rows.first { $0.version == run.version }
+        func one(_ value: Double) -> String { String(format: "%.1f", value) }
+        return VStack(alignment: .leading, spacing: 12) {
+            Grid(alignment: .leading, horizontalSpacing: 12, verticalSpacing: 12) {
+                GridRow {
+                    Text("")
+                    ForEach(rounds, id: \.self) { Text("Round \($0)").gridColumnAlignment(.trailing) }
+                    Text("Mean").gridColumnAlignment(.trailing)
+                    Text("Lowest to highest").gridColumnAlignment(.trailing)
+                }
+                .font(.uiCaption.weight(.semibold))
+                .foregroundStyle(.secondary)
+                ForEach(rows) { row in
+                    let chosen = row.version == run.version
+                    GridRow {
+                        Text(row.title).frame(maxWidth: .infinity, alignment: .leading)
+                        ForEach(rounds, id: \.self) { round in
+                            Text(row.scores[round].map(one) ?? "—").monospacedDigit()
+                        }
+                        Text(one(row.mean)).monospacedDigit().fontWeight(.semibold)
+                        Text("\(one(row.low)) to \(one(row.high))").monospacedDigit()
+                    }
+                    .font(.uiCallout)
+                    .foregroundStyle(chosen ? AnyShapeStyle(Palette.accent) : AnyShapeStyle(row.version == nil ? .primary : .secondary))
+                }
+            }
+            Spacer(minLength: 0)
+            if let off, let mine, mine.version != nil {
+                panelFootnote((mine.verdict(against: off) ?? "Fewer than two rounds have both runs, so there's nothing to compare yet.")
+                              + " The plain model is asked at temperature 0, so its rounds differ little. Whether a gap is more than luck is under What changed.")
+            } else {
+                panelFootnote("Run with the harness off too, to see a gain next to how much a score moves by itself.")
+            }
+        }
+    }
+
+    /// The questions that passed on one side only.
+    private func flips(_ run: ModelTestResult, _ baseline: ModelTestResult) -> (gained: [ModelTestItemResult], lost: [ModelTestItemResult]) {
+        let pairs = run.items.compactMap { item in baseline.items.first { $0.id == item.id }.map { (with: item, without: $0) } }
+        return (pairs.filter { $0.with.passed && !$0.without.passed }.map(\.with), pairs.filter { !$0.with.passed && $0.without.passed }.map(\.with))
+    }
+
+    /// Shown where a held-out run would list its questions.
+    private var closedNote: some View {
+        panelFootnote("The held-out questions and replies aren't shown, so that nobody tunes the harness on them by accident. Practice asks questions of the same kinds and shows everything.")
+    }
+
+    /// Where the public questions come from, and how this run did on each.
+    private func sources(_ run: ModelTestResult, _ baseline: ModelTestResult?) -> some View {
+        func right(_ result: ModelTestResult?, _ prefix: String) -> String {
+            guard let items = result?.items.filter({ $0.id.hasPrefix(prefix) }), !items.isEmpty else { return "—" }
+            return "\(items.filter(\.passed).count)/\(items.count)"
+        }
+        let footnote: String
+        if let baseline {
+            let changed = flips(run, baseline)
+            footnote = FlipTest.sentence(gained: changed.gained.count, lost: changed.lost.count)
+        } else if run.size == .practice {
+            footnote = "Public test questions kept apart from the held-out ones. The harness may be tuned on these, so a gain here is a lead to follow, not a result."
+        } else {
+            footnote = "Public test questions, picked by a fixed seed and never used to tune the harness. Code grades every one."
+        }
+        return TestPanel(title: "Where the questions come from", symbol: "books.vertical.fill", note: "right answers") {
+            Grid(alignment: .leading, horizontalSpacing: 12, verticalSpacing: 12) {
+                GridRow {
+                    Text("")
+                    Text("Off").gridColumnAlignment(.trailing)
+                    Text(run.version?.short ?? "On").gridColumnAlignment(.trailing).foregroundStyle(Palette.accent)
+                }
+                .font(.uiCaption.weight(.semibold))
+                .foregroundStyle(.secondary)
+                ForEach(HeldOut.sources, id: \.prefix) { source in
+                    GridRow {
+                        VStack(alignment: .leading, spacing: 1) {
+                            Text(source.name).font(.uiCallout)
+                            Text(source.what).font(.uiCaption).foregroundStyle(.secondary).lineLimit(1)
+                        }
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        Text(right(baseline, source.prefix)).monospacedDigit().foregroundStyle(.secondary)
+                        Text(right(run, source.prefix)).monospacedDigit().fontWeight(.semibold).foregroundStyle(Palette.accent)
+                    }
+                    .font(.uiCallout)
+                }
+            }
+            Spacer(minLength: 0)
+            panelFootnote(footnote)
+        }
+    }
+
+    /// A few lines under a panel. It asks for little width, so a long one wraps instead of pushing the two
+    /// panels one above the other.
+    private func panelFootnote(_ text: String) -> some View {
+        Text(text)
+            .font(.uiCaption).foregroundStyle(.secondary)
+            .frame(minWidth: 0, idealWidth: 240, maxWidth: .infinity, alignment: .leading)
+            .fixedSize(horizontal: false, vertical: true)
     }
 
     private func usedTools(_ item: ModelTestItemResult) -> Bool {
@@ -156,10 +314,14 @@ struct HarnessTestDashboard: View {
 
     @ViewBuilder
     private func details(_ run: ModelTestResult?, _ baseline: ModelTestResult?) -> some View {
-        TestDetails(tabs: detailTabs(run, baseline), selection: $detail) {
-            switch (detail, run, baseline) {
+        let tabs = detailTabs(run, baseline)
+        // A tab can go away when another run is shown. The first one stands in for it.
+        let shown = tabs.contains { $0.id == detail } ? detail : .howItWorks
+        TestDetails(tabs: tabs, selection: $detail) {
+            switch (shown, run, baseline) {
             case (.versions, _, _): versions(run, baseline)
             case (.changes, let run?, let baseline?): changes(run, baseline)
+            case (.repeats, let run?, _): repeatTable(lab.repeats(of: run), shown: run)
             case (.tools, let run?, _): toolActivity(run)
             case (.sites, _, _): TrustedSiteList()
             default: HarnessFlowDiagram()
@@ -170,6 +332,8 @@ struct HarnessTestDashboard: View {
     private func detailTabs(_ run: ModelTestResult?, _ baseline: ModelTestResult?) -> [(id: Detail, title: String)] {
         var tabs: [(id: Detail, title: String)] = [(.howItWorks, "How it works"), (.versions, "Versions")]
         if run != nil, baseline != nil { tabs.append((.changes, "What changed")) }
+        // Max keeps its poisoned pages in the panel, so its repeats go here.
+        if let run, showsPages(run), !lab.repeats(of: run).isEmpty { tabs.append((.repeats, "Repeats")) }
         if run != nil { tabs.append((.tools, "Tool use")) }
         tabs.append((.sites, "Trusted sites"))
         return tabs
@@ -243,7 +407,13 @@ struct HarnessTestDashboard: View {
                     }
                 }
             }
-            if let run { VersionQuestionGrid(run: run, baseline: baseline, runs: runs) }
+            if let run {
+                if run.size == .heldOut {
+                    closedNote
+                } else {
+                    VersionQuestionGrid(run: run, baseline: baseline, runs: runs, weighted: run.askedSet == nil)
+                }
+            }
         }
     }
 
@@ -289,16 +459,23 @@ struct HarnessTestDashboard: View {
 
     @ViewBuilder
     private func changes(_ run: ModelTestResult, _ baseline: ModelTestResult) -> some View {
-        let pairs = run.items.compactMap { item in baseline.items.first { $0.id == item.id }.map { (with: item, without: $0) } }
-        let gained = pairs.filter { $0.with.passed && !$0.without.passed }.map(\.with)
-        let lost = pairs.filter { !$0.with.passed && $0.without.passed }.map(\.with)
+        let (gained, lost) = flips(run, baseline)
         VStack(alignment: .leading, spacing: 10) {
-            Text("\(gained.count) gained · \(lost.count) lost").font(.uiCaption).foregroundStyle(.secondary)
-            if gained.isEmpty && lost.isEmpty {
-                Text("The same questions passed with and without the harness.").font(.uiCallout).foregroundStyle(.secondary)
+            Text(FlipTest.sentence(gained: gained.count, lost: lost.count))
+                .font(.uiCallout).foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+            if run.size == .heldOut {
+                ForEach(HeldOut.sources, id: \.prefix) { source in
+                    let more = gained.filter { $0.id.hasPrefix(source.prefix) }.count, fewer = lost.filter { $0.id.hasPrefix(source.prefix) }.count
+                    if more + fewer > 0 {
+                        Text("\(source.name): \(more) to right, \(fewer) to wrong").font(.uiCallout).monospacedDigit()
+                    }
+                }
+                closedNote
+            } else {
+                changeList("Solved only with the harness", gained)
+                changeList("Solved only without the harness", lost)
             }
-            changeList("Solved only with the harness", gained)
-            changeList("Solved only without the harness", lost)
         }
     }
 
@@ -331,7 +508,9 @@ struct HarnessTestDashboard: View {
         let used = run.items.filter(usedTools)
         VStack(alignment: .leading, spacing: 10) {
             Text("\(used.count) question\(used.count == 1 ? "" : "s") used tools.").font(.uiCaption).foregroundStyle(.secondary)
-            if !used.isEmpty {
+            if run.size == .heldOut {
+                closedNote
+            } else if !used.isEmpty {
                 Card(padding: 0) {
                     VStack(spacing: 0) {
                         ForEach(Array(used.enumerated()), id: \.element.id) { index, item in
@@ -350,7 +529,7 @@ struct HarnessTestDashboard: View {
         TestRunList(runs: lab.harnessRuns) { run in
             TestRunRow(level: TestScoring.modelScore.level(run.score), date: run.date,
                        title: "\(run.displayName) · \(run.quant)\(run.thinking ? " · thinking" : "")",
-                       tag: [run.version?.title, run.isQuick ? "Normal" : "Max", run.isCurrentSuite ? nil : "old test"]
+                       tag: [run.version?.title, run.size.title, run.repeatIndex.map { "round \($0)" }, run.isCurrentSuite ? nil : "old test"]
                            .compactMap { $0 }.joined(separator: " · "),
                        result: "\(lab.baseline(of: run).map { TestFormat.score($0.score) } ?? "—") → \(TestFormat.score(run.score))",
                        selected: run.id == selected.id,
@@ -372,7 +551,24 @@ private struct HarnessSizePicker: View {
         .labelsHidden()
         .fixedSize()
         .disabled(lab.isRunning)
-        .help("Normal: \(ModelTestSuite.quickIDs.count) tasks, to check a change quickly. Max: all \(ModelTestSuite.questionCount) questions and the poisoned pages. Their scores don't compare.")
+        .help("Normal: \(ModelTestSuite.quickIDs.count) tasks, to check a change quickly. Max: all \(ModelTestSuite.questionCount) questions and the poisoned pages. Held-out: \(HeldOut.size()) public questions the harness was never tuned on. Practice: \(HeldOut.size(HeldOut.practice)) more like them, for finding what fails. Scores from different sizes don't compare.")
+    }
+}
+
+/// How many times the next test runs everything.
+private struct HarnessRepeatsPicker: View {
+    @Environment(TestLab.self) private var lab
+
+    var body: some View {
+        @Bindable var lab = lab
+        Picker("Runs", selection: $lab.harnessRepeats) {
+            ForEach(TestLab.repeatOptions, id: \.self) { Text($0 == 1 ? "1 run" : "\($0) runs").tag($0) }
+        }
+        .pickerStyle(.menu)
+        .labelsHidden()
+        .fixedSize()
+        .disabled(lab.isRunning)
+        .help("3 runs asks everything three times over, so you can see how much a score moves from one run to the next. With Harness off too, every round has its own harness-off run. Another version on the same setup joins the set and reuses those.")
     }
 }
 
@@ -499,8 +695,9 @@ private struct VersionCard: View {
                 if let run {
                     HStack(spacing: 18) {
                         stat("Score", TestFormat.score(run.score), lit: true)
-                        stat("Points", "\(run.points)/\(run.maxPoints)")
-                        stat("Gain", baseline.map { signed(Int(run.score) - Int($0.score)) } ?? "—")
+                        // On a public set every question counts the same, so both are counted in questions.
+                        stat(run.askedSet == nil ? "Points" : "Right", "\(run.points)/\(run.maxPoints)")
+                        stat("Gain", baseline.map { signed(run.askedSet == nil ? Int(run.score) - Int($0.score) : run.passed - $0.passed) } ?? "—")
                         stat("Model called", run.modelToolCalls.map(String.init) ?? "—")
                         stat("Time", Format.seconds(run.duration))
                     }
@@ -535,23 +732,41 @@ private struct VersionQuestionGrid: View {
     let run: ModelTestResult
     let baseline: ModelTestResult?
     let runs: [HarnessVersion: ModelTestResult]
+    /// Off for a test where every question counts the same, which has no points to show.
+    var weighted = true
+
+    /// A long test shows only the questions the setups disagree on. The rest would be a wall of ticks.
+    private var shown: [ModelTestItemResult] {
+        guard run.items.count > 40 else { return run.items }
+        let others = [baseline].compactMap { $0 } + runs.values
+        return run.items.filter { item in
+            let marks = Set(others.compactMap { other in other.items.first { $0.id == item.id }?.passed } + [item.passed])
+            return marks.count > 1
+        }
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             Text("Question by question").font(.uiCallout.weight(.semibold))
+            if shown.isEmpty {
+                Text("The runs agree on all \(run.items.count) questions.").font(.uiCaption).foregroundStyle(.secondary)
+            } else if shown.count < run.items.count {
+                Text("Showing the \(shown.count) of \(run.items.count) questions where the runs differ.")
+                    .font(.uiCaption).foregroundStyle(.secondary)
+            }
             Grid(alignment: .leading, horizontalSpacing: 14, verticalSpacing: 5) {
                 GridRow {
                     Text("Question")
-                    Text("Points").gridColumnAlignment(.trailing)
+                    Text(weighted ? "Points" : "").gridColumnAlignment(.trailing)
                     Text("Off").gridColumnAlignment(.center)
                     ForEach(HarnessVersion.allCases) { Text($0.short).gridColumnAlignment(.center) }
                 }
                 .font(.uiCaption.weight(.semibold))
                 .foregroundStyle(.secondary)
-                ForEach(run.items) { item in
+                ForEach(shown) { item in
                     GridRow {
                         Text(item.title).font(.uiCallout).lineLimit(1).frame(maxWidth: .infinity, alignment: .leading)
-                        Text("\(item.weight)").font(.uiCaption.monospacedDigit()).foregroundStyle(.secondary)
+                        Text(weighted ? "\(item.weight)" : "").font(.uiCaption.monospacedDigit()).foregroundStyle(.secondary)
                         mark(baseline?.items.first { $0.id == item.id })
                         ForEach(HarnessVersion.allCases) { version in
                             mark(runs[version]?.items.first { $0.id == item.id })

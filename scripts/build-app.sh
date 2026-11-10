@@ -65,6 +65,9 @@ cp assets/fonts/*.ttf assets/fonts/OFL.txt "$APP/Contents/Resources/Fonts/"
 mkdir -p "$APP/Contents/Resources/Art"
 cp assets/art/*.png "$APP/Contents/Resources/Art/"
 cp scripts/update-app.sh "$APP/Contents/Resources/"
+# The public questions the Harness Test can ask, with the notice their licences need.
+mkdir -p "$APP/Contents/Resources/Benchmarks"
+cp benchmarks/heldout/heldout-v1.jsonl benchmarks/heldout/practice-v1.jsonl benchmarks/heldout/NOTICE.md "$APP/Contents/Resources/Benchmarks/"
 
 cat > "$APP/Contents/Info.plist" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>

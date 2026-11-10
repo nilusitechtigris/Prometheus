@@ -120,6 +120,13 @@ struct ModelTestResult: Codable, Identifiable, Equatable {
     /// True for Harness - Normal, which asks only some of the questions. Its scores don't compare with a
     /// full run's. A plain flag rather than a name, so a later build's new size can't fail the whole file.
     var quick: Bool?
+    /// The name of the question set for a run on public questions, such as "heldout-v1". Nil for the app's own tests.
+    var questionSet: String?
+    /// Runs made together as repeats of one setup share this, and `repeatIndex` counts them from 1. Nil for a single run.
+    var repeatGroup: UUID?
+    var repeatIndex: Int?
+    /// The Python that graded the code questions, for a run on a public set. Nil when none was run.
+    var pythonVersion: String?
     var injectionWithout: [InjectionResult]?
     var injectionWith: [InjectionResult]?
     var date = Date()
@@ -146,7 +153,16 @@ struct ModelTestResult: Codable, Identifiable, Equatable {
     var maxPoints: Int { items.map(\.weight).reduce(0, +) }
     /// Share of the available points. Scores from different suite versions don't compare.
     var score: Double { Self.score(of: items) ?? 0 }
-    var isCurrentSuite: Bool { suiteVersion == ModelTestSuite.version }
+    /// The public question set this run asked, if any. An older build saves runs back without `questionSet`,
+    /// so the suite version stands in for it.
+    var askedSet: String? { questionSet ?? HeldOut.set(forSuiteVersion: suiteVersion) }
+    var isCurrentSuite: Bool {
+        guard let askedSet else { return suiteVersion == ModelTestSuite.version }
+        return suiteVersion == HeldOut.suiteVersion(askedSet)
+    }
+    /// Questions that got no reply because the framework failed. They count as wrong, so a run with any is no
+    /// fair score to compare against.
+    var errorCount: Int { items.filter { $0.error != nil }.count }
 
     func score(for category: ModelTestCategory) -> Double? {
         Self.score(of: items.filter { $0.category == category })
@@ -164,6 +180,8 @@ struct ModelTestResult: Codable, Identifiable, Equatable {
 
     var usesHarness: Bool { harness == true }
     var isQuick: Bool { quick == true }
+    /// Which of the Harness Test's question sets this run asked. Scores only compare within one.
+    var size: HarnessTestSize { askedSet == HeldOut.practice ? .practice : askedSet != nil ? .heldOut : isQuick ? .normal : .max }
 
     /// Which version of the harness ran, if any. Older runs are told apart by what they logged: the loop
     /// saved its rounds, and only the pipeline and the loop write down what they understood.
@@ -221,6 +239,60 @@ struct ModelTestItemResult: Codable, Equatable, Identifiable {
     var weight: Int { level?.weight ?? 1 }
     /// The model hit the test's token limit before it finished.
     var ranOutOfTokens: Bool { ["length", "max_tokens"].contains(stopReason) }
+}
+
+/// One line of a set of repeat runs: the scores one setup got, by round. A set can be stopped part way or
+/// lose a run later, so a score keeps the number of the round it came from.
+struct RepeatRow: Identifiable, Equatable {
+    /// Nil for the runs with the harness off.
+    let version: HarnessVersion?
+    let scores: [Int: Double]
+
+    var id: String { version?.rawValue ?? "off" }
+    var title: String { version?.title ?? "Harness off" }
+    var rounds: [Int] { scores.keys.sorted() }
+    var mean: Double { scores.values.reduce(0, +) / Double(max(scores.count, 1)) }
+    var low: Double { scores.values.min() ?? 0 }
+    var high: Double { scores.values.max() ?? 0 }
+
+    /// What the rounds say about this version against the plain model, over the rounds both have. Nil with
+    /// fewer than two. It only says which way the rounds went: whether a gap is more than luck is `FlipTest`'s job.
+    func verdict(against off: RepeatRow) -> String? {
+        let gaps = rounds.compactMap { round in off.scores[round].map { (scores[round] ?? 0) - $0 } }
+        guard gaps.count >= 2 else { return nil }
+        let size = String(format: "%.1f", abs(gaps.reduce(0, +) / Double(gaps.count)))
+        let higher = gaps.filter { $0 > 0 }.count, lower = gaps.filter { $0 < 0 }.count
+        if higher == gaps.count { return "\(title) scored higher than the plain model in all \(gaps.count) rounds, by \(size) points on average." }
+        if lower == gaps.count { return "\(title) scored lower than the plain model in all \(gaps.count) rounds, by \(size) points on average." }
+        if higher == 0, lower == 0 { return "\(title) scored the same as the plain model in all \(gaps.count) rounds." }
+        return "\(title) was higher than the plain model in \(higher) of \(gaps.count) rounds and lower in \(lower), so the rounds don't agree."
+    }
+}
+
+/// Whether a gap between two runs on the same questions is more than luck. It looks only at the questions that
+/// flipped: from wrong to right with the harness, or from right to wrong. If the harness changed nothing, a flip
+/// would go either way as often as a coin lands heads. This is the exact sign test, also known as McNemar's.
+enum FlipTest {
+    /// How often chance alone splits this many flips at least this unevenly. Nil when nothing flipped.
+    static func chance(gained: Int, lost: Int) -> Double? {
+        let flips = gained + lost
+        guard flips > 0 else { return nil }
+        var term = pow(0.5, Double(flips)), sum = term
+        for index in 0..<min(gained, lost) {
+            term *= Double(flips - index) / Double(index + 1)
+            sum += term
+        }
+        return min(1, 2 * sum)
+    }
+
+    static func sentence(gained: Int, lost: Int) -> String {
+        guard let chance = chance(gained: gained, lost: lost) else { return "No question changed between the two runs." }
+        func questions(_ count: Int) -> String { "\(count) question\(count == 1 ? "" : "s")" }
+        let flips = "\(questions(gained)) went from wrong to right and \(questions(lost)) from right to wrong."
+        if chance < 0.001 { return "\(flips) Chance alone would split them this unevenly less than 1 time in 1,000." }
+        if chance < 0.05 { return "\(flips) Chance alone would split them this unevenly about 1 time in \(Int((1 / chance).rounded()))." }
+        return "\(flips) Chance alone splits them like that about \(max(Int((chance * 100).rounded()), 5)) times in 100, so this run doesn't show a difference by itself."
+    }
 }
 
 /// One poisoned page from the injection test.
