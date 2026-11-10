@@ -216,10 +216,14 @@ private struct QuantChip: View {
         let pull = backends.pulls[variant.tag]
 
         Button {
-            if pull == nil { backends.choose(variant) }
+            // A download that failed used to sit on its ring for good. Now a click tries again.
+            if pull?.error != nil { backends.cancelPull(variant.tag) }
+            if pull == nil || pull?.error != nil { backends.choose(variant) }
         } label: {
             HStack(spacing: 4) {
-                if let pull {
+                if pull?.error != nil {
+                    Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(Palette.critical)
+                } else if let pull {
                     ProgressView(value: pull.fraction).progressViewStyle(.circular).controlSize(.mini)
                 } else if !isInstalled {
                     Image(systemName: "arrow.down.circle")
@@ -227,7 +231,7 @@ private struct QuantChip: View {
                     Circle().fill(verdict.level.color).frame(width: 6, height: 6)
                 }
                 Text(variant.quant).font(.system(size: 11, weight: .semibold, design: .monospaced))
-                Text(pull.map { "\(Int($0.fraction * 100))%" } ?? variant.size)
+                Text(pull.map { $0.error == nil ? "\(Int($0.fraction * 100))%" : "Retry" } ?? variant.size)
                     .font(.system(size: 10.5).monospacedDigit())
                     .opacity(0.75)
             }
@@ -244,7 +248,7 @@ private struct QuantChip: View {
         }
         .buttonStyle(.plain)
         .disabled(!isInstalled && !backends.kind.supportsModelDownloads)
-        .help("\(variant.quant) · \(variant.quality) · \(variant.size) · quantized by \(variant.quantizedBy)\n"
+        .help(pull?.error ?? "\(variant.quant) · \(variant.quality) · \(variant.size) · quantized by \(variant.quantizedBy)\n"
               + "≈ \(Format.gigabytes(estimate)) with \(Format.tokens(backends.effectiveContext)) context — \(verdict.label)"
               + (isInstalled ? "" : "\nClick to download and switch"))
     }

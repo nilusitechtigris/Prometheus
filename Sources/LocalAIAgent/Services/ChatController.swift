@@ -351,7 +351,7 @@ final class ChatController {
     /// shared notes, so the only text that reaches the message is the final reply.
     private func streamAgent(_ plan: TestLab.AnswerPlan, _ agent: TestLab.AgentTurn, base: ChatRequest,
                              messageID: UUID, convID: UUID) async -> TestLab.Reply {
-        let system = [settings.systemPrompt.trimmingCharacters(in: .whitespacesAndNewlines), HarnessTools.chatRules, agent.system]
+        let system = [settings.systemPrompt(harnessOn: true), HarnessTools.chatRules, agent.system]
             .filter { !$0.isEmpty }
             .joined(separator: "\n\n")
         var request = base
@@ -569,7 +569,7 @@ final class ChatController {
     private func buildTurns(_ messages: [ChatMessage], context: Int, harness: (rules: String, task: String, evidence: String)? = nil)
         -> (turns: [ChatTurn], trimmed: Int, estimated: Int) {
         func estimate(_ s: String) -> Int { s.count * 10 / 35 + 4 }
-        let system = [settings.systemPrompt.trimmingCharacters(in: .whitespacesAndNewlines), harness?.rules ?? ""]
+        let system = [settings.systemPrompt(harnessOn: harness != nil), harness?.rules ?? ""]
             .filter { !$0.isEmpty }
             .joined(separator: "\n\n")
         let budget = Int(Double(context) * 0.75)

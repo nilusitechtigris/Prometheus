@@ -108,7 +108,23 @@ final class AppSettings {
         if defaults.object(forKey: "showLab") == nil { defaults.set(showLab, forKey: "showLab") }
     }
 
+    /// The part of the default prompt that is only true with the harness off.
+    static let offlineClaim = " You have no internet access and no tools: you can't browse, look things up or run code. Nothing the user shares leaves this device."
+
+    /// The prompt for a reply. With the harness on, the default prompt's line about having no tools is left
+    /// out: the harness does run code and look things up, and a model told it can't tends to say so anyway.
+    func systemPrompt(harnessOn: Bool) -> String { Self.systemPrompt(systemPrompt, harnessOn: harnessOn) }
+
+    static func systemPrompt(_ saved: String, harnessOn: Bool) -> String {
+        let prompt = saved.trimmingCharacters(in: .whitespacesAndNewlines)
+        return harnessOn ? prompt.replacingOccurrences(of: offlineClaim, with: "") : prompt
+    }
+
     func baseURL(for kind: BackendKind) -> String {
+        #if DEBUG
+        // For looking at the first-run pages on a Mac that already has everything.
+        if kind == .ollama, let url = ProcessInfo.processInfo.environment["LOCALAI_OLLAMA_URL"] { return url }
+        #endif
         let value = baseURLs[kind.rawValue]?.trimmingCharacters(in: .whitespaces) ?? ""
         return value.isEmpty ? kind.defaultBaseURL : value
     }

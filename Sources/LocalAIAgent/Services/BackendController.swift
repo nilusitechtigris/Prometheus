@@ -295,7 +295,8 @@ final class BackendController {
                 if error is CancellationError || (error as? URLError)?.code == .cancelled {
                     self.pulls[tag] = nil
                 } else {
-                    self.pulls[tag]?.error = error.localizedDescription
+                    self.pulls[tag]?.error = Self.pullProblem(error.localizedDescription, urlError: (error as? URLError)?.code,
+                                                              size: ModelCatalog.variant(forTag: tag)?.size)
                     self.pulls[tag]?.task = nil
                 }
             }
@@ -318,7 +319,7 @@ final class BackendController {
             if settings.selectedModel == name { settings.selectedModel = nil }
             await refresh()
         } catch {
-            lastError = error.localizedDescription
+            lastError = "Couldn't remove \(name): \(error.localizedDescription)"
         }
     }
 
@@ -343,8 +344,42 @@ final class BackendController {
 
     static let ollamaBinaryPaths = ["/opt/homebrew/bin/ollama", "/usr/local/bin/ollama", "/Applications/Ollama.app/Contents/Resources/ollama"]
 
+    /// Ollama's own download page. Opening it is all the app does: the user installs Ollama themselves, and
+    /// macOS checks it the way it checks any download.
+    static let ollamaDownloadPage = URL(string: "https://ollama.com/download/mac")
+
+    /// Other frameworks answering on this Mac right now.
+    var otherRunning: [BackendKind] { BackendKind.allCases.filter { $0 != kind && availability[$0] == true } }
+
+    /// A failed download in words that say what to do next. `text` is what the framework or the system said.
+    nonisolated static func pullProblem(_ text: String, urlError: URLError.Code? = nil, size: String? = nil) -> String {
+        let lower = text.lowercased()
+        func has(_ parts: String...) -> Bool { parts.contains { lower.contains($0) } }
+        if has("no space left", "disk full", "not enough space") {
+            return "The disk is full\(size.map { ". This model needs \($0)" } ?? ""). Free some space, then press Retry."
+        }
+        // Only the app's own request failing means the framework is gone. "Connection refused" inside what the
+        // framework reports is about its way out to the internet.
+        if urlError == .cannotConnectToHost {
+            return "The framework stopped answering. Start it again, then press Retry."
+        }
+        if let urlError, [.notConnectedToInternet, .networkConnectionLost, .timedOut, .cannotFindHost, .dnsLookupFailed].contains(urlError) {
+            return "The connection dropped. Check the internet, then press Retry: the download carries on from where it stopped."
+        }
+        if has("no such host", "dial tcp", "connection refused", "connection reset", "i/o timeout", "network is unreachable", "handshake timeout", "unexpected eof") {
+            return "The connection dropped. Check the internet, then press Retry: the download carries on from where it stopped."
+        }
+        if has("manifest unknown", "file does not exist", "not found", "404") {
+            return "The library doesn't have this model under that name any more. Pick another size, or update Prometheus."
+        }
+        return "The download failed: \(text.prefix(160)). Press Retry."
+    }
+
     var ollamaInstalled: Bool {
-        FileManager.default.fileExists(atPath: "/Applications/Ollama.app")
+        #if DEBUG
+        if ProcessInfo.processInfo.environment["LOCALAI_PRETEND_NO_OLLAMA"] != nil { return false }
+        #endif
+        return FileManager.default.fileExists(atPath: "/Applications/Ollama.app")
             || Self.ollamaBinaryPaths.contains { FileManager.default.isExecutableFile(atPath: $0) }
     }
 
@@ -436,5 +471,51 @@ final class BackendController {
         // The new server needs the port the old one is still letting go of.
         while server.isRunning { try? await Task.sleep(for: .milliseconds(100)) }
         if kind == .mlx { startFramework() }
+    }
+}
+
+/// Where a new user is on the way to a first reply. One place decides it, so the sidebar, Home and the chat
+/// page never disagree about whether the app is ready.
+enum SetupState: Equatable {
+    case checking, needsOllama, notRunning, noModel, ready
+
+    @MainActor
+    init(_ backends: BackendController) {
+        self = Self.state(online: backends.status.isOnline, checking: backends.status == .checking, isOllama: backends.kind == .ollama,
+                          ollamaInstalled: backends.ollamaInstalled, hasModel: backends.selectedModel != nil)
+    }
+
+    static func state(online: Bool, checking: Bool, isOllama: Bool, ollamaInstalled: Bool, hasModel: Bool) -> SetupState {
+        if online { return hasModel ? .ready : .noModel }
+        if checking { return .checking }
+        return isOllama && !ollamaInstalled ? .needsOllama : .notRunning
+    }
+
+    var level: HealthLevel {
+        switch self {
+        case .ready: .good
+        case .checking, .noModel: .warning
+        case .needsOllama, .notRunning: .critical
+        }
+    }
+
+    func title(_ kind: BackendKind) -> String {
+        switch self {
+        case .ready: "Ready to run"
+        case .checking: "Looking for \(kind.displayName)…"
+        case .needsOllama: "Ollama isn't installed"
+        case .notRunning: "\(kind.displayName) isn't running"
+        case .noModel: "No model yet"
+        }
+    }
+
+    /// What to do about it, for the line under the title.
+    var nextStep: String {
+        switch self {
+        case .ready, .checking: ""
+        case .needsOllama: "Click to set it up"
+        case .notRunning: "Click to start it"
+        case .noModel: "Click to get one"
+        }
     }
 }

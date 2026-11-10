@@ -172,15 +172,26 @@ private struct ForgeSidebar: View {
     private var harnessOn: Bool { settings.harnessEnabled && backends.kind.supportsTools }
 
     private var status: some View {
-        let online = backends.status.isOnline
+        let state = SetupState(backends)
+        let ready = state == .ready
         return HStack(spacing: 10) {
-            Circle().fill(online ? Palette.good : Palette.critical).frame(width: 8, height: 8)
+            Circle().fill(state.level.color).frame(width: 8, height: 8)
             VStack(alignment: .leading, spacing: 1) {
-                Text(online ? "Ready to run" : "\(backends.kind.displayName) offline").font(.uiCaption.weight(.medium))
-                Text(harnessOn ? "\(settings.harnessVersion.label) on" : "Local · \(backends.kind.displayName)")
+                Text(state.title(backends.kind)).font(.uiCaption.weight(.medium))
+                Text(ready ? (harnessOn ? "\(settings.harnessVersion.label) on" : "Local · \(backends.kind.displayName)") : state.nextStep)
                     .font(.uiCaption2).foregroundStyle(Forge.dim)
             }
             Spacer(minLength: 0)
+        }
+        .contentShape(Rectangle())
+        // Not ready: the chat page is where the next step is.
+        .onTapGesture { if !ready { ui.destination = .chat } }
+        .onChange(of: backends.lastError) { _, problem in
+            // A model that couldn't be removed used to fail without a word.
+            if let problem {
+                ui.showToast(problem, symbol: "exclamationmark.triangle.fill")
+                backends.lastError = nil
+            }
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 10)

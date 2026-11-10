@@ -112,68 +112,123 @@ private struct WelcomeHero: View {
 
 private struct FrameworkSetupCard: View {
     @Environment(BackendController.self) private var backends
+    @State private var askedForOllama = false
+    @State private var showSteps = false
 
     var body: some View {
+        // Looked at again every two seconds: installing Ollama changes nothing the app is told about.
+        TimelineView(.periodic(from: .now, by: 2)) { _ in card }
+    }
+
+    private var needsOllama: Bool { backends.kind == .ollama && !backends.ollamaInstalled }
+    private var name: String { backends.kind.displayName }
+
+    private var card: some View {
         VStack(spacing: 18) {
-            Image(systemName: "powerplug")
-                .font(.system(size: 40))
-                .foregroundStyle(Palette.accent)
+            BrandMark(size: 56)
             VStack(spacing: 6) {
-                Text("\(backends.kind.displayName) isn't running")
+                Text(needsOllama ? "First, get Ollama" : "\(name) isn't running")
                     .font(.uiTitle2.weight(.semibold))
-                Text("The app talks to a local inference framework on this Mac. Start it, or pick another framework from the toolbar.")
+                Text(explanation)
                     .foregroundStyle(.secondary)
                     .multilineTextAlignment(.center)
-                if case .offline(let reason) = backends.status, !reason.isEmpty {
-                    Text(reason)
-                        .font(.uiCaption)
-                        .foregroundStyle(.secondary)
-                        .multilineTextAlignment(.center)
-                        .textSelection(.enabled)
-                }
+                    .fixedSize(horizontal: false, vertical: true)
             }
+            action
+            ForEach(backends.otherRunning) { kind in
+                Button("\(kind.displayName) is running on this Mac. Use it instead") { backends.switchBackend(to: kind) }
+                    .buttonStyle(.link)
+            }
+            if backends.kind != .ollama, backends.otherRunning.isEmpty {
+                Button("New here? Ollama needs no Terminal. Use Ollama") { backends.switchBackend(to: .ollama) }
+                    .buttonStyle(.link)
+            }
+            steps
+        }
+        .frame(maxWidth: 520)
+    }
 
-            if backends.canStartFramework {
+    private var explanation: String {
+        if needsOllama {
+            return "Prometheus runs models with Ollama, a free app that keeps them on this Mac. Download it, move it to Applications and open it once. This page carries on by itself."
+        }
+        if backends.canStartFramework { return "\(name) is on this Mac but isn't running. Start it and this page carries on by itself." }
+        return "Prometheus talks to \(name) on this Mac, at \(backends.settings.baseURL(for: backends.kind)). Start it and this page carries on by itself."
+    }
+
+    @ViewBuilder
+    private var action: some View {
+        if needsOllama {
+            VStack(spacing: 8) {
                 Button {
-                    backends.startFramework()
+                    if let page = BackendController.ollamaDownloadPage { NSWorkspace.shared.open(page) }
+                    askedForOllama = true
                 } label: {
-                    if backends.isStartingFramework {
-                        ProgressView().controlSize(.small).padding(.horizontal, 30)
-                    } else {
-                        Label("Start \(backends.kind.displayName)", systemImage: "play.fill").padding(.horizontal, 8)
-                    }
+                    Label("Get Ollama", systemImage: "arrow.down.circle.fill").padding(.horizontal, 8)
                 }
                 .controlSize(.large)
                 .buttonStyle(AccentButtonStyle(compact: true))
-                .disabled(backends.isStartingFramework)
-            }
-
-            Card {
-                VStack(alignment: .leading, spacing: 10) {
-                    Text("Set up \(backends.kind.displayName)").font(.uiHeadline)
-                    ForEach(Array(backends.kind.setupSteps.enumerated()), id: \.offset) { i, step in
-                        HStack(alignment: .firstTextBaseline, spacing: 10) {
-                            Text("\(i + 1)").font(.uiCaption.bold()).frame(width: 18, height: 18).background(Circle().fill(.quaternary))
-                            Text(step).font(.system(.callout, design: step.contains(" ") && !step.contains("→") && step.first?.isLowercase == true ? .monospaced : .default))
-                                .textSelection(.enabled)
-                            Spacer()
-                            if step.first?.isLowercase == true {
-                                Button {
-                                    NSPasteboard.general.clearContents()
-                                    NSPasteboard.general.setString(step, forType: .string)
-                                } label: { Image(systemName: "doc.on.doc") }
-                                .buttonStyle(.borderless)
-                                .help("Copy command")
-                            }
-                        }
+                if askedForOllama {
+                    HStack(spacing: 8) {
+                        ProgressView().controlSize(.small)
+                        Text("Waiting for Ollama. Once it's open, the next step shows here.")
                     }
-                    Text("Expected at \(backends.settings.baseURL(for: backends.kind)) — change it in Settings.")
-                        .font(.uiCaption)
-                        .foregroundStyle(.secondary)
+                    .font(.uiCaption).foregroundStyle(.secondary)
+                } else {
+                    Text("Opens ollama.com in your browser. Prometheus sends nothing.")
+                        .font(.uiCaption).foregroundStyle(.secondary)
                 }
             }
-            .frame(maxWidth: 520)
+        } else if backends.canStartFramework {
+            Button {
+                backends.startFramework()
+            } label: {
+                if backends.isStartingFramework {
+                    ProgressView().controlSize(.small).padding(.horizontal, 30)
+                } else {
+                    Label("Start \(name)", systemImage: "play.fill").padding(.horizontal, 8)
+                }
+            }
+            .controlSize(.large)
+            .buttonStyle(AccentButtonStyle(compact: true))
+            .disabled(backends.isStartingFramework)
         }
+    }
+
+    /// The typed way, for people who want it. It is the only way for a framework the app can't start, so
+    /// there it's open from the start.
+    private var steps: some View {
+        let onlyWay = !needsOllama && !backends.canStartFramework
+        return DisclosureGroup(backends.kind == .lmStudio ? "How to set up LM Studio" : "Set it up in Terminal instead",
+                               isExpanded: Binding(get: { showSteps || onlyWay }, set: { showSteps = $0 })) {
+            VStack(alignment: .leading, spacing: 10) {
+                ForEach(Array(backends.kind.setupSteps.enumerated()), id: \.offset) { i, step in
+                    HStack(alignment: .firstTextBaseline, spacing: 10) {
+                        Text("\(i + 1)").font(.uiCaption.bold()).frame(width: 18, height: 18).background(Circle().fill(.quaternary))
+                        Text(step).font(.system(.callout, design: step.contains(" ") && !step.contains("→") && step.first?.isLowercase == true ? .monospaced : .default))
+                            .textSelection(.enabled)
+                        Spacer()
+                        if step.first?.isLowercase == true {
+                            Button {
+                                NSPasteboard.general.clearContents()
+                                NSPasteboard.general.setString(step, forType: .string)
+                            } label: { Image(systemName: "doc.on.doc") }
+                            .buttonStyle(.borderless)
+                            .help("Copy command")
+                        }
+                    }
+                }
+                Text("Expected at \(backends.settings.baseURL(for: backends.kind)). You can change that in Settings.")
+                    .font(.uiCaption)
+                    .foregroundStyle(.secondary)
+                if case .offline(let reason) = backends.status, !reason.isEmpty {
+                    Text(reason).font(.uiCaption).foregroundStyle(.secondary).textSelection(.enabled)
+                }
+            }
+            .padding(.top, 8)
+        }
+        .font(.uiCallout)
+        .foregroundStyle(.secondary)
     }
 }
 
@@ -181,39 +236,109 @@ private struct FirstModelCard: View {
     @Environment(BackendController.self) private var backends
     @Environment(SystemMonitor.self) private var monitor
     @Environment(UIState.self) private var ui
+    @State private var showOthers = false
 
     var body: some View {
+        let picks = StarterModels.pick(from: ModelCatalog.all.filter(\.featured)) {
+            MemoryFit.verdict(requiredBytes: backends.memoryEstimate(for: $0), budget: monitor.gpuBudgetBytes)
+        }
+        let memory = Int((Double(ProcessInfo.processInfo.physicalMemory) / 1_073_741_824).rounded())
         VStack(spacing: 18) {
-            Image(systemName: "square.and.arrow.down.on.square")
-                .font(.system(size: 40))
-                .foregroundStyle(Palette.accent)
+            BrandMark(size: 56)
             VStack(spacing: 6) {
-                Text("Download your first model")
-                    .font(.uiTitle2.weight(.semibold))
-                Text("These verified models are picked for your \(monitor.chipName) with \(Int((Double(ProcessInfo.processInfo.physicalMemory) / 1_073_741_824).rounded())) GB of memory.")
+                Text("Now a model").font(.uiTitle2.weight(.semibold))
+                Text(picks.tight
+                     ? "Models run on this Mac and stay on it. With \(memory) GB of memory even the smallest verified models are a tight fit, so expect them to be slow."
+                     : "Models run on this Mac and stay on it. This one is picked for your \(monitor.chipName) with \(memory) GB of memory.")
                     .foregroundStyle(.secondary)
                     .multilineTextAlignment(.center)
+                    .fixedSize(horizontal: false, vertical: true)
             }
             if backends.kind.supportsModelDownloads {
-                VStack(spacing: 10) {
-                    ForEach(recommended) { model in
-                        ModelCard(model: model, compact: true)
-                    }
+                if let starter = picks.models.first, let variant = starter.variants(for: backends.kind).first(where: \.isDefault) ?? starter.variants(for: backends.kind).first {
+                    StarterDownload(model: starter, variant: variant)
                 }
-                .frame(maxWidth: 560)
+                if picks.models.count > 1 {
+                    DisclosureGroup("Other models that fit this Mac", isExpanded: $showOthers) {
+                        VStack(spacing: 10) {
+                            ForEach(picks.models.dropFirst()) { ModelCard(model: $0, compact: true) }
+                        }
+                        .padding(.top, 8)
+                    }
+                    .font(.uiCallout)
+                    .foregroundStyle(.secondary)
+                }
             } else {
-                Text("Load a model in \(backends.kind.displayName); verified models appear here automatically.")
+                Text("Load a model in \(backends.kind.displayName). Verified models show up here by themselves.")
                     .foregroundStyle(.secondary)
             }
             Button("Browse the full library") { ui.destination = .library }
                 .buttonStyle(.link)
         }
+        .frame(maxWidth: 560)
     }
+}
 
-    private var recommended: [CatalogModel] {
-        let fits = ModelCatalog.all.filter { $0.featured }.filter {
-            MemoryFit.verdict(requiredBytes: backends.memoryEstimate(for: $0), budget: monitor.gpuBudgetBytes) == .great
+/// Which models a new user is offered first.
+enum StarterModels {
+    /// The featured models that fit this Mac well, in catalog order. If none does, the two that need the least
+    /// memory, marked as a tight fit so the page can say so.
+    static func pick(from featured: [CatalogModel], fit: (CatalogModel) -> MemoryFit.Verdict) -> (models: [CatalogModel], tight: Bool) {
+        let great = featured.filter { fit($0) == .great }
+        if !great.isEmpty { return (Array(great.prefix(3)), false) }
+        let possible = featured.filter { fit($0) == .tight }
+        return (Array((possible.isEmpty ? featured : possible).prefix(2)), true)
+    }
+}
+
+/// One button from "no model" to a model that's chosen and ready, with the download's progress and, if it
+/// fails, what to do about it.
+private struct StarterDownload: View {
+    @Environment(BackendController.self) private var backends
+    let model: CatalogModel
+    let variant: QuantVariant
+
+    var body: some View {
+        let pull = backends.pulls[variant.tag]
+        Card(padding: 16) {
+            VStack(alignment: .leading, spacing: 12) {
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(model.displayName).font(.uiHeadline)
+                    Text(model.summary).font(.uiCallout).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                    Text("\(model.publisher) · \(model.license) · \(variant.size) to download")
+                        .font(.uiCaption).foregroundStyle(.secondary)
+                }
+                if let pull, let problem = pull.error {
+                    Label(problem, systemImage: "exclamationmark.triangle.fill")
+                        .font(.uiCallout)
+                        .foregroundStyle(Palette.critical)
+                        .fixedSize(horizontal: false, vertical: true)
+                    Button("Retry") {
+                        backends.cancelPull(variant.tag)
+                        backends.pull(variant.tag, selectWhenDone: true)
+                    }
+                    .buttonStyle(AccentButtonStyle(compact: true))
+                } else if let pull {
+                    ProgressView(value: pull.fraction)
+                    HStack {
+                        Text(pull.total > 0 ? "\(pull.status) · \(Format.bytes(pull.completed)) of \(Format.bytes(pull.total))" : pull.status)
+                            .font(.uiCaption.monospacedDigit()).foregroundStyle(.secondary)
+                        Spacer()
+                        Button("Cancel") { backends.cancelPull(variant.tag) }.buttonStyle(.link).font(.uiCaption)
+                    }
+                    Text("You can leave this page. The download carries on, and the model is chosen when it's done.")
+                        .font(.uiCaption).foregroundStyle(.secondary)
+                } else {
+                    Button {
+                        backends.pull(variant.tag, selectWhenDone: true)
+                    } label: {
+                        Label("Download \(model.displayName)", systemImage: "arrow.down.circle.fill").frame(maxWidth: .infinity)
+                    }
+                    .controlSize(.large)
+                    .buttonStyle(AccentButtonStyle(compact: true))
+                    .disabled(!backends.status.isOnline)
+                }
+            }
         }
-        return Array(fits.prefix(3))
     }
 }

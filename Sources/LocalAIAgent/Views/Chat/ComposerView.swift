@@ -187,7 +187,9 @@ struct ComposerView: View {
     }
 
     private var placeholder: String {
-        if !backends.status.isOnline { return "Start \(backends.kind.displayName) to begin chatting" }
+        if !backends.status.isOnline {
+            return SetupState(backends) == .needsOllama ? "Get Ollama to begin chatting" : "Start \(backends.kind.displayName) to begin chatting"
+        }
         if let model = backends.selectedModel { return "Message \(model.displayName)…" }
         return "Choose a model to begin"
     }

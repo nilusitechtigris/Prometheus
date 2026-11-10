@@ -275,8 +275,12 @@ struct ModelCard: View {
     private func action(_ variant: QuantVariant) -> some View {
         if let pull = backends.pulls[variant.tag] {
             if let error = pull.error {
+                // The reason is on the page, not behind a pointer hover.
                 HStack(spacing: 6) {
-                    Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(Palette.critical).help(error)
+                    Label(error, systemImage: "exclamationmark.triangle.fill")
+                        .font(.uiCaption2).foregroundStyle(Palette.critical)
+                        .frame(width: 190, alignment: .trailing).multilineTextAlignment(.trailing)
+                        .fixedSize(horizontal: false, vertical: true)
                     Button("Retry") { backends.cancelPull(variant.tag); backends.pull(variant.tag) }.controlSize(.small)
                 }
             } else {

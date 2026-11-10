@@ -251,6 +251,13 @@ private struct RecentTasks: View {
                         if running {
                             ProgressView().controlSize(.mini)
                             Text("Running…")
+                        } else if conversation.messages.last?.errorText != nil {
+                            // A chat whose last reply failed isn't a finished task.
+                            Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(Palette.critical)
+                            Text("Failed · \(TestFormat.relative(conversation.updatedAt))").lineLimit(1)
+                        } else if conversation.messages.last?.role == .user {
+                            Image(systemName: "minus.circle.fill").foregroundStyle(Forge.dim)
+                            Text("No reply · \(TestFormat.relative(conversation.updatedAt))").lineLimit(1)
                         } else {
                             Image(systemName: "checkmark.circle.fill").foregroundStyle(Palette.good)
                             Text("Completed · \(TestFormat.relative(conversation.updatedAt))").lineLimit(1)
@@ -303,13 +310,19 @@ private struct ActiveModelCard: View {
                     Spacer(minLength: 0)
                 }
             } else {
-                Text("No model chosen yet.").font(.uiCallout).foregroundStyle(Forge.dim)
+                // Says what is missing, so the page never looks ready when nothing can answer.
+                let state = SetupState(backends)
+                HStack(spacing: 8) {
+                    Circle().fill(state.level.color).frame(width: 8, height: 8)
+                    Text(state == .ready ? "No model chosen yet" : state.title(backends.kind)).font(.uiCallout).foregroundStyle(Forge.dim)
+                }
             }
             Button {
-                ui.destination = .library
+                // Without a model the chat page has the next step: get Ollama, start it, or download a model.
+                ui.destination = backends.selectedModel == nil ? .chat : .library
             } label: {
                 HStack(spacing: 6) {
-                    Text("Change Model")
+                    Text(backends.selectedModel == nil ? "Set It Up" : "Change Model")
                     Image(systemName: "arrow.right")
                 }
                 .frame(maxWidth: .infinity)
@@ -374,7 +387,7 @@ private struct ProTip: View {
         PanelWidget(title: "Pro Tip", symbol: "lightbulb") {
             EmptyView()
         } content: {
-            Text("Turn on the harness for the best results with small models.")
+            Text("The harness checks a small model's maths, code and rules before you see the reply.")
                 .font(.uiCaption)
                 .foregroundStyle(Forge.dim)
                 .fixedSize(horizontal: false, vertical: true)

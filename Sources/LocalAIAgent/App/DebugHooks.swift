@@ -13,6 +13,8 @@ import WebKit
 ///                                   LOCALAI_HELDOUT_CHECK=/path.txt checks the held-out loader and graders;
 ///                                   LOCALAI_HELDOUT_GRADE=/replies.json grades {"id": "reply"} made outside the app for
 ///                                   LOCALAI_HELDOUT_SET (practice-v1 unless given), writing /replies.json.graded.txt
+///   LOCALAI_FIRSTRUN_CHECK=/path.txt check the first-run steps, starter models and download messages;
+///                                   LOCALAI_PRETEND_NO_OLLAMA=1 and LOCALAI_OLLAMA_URL=http://127.0.0.1:port show those pages
 ///   LOCALAI_DEV_V2_CHECK=/path.txt  check Dev harness v2 with a scripted model and canned page reports;
 ///                                   LOCALAI_DEV_VERSION=v1|v2 picks the Dev harness for this run
 ///   LOCALAI_DEMO=1                  run the harness demo after launch; LOCALAI_SHARE_CARD=/path.png writes the
@@ -275,6 +277,9 @@ enum DebugHooks {
                 let lines = await HeldOutCheck.grade(replies, set: env["LOCALAI_HELDOUT_SET"] ?? HeldOut.practice)
                 try? lines.joined(separator: "\n").write(toFile: path + ".graded.txt", atomically: true, encoding: .utf8)
             }
+        }
+        if let path = env["LOCALAI_FIRSTRUN_CHECK"] {
+            try? FirstRunCheck.run().joined(separator: "\n").write(toFile: path, atomically: true, encoding: .utf8)
         }
         if let path = env["LOCALAI_HELDOUT_CHECK"] {
             Task {
