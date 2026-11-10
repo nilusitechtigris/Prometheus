@@ -213,6 +213,7 @@ extension TestLab {
             }
         }
         total.answer = text
+        total.result = state.result
         total.onDraft?(text)
     }
 

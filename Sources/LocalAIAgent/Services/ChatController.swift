@@ -17,6 +17,8 @@ struct LiveGeneration {
     var speaker: String?
     /// What that agent has written so far. It only joins the shared notes once it's whole.
     var note: String?
+    /// True while the plain model answers first, in a side by side reply.
+    var plainSide = false
 
     var timeToFirstToken: Double? { firstTokenAt.map { $0.timeIntervalSince(startedAt) } }
 
@@ -119,7 +121,11 @@ final class ChatController {
 
     var canSend: Bool { !isGenerating && backends.status.isOnline && backends.selectedModel != nil && backends.activeTest == nil }
 
-    func send(_ text: String) {
+    /// Whether a message can be answered twice, by the plain model and by the harness, to compare them.
+    var canCompare: Bool { canSend && backends.kind.supportsTools }
+
+    /// `sideBySide` answers with the plain model first and then the harness, whatever the Harness button says.
+    func send(_ text: String, sideBySide: Bool = false) {
         let text = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !text.isEmpty, canSend else { return }
         let convID = selectedID.flatMap(index(of:)) != nil ? selectedID! : newConversation()
@@ -130,28 +136,95 @@ final class ChatController {
             let firstLine = text.split(separator: "\n").first.map(String.init) ?? text
             conversations[i].title = firstLine.count > 48 ? String(firstLine.prefix(47)) + "…" : firstLine
         }
-        generate(in: convID)
+        generate(in: convID, sideBySide: sideBySide)
+    }
+
+    /// Questions the harness settles with code alone: two sums for its calculator and a program it runs as
+    /// written. None needs the web or a program the model has to write, so the demo shows the same thing on any
+    /// model, and the line under each reply has something code checked. They're short on purpose: a plain model
+    /// asked for a power remainder wrote for over a minute, which is true to life but too long for a first look.
+    static let demoQuestions = ["What is 48271 × 9377?",
+                                "What is 3847 × 2961 + 58213?",
+                                "What does this Python program print?\n\nfs = [lambda: i * i for i in range(4)]\nprint(sum(f() for f in fs))"]
+    /// True while the demo is asking its questions.
+    private(set) var demoRunning = false
+    private var demoStopped = false
+
+    /// Asks each demo question side by side in a chat of its own, so a newcomer sees the harness at work on
+    /// this Mac's model before they've thought of a question.
+    func runDemo() {
+        guard canCompare, !demoRunning else { return }
+        let convID = newConversation()
+        if let i = index(of: convID) { conversations[i].title = "Harness demo" }
+        demoRunning = true
+        demoStopped = false
+        Task { [weak self] in
+            for question in Self.demoQuestions {
+                guard let self, !demoStopped, selectedID == convID, canCompare else { break }
+                send(question, sideBySide: true)
+                while isGenerating { try? await Task.sleep(for: .milliseconds(150)) }
+            }
+            self?.demoRunning = false
+        }
+    }
+
+    /// Adds the plain model's reply beside a harness reply that's already there, from the same messages.
+    func addPlainReply(to messageID: UUID) {
+        guard canSend, let model = backends.selectedModel,
+              let ci = conversations.firstIndex(where: { $0.messages.contains { $0.id == messageID } }),
+              let mi = conversations[ci].messages.firstIndex(where: { $0.id == messageID }),
+              conversations[ci].messages[mi].role == .assistant, conversations[ci].messages[mi].plain == nil else { return }
+        let convID = conversations[ci].id
+        let backend = backends.backend
+        let context = backends.effectiveContext
+        let (turns, _, estimatedPrompt) = buildTurns(Array(conversations[ci].messages[..<mi]), context: context)
+        let request = ChatRequest(model: model.id, messages: turns, temperature: settings.temperature, contextLength: context,
+                                  maxTokens: settings.maxResponseTokens > 0 ? settings.maxResponseTokens : nil,
+                                  think: backend.kind.supportsThinkingControl && backends.supportsThinking ? settings.thinkingEnabled : nil)
+        conversations[ci].messages[mi].plain = PlainReply()
+        streamingMessageID = messageID
+        isGenerating = true
+        var fresh = LiveGeneration()
+        fresh.plainSide = true
+        live = fresh
+        generationTask = Task { [weak self] in
+            guard let self else { return }
+            await stream(request, backend: backend, messageID: messageID, convID: convID, estimatedPrompt: estimatedPrompt,
+                         keepIfStopped: true, asPlain: true)
+            // Stopped before a word came: there's nothing to put beside the reply.
+            update(messageID, in: convID) { if $0.plain?.content.isEmpty == true, $0.plain?.errorText == nil { $0.plain = nil } }
+            isGenerating = false
+            streamingMessageID = nil
+            live = nil
+            generationTask = nil
+            scheduleSave()
+        }
     }
 
     func regenerate() {
         guard canSend, let id = selectedID, let i = index(of: id) else { return }
+        var wasSideBySide = false
         while let last = conversations[i].messages.last, last.role == .assistant {
+            if last.plain != nil { wasSideBySide = true }
             discardNotes(of: [last])
             conversations[i].messages.removeLast()
         }
         guard conversations[i].messages.last?.role == .user else { return }
-        generate(in: id)
+        generate(in: id, sideBySide: wasSideBySide)
     }
 
     func stop() {
+        demoStopped = true
         generationTask?.cancel()
     }
 
-    private func generate(in convID: UUID) {
+    private func generate(in convID: UUID, sideBySide: Bool = false) {
         guard let model = backends.selectedModel, let ci = index(of: convID) else { return }
         let backend = backends.backend
         let context = backends.effectiveContext
-        let harness = settings.harnessEnabled && backend.kind.supportsTools ? settings.harnessVersion : nil
+        // Side by side always has a harness reply to compare with, whatever the Harness button says.
+        let compare = sideBySide && backend.kind.supportsTools
+        let harness = (settings.harnessEnabled || compare) && backend.kind.supportsTools ? settings.harnessVersion : nil
 
         let messages = conversations[ci].messages
         let (turns, trimmed, estimatedPrompt) = buildTurns(messages, context: context)
@@ -167,20 +240,33 @@ final class ChatController {
 
         var assistant = ChatMessage(role: .assistant, content: "", modelName: model.id)
         assistant.harnessVersion = harness.map(SavedHarnessVersion.init)
+        if compare { assistant.plain = PlainReply() }
         conversations[ci].messages.append(assistant)
         conversations[ci].updatedAt = Date()
         moveToTop(convID)
 
         streamingMessageID = assistant.id
         isGenerating = true
-        live = LiveGeneration()
+        var fresh = LiveGeneration()
+        fresh.plainSide = compare
+        live = fresh
 
         generationTask = Task { [weak self] in
             guard let self else { return }
-            if let harness {
+            if compare {
+                // The plain model goes first, as the harness-off side does in Dev mode's Compare.
+                await stream(request, backend: backend, messageID: assistant.id, convID: convID, estimatedPrompt: estimatedPrompt,
+                             asPlain: true)
+                live = LiveGeneration()
+            }
+            if Task.isCancelled || message(assistant.id, in: convID) == nil {
+                // Stopped during the plain reply: what there is of it stays, and the harness doesn't start.
+            } else if let harness {
+                let began = Date()
                 WebConsent.shared.beginReply()
                 await runHarness(harness, request, messages: messages, model: model, messageID: assistant.id, convID: convID)
                 WebConsent.shared.endReply()
+                if compare { update(assistant.id, in: convID) { $0.harnessSeconds = Date().timeIntervalSince(began) } }
             } else {
                 await stream(request, backend: backend, messageID: assistant.id, convID: convID, estimatedPrompt: estimatedPrompt)
             }
@@ -235,6 +321,7 @@ final class ChatController {
             }
             return await streamAttempt(plan, keepThoughts: version == .thinking, base: request, messages: messages, messageID: messageID, convID: convID)
         }
+        update(messageID, in: convID) { $0.harnessResult = reply.result }
     }
 
     /// One attempt at the reply. It streams like any reply, and hands back what the loop needs to check it.
@@ -328,16 +415,27 @@ final class ChatController {
         return reply
     }
 
+    /// The message a reply answers: the nearest one from the user above it.
+    func question(for messageID: UUID) -> String? {
+        for conversation in conversations {
+            guard let mi = conversation.messages.firstIndex(where: { $0.id == messageID }) else { continue }
+            return conversation.messages[..<mi].last { $0.role == .user }?.content
+        }
+        return nil
+    }
+
     private func message(_ messageID: UUID, in convID: UUID) -> ChatMessage? {
         index(of: convID).flatMap { ci in conversations[ci].messages.first { $0.id == messageID } }
     }
 
     /// `keepIfStopped` leaves the message in place when Stop comes before any text, for a retry whose
     /// earlier attempt is worth keeping. `earlierThoughts` stays above what this reply thinks. `asNote` keeps
-    /// the text out of the message, in `live.note`. Returns any tools the model asked for.
+    /// the text out of the message, in `live.note`. `asPlain` writes the reply beside the message, as the plain
+    /// model's side of a comparison. Returns any tools the model asked for.
     @discardableResult
     private func stream(_ request: ChatRequest, backend: LLMBackend, messageID: UUID, convID: UUID, estimatedPrompt: Int,
-                        keepIfStopped: Bool = false, earlierThoughts: String = "", asNote: Bool = false) async -> [ToolCall] {
+                        keepIfStopped: Bool = false, earlierThoughts: String = "", asNote: Bool = false,
+                        asPlain: Bool = false) async -> [ToolCall] {
         let start = Date()
         var content = "", thinking = ""
         var parser = ThinkTagParser()
@@ -388,6 +486,10 @@ final class ChatController {
                 if Date().timeIntervalSince(lastFlush) > 0.05 {
                     if asNote { live?.note = content }
                     update(messageID, in: convID) {
+                        if asPlain {
+                            $0.plain = PlainReply(content: content, thinking: thinking.isEmpty ? nil : thinking)
+                            return
+                        }
                         if !asNote { $0.content = content }
                         $0.thinking = shownThoughts()
                     }
@@ -450,6 +552,10 @@ final class ChatController {
         let gotOutput = !content.isEmpty || !thinking.isEmpty
         if asNote { live?.note = content }
         update(messageID, in: convID) {
+            if asPlain {
+                $0.plain = PlainReply(content: content, thinking: thinking.isEmpty ? nil : thinking, metrics: gotOutput ? m : nil, errorText: errorText)
+                return
+            }
             if !asNote { $0.content = content }
             $0.thinking = shownThoughts()
             $0.metrics = gotOutput ? m : nil

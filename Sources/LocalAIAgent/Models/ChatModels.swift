@@ -17,6 +17,21 @@ struct ChatMessage: Identifiable, Codable, Equatable {
     var harnessVersion: SavedHarnessVersion?
     /// The file v5's agents shared for this reply, as Markdown. Nil in every other version.
     var sharedNotes: String?
+    /// The plain model's reply to the same message, when the two were asked for side by side.
+    var plain: PlainReply?
+    /// The exact value a tool worked out for this reply, such as a sum. Nil when no tool settled it.
+    var harnessResult: String?
+    /// How long the harness took on this reply, start to finish, in seconds. Only kept for side by side replies.
+    var harnessSeconds: Double?
+}
+
+/// What the model said with no harness, kept beside the harness's reply. It's for comparing only: the chat
+/// carries on from the harness's reply.
+struct PlainReply: Codable, Equatable {
+    var content = ""
+    var thinking: String?
+    var metrics: GenerationMetrics?
+    var errorText: String?
 }
 
 struct GenerationMetrics: Codable, Equatable {

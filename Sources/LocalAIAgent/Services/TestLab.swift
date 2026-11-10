@@ -277,7 +277,7 @@ final class TestLab {
             var setup = await Self.prepare(model, backends: backends, settings: settings)
             // A version that always thinks, tested on its own, compares with a run that thinks too.
             if versions.allSatisfy(\.alwaysThinks), setup.think != nil { setup.think = true }
-            var baseline = existingBaseline(setup, quick: quick)
+            var baseline = self.existingBaseline(setup, quick: quick)
             let runsOff = settings.harnessTestRunsOff
             let needsOffRun = runsOff && baseline == nil
 
@@ -290,13 +290,13 @@ final class TestLab {
             let withoutShare = needsOffRun ? suiteShare : 0
 
             if needsOffRun {
-                baseline = await runSuite(setup, harness: nil, quick: quick) { index, total, question in
+                baseline = await self.runSuite(setup, harness: nil, quick: quick) { index, total, question in
                     report("Without the harness", "Question \(index + 1) of \(total) · \(question.title)",
                            withoutShare * Double(index) / Double(total))
                 }
                 if let baseline {
-                    modelResults.insert(baseline, at: 0)
-                    save()
+                    self.modelResults.insert(baseline, at: 0)
+                    self.save()
                 }
             }
 
@@ -318,7 +318,7 @@ final class TestLab {
                     let began = Date()
                     let step = versions.count > 1 ? "\(version.title), \(position + 1) of \(versions.count)" : "With \(version.title)"
                     let done = withoutShare + pagesShare + suiteShare * Double(position)
-                    guard var run = await runSuite(setup, harness: version, quick: quick, report: { index, total, question in
+                    guard var run = await self.runSuite(setup, harness: version, quick: quick, report: { index, total, question in
                         report(step, "Question \(index + 1) of \(total) · \(question.title)", done + suiteShare * Double(index) / Double(total))
                     }) else { break }
                     run.baselineRunID = baseline?.id
@@ -327,9 +327,9 @@ final class TestLab {
                     run.injectionWithout = without
                     run.injectionWith = with
                     run.duration = Date().timeIntervalSince(began)
-                    modelResults.insert(run, at: 0)
-                    selectedHarnessRunID = nil
-                    save()
+                    self.modelResults.insert(run, at: 0)
+                    self.selectedHarnessRunID = nil
+                    self.save()
                 }
             }
             }
@@ -448,6 +448,8 @@ final class TestLab {
         var stats: BackendStats?
         var error: String?
         var toolLog: [String] = [] { didSet { onLog?(toolLog) } }
+        /// The exact value a tool worked out, when one did.
+        var result: String?
         var guardRemoved = 0
         /// Tools the model called by itself, as opposed to the harness running them for it.
         var modelToolCalls = 0

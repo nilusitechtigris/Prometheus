@@ -58,6 +58,29 @@ private struct WelcomeHero: View {
                         .padding(.top, 4)
                 }
             }
+            if backends.kind.supportsTools {
+                Button { chat.runDemo() } label: {
+                    HStack(alignment: .center, spacing: 12) {
+                        Image(systemName: "rectangle.split.2x1.fill").font(.uiTitle2).foregroundStyle(Palette.accent)
+                        VStack(alignment: .leading, spacing: 3) {
+                            Text("See the harness at work").font(.uiCallout.weight(.semibold))
+                            Text("Three questions, each asked twice on this Mac: the plain model, then the harness. Code says what it could check. About a minute.")
+                                .font(.uiCaption).foregroundStyle(.secondary).multilineTextAlignment(.leading)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
+                        Spacer(minLength: 0)
+                        Image(systemName: "play.fill").foregroundStyle(Palette.accent)
+                    }
+                    .padding(14)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(.background.opacity(0.7), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                    .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).strokeBorder(Palette.accent.opacity(0.5), lineWidth: 1))
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .disabled(!chat.canCompare)
+                .help("Runs on your own model. Nothing leaves this Mac for these three")
+            }
             LazyVGrid(columns: [GridItem(.flexible(), spacing: 12), GridItem(.flexible(), spacing: 12)], spacing: 12) {
                 ForEach(suggestions, id: \.1) { symbol, title, prompt in
                     Button {

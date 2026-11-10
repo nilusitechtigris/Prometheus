@@ -15,7 +15,8 @@ enum DataBackup {
     /// The build that's running: its version, and its commit when it knows one.
     static var build: String {
         let version = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "dev"
-        return [version, AppUpdater.commit.map { String($0.prefix(7)) }].compactMap { $0 }.joined(separator: " ")
+        let commit = Bundle.main.object(forInfoDictionaryKey: "PrometheusCommit") as? String
+        return [version, commit.flatMap { $0.isEmpty ? nil : String($0.prefix(7)) }].compactMap { $0 }.joined(separator: " ")
     }
 
     /// Call before anything loads. Returns the copy it made, or nil when this build already has one or there

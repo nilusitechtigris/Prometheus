@@ -33,7 +33,7 @@ struct ComposerView: View {
                     .font(.system(size: 14))
                     .lineLimit(1...10)
                     .focused($focused)
-                    .onSubmit(send)
+                    .onSubmit { send() }
                     .padding(.vertical, 7)
                     .disabled(!backends.status.isOnline)
 
@@ -49,7 +49,22 @@ struct ComposerView: View {
                     .help("Stop generating (⌘.)")
                     .transition(.scale.combined(with: .opacity))
                 } else {
-                    Button(action: send) {
+                    Button { send(sideBySide: true) } label: {
+                        Image(systemName: "rectangle.split.2x1")
+                            .font(.system(size: 13, weight: .semibold))
+                            .frame(width: 30, height: 30)
+                            .foregroundStyle(canCompare ? Palette.accent : Color.secondary.opacity(0.5))
+                            .contentShape(Circle())
+                    }
+                    .buttonStyle(.plain)
+                    .disabled(!canCompare)
+                    .help(backends.kind.supportsTools
+                          ? "Side by side: ask the plain model and the harness the same thing (⇧⌘↩)"
+                          : "Side by side needs the harness, which works with Ollama and MLX LM")
+                    .keyboardShortcut(.return, modifiers: [.command, .shift])
+                    .accessibilityLabel("Send side by side")
+                    .transition(.scale.combined(with: .opacity))
+                    Button { send() } label: {
                         Image(systemName: "arrow.up")
                             .font(.system(size: 13, weight: .bold))
                             .symbolEffect(.bounce, value: sentCount)
@@ -177,12 +192,14 @@ struct ComposerView: View {
         return "Choose a model to begin"
     }
 
-    private func send() {
-        guard canSend else { return }
+    private var canCompare: Bool { canSend && chat.canCompare }
+
+    private func send(sideBySide: Bool = false) {
+        guard sideBySide ? canCompare : canSend else { return }
         let text = ui.draft
         ui.draft = ""
         sentCount += 1
-        chat.send(text)
+        chat.send(text, sideBySide: sideBySide)
     }
 }
 

@@ -59,6 +59,12 @@ private struct AssistantMessage: View {
                     // Up here so the stats card below can use the full width.
                     if !isStreaming && !message.content.isEmpty {
                         HStack(spacing: 2) {
+                            if message.harnessVersion != nil, message.plain == nil {
+                                Button { chat.addPlainReply(to: message.id) } label: { Image(systemName: "rectangle.split.2x1") }
+                                    .buttonStyle(.borderless)
+                                    .help("Ask the plain model the same thing, and put its reply beside this one")
+                                    .disabled(!chat.canSend)
+                            }
                             CopyButton(text: message.content)
                             if isLast {
                                 Button { chat.regenerate() } label: { Image(systemName: "arrow.clockwise") }
@@ -71,32 +77,36 @@ private struct AssistantMessage: View {
                     }
                 }
 
-                if let steps = message.harnessSteps, !steps.isEmpty {
-                    HarnessStepsView(steps: steps, version: message.harnessVersion?.version, isLive: isStreaming && message.content.isEmpty)
-                        .animation(Motion.quick, value: steps.count)
+                if let plain = message.plain {
+                    SideBySideReply(message: message, plain: plain, isStreaming: isStreaming, isLast: isLast)
+                } else {
+                    if let steps = message.harnessSteps, !steps.isEmpty {
+                        HarnessStepsView(steps: steps, version: message.harnessVersion?.version, isLive: isStreaming && message.content.isEmpty)
+                            .animation(Motion.quick, value: steps.count)
+                    }
+
+                    if let notes = message.sharedNotes {
+                        SharedNotesView(text: notes, messageID: message.id, isLive: isStreaming && message.content.isEmpty)
+                    }
+
+                    if let thinking = message.thinking, !thinking.isEmpty {
+                        ThinkingView(text: thinking, isLive: isStreaming && message.content.isEmpty,
+                                     duration: message.metrics?.thinkingDuration)
+                    }
+
+                    if isStreaming && message.content.isEmpty && (message.thinking ?? "").isEmpty {
+                        WaitingIndicator()
+                    } else if !message.content.isEmpty {
+                        MarkdownView(text: message.content)
+                            .textSelection(.enabled)
+                    }
+
+                    if let error = message.errorText {
+                        ErrorCard(text: error, canRetry: isLast) { chat.regenerate() }
+                    }
                 }
 
-                if let notes = message.sharedNotes {
-                    SharedNotesView(text: notes, messageID: message.id, isLive: isStreaming && message.content.isEmpty)
-                }
-
-                if let thinking = message.thinking, !thinking.isEmpty {
-                    ThinkingView(text: thinking, isLive: isStreaming && message.content.isEmpty,
-                                 duration: message.metrics?.thinkingDuration)
-                }
-
-                if isStreaming && message.content.isEmpty && (message.thinking ?? "").isEmpty {
-                    WaitingIndicator()
-                } else if !message.content.isEmpty {
-                    MarkdownView(text: message.content)
-                        .textSelection(.enabled)
-                }
-
-                if let error = message.errorText {
-                    ErrorCard(text: error, canRetry: isLast) { chat.regenerate() }
-                }
-
-                if let metrics = message.metrics, !isStreaming {
+                if let metrics = message.metrics, !isStreaming, message.plain == nil {
                     MetricsFooter(metrics: metrics)
                         .padding(.top, 2)
                 }
@@ -104,6 +114,136 @@ private struct AssistantMessage: View {
             .frame(maxWidth: .infinity, alignment: .leading)
         }
         .onHover { hovering = $0 }
+    }
+}
+
+/// Two replies to the same message: the plain model's on the left, the harness's on the right, and under
+/// them what code can say about the two. The chat carries on from the harness's reply.
+private struct SideBySideReply: View {
+    @Environment(ChatController.self) private var chat
+    @Environment(SystemMonitor.self) private var monitor
+    @Environment(UIState.self) private var ui
+    let message: ChatMessage
+    let plain: PlainReply
+    let isStreaming: Bool
+    let isLast: Bool
+
+    /// The plain model answers first, so the harness side is waiting until it has finished.
+    private var plainIsLive: Bool { isStreaming && chat.live?.plainSide == true }
+    private var harnessIsLive: Bool { isStreaming && !plainIsLive }
+    private var done: Bool { !isStreaming }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(alignment: .top, spacing: 12) {
+                side(title: "Plain model", symbol: "circle.dashed", tint: Forge.dim, seconds: plain.metrics?.totalDuration, live: plainIsLive) {
+                    if let thinking = plain.thinking, !thinking.isEmpty {
+                        ThinkingView(text: thinking, isLive: plainIsLive && plain.content.isEmpty, duration: plain.metrics?.thinkingDuration)
+                    }
+                    if plain.content.isEmpty {
+                        if plainIsLive { WaitingIndicator() } else if plain.errorText == nil { quiet("No reply.") }
+                    } else {
+                        MarkdownView(text: plain.content).textSelection(.enabled)
+                    }
+                    if let error = plain.errorText { ErrorCard(text: error, canRetry: false) {} }
+                }
+                side(title: "With the harness", symbol: "shield.lefthalf.filled", tint: Palette.accent, seconds: message.harnessSeconds, live: harnessIsLive) {
+                    if let steps = message.harnessSteps, !steps.isEmpty {
+                        HarnessStepsView(steps: steps, version: message.harnessVersion?.version, isLive: harnessIsLive && message.content.isEmpty)
+                    }
+                    if let notes = message.sharedNotes {
+                        SharedNotesView(text: notes, messageID: message.id, isLive: harnessIsLive && message.content.isEmpty)
+                    }
+                    if let thinking = message.thinking, !thinking.isEmpty {
+                        ThinkingView(text: thinking, isLive: harnessIsLive && message.content.isEmpty, duration: message.metrics?.thinkingDuration)
+                    }
+                    if message.content.isEmpty {
+                        if plainIsLive {
+                            quiet("Waits for the plain model to finish.")
+                        } else if harnessIsLive, (message.thinking ?? "").isEmpty {
+                            WaitingIndicator()
+                        } else if done, message.errorText == nil {
+                            quiet("Stopped before the harness replied.")
+                        }
+                    } else {
+                        MarkdownView(text: message.content).textSelection(.enabled)
+                    }
+                    if let error = message.errorText { ErrorCard(text: error, canRetry: isLast) { chat.regenerate() } }
+                }
+            }
+            if done, !message.content.isEmpty, let verdict {
+                HStack(alignment: .firstTextBaseline, spacing: 8) {
+                    Image(systemName: verdict.harnessAhead ? "checkmark.seal.fill" : "info.circle")
+                        .foregroundStyle(verdict.harnessAhead ? Palette.accent : Forge.dim)
+                    Text(verdict.text)
+                        .font(.uiCallout)
+                        .foregroundStyle(verdict.harnessAhead ? .primary : .secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .textSelection(.enabled)
+                    Spacer(minLength: 8)
+                    Menu {
+                        Button("Copy Picture") { share(verdict, save: false) }
+                        Button("Save Picture…") { share(verdict, save: true) }
+                    } label: {
+                        Label("Share", systemImage: "square.and.arrow.up")
+                    }
+                    .menuStyle(.borderlessButton)
+                    .fixedSize()
+                    .help("One picture of both replies, with the model and Mac they ran on")
+                }
+                .padding(.horizontal, 4)
+            }
+        }
+    }
+
+    private var verdict: CompareVerdict? {
+        guard let question = chat.question(for: message.id) else { return nil }
+        return CompareVerdict.judge(question: question, plain: plain.content, harness: message.content,
+                                    result: message.harnessResult, steps: message.harnessSteps ?? [])
+    }
+
+    /// Makes the picture and copies or saves it. Nothing is sent anywhere: where it goes next is up to the person.
+    private func share(_ verdict: CompareVerdict, save: Bool) {
+        let model = message.modelName.map { ModelCatalog.entry(matchingID: $0)?.displayName ?? $0 } ?? "A local model"
+        let card = ShareCard.Content(question: chat.question(for: message.id) ?? "", plain: plain.content, harness: message.content,
+                                     verdict: verdict, model: model, machine: monitor.chipName, date: message.createdAt,
+                                     plainSeconds: plain.metrics?.totalDuration, harnessSeconds: message.harnessSeconds)
+        guard let png = ShareCard.png(card) else {
+            ui.showToast("Couldn't make the picture", symbol: "exclamationmark.triangle")
+            return
+        }
+        if save {
+            if ShareCard.save(png, date: message.createdAt) { ui.showToast("Picture saved", symbol: "photo") }
+        } else {
+            ShareCard.copy(png)
+            ui.showToast("Picture copied. Paste it anywhere", symbol: "photo")
+        }
+    }
+
+    private func quiet(_ text: String) -> some View {
+        Text(text).font(.uiCallout).foregroundStyle(.tertiary).padding(.vertical, 4)
+    }
+
+    private func side<Content: View>(title: String, symbol: String, tint: Color, seconds: Double?, live: Bool,
+                                     @ViewBuilder content: () -> Content) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 6) {
+                Image(systemName: symbol).foregroundStyle(tint)
+                Text(title).font(.uiCaption.weight(.semibold)).foregroundStyle(tint)
+                Spacer(minLength: 4)
+                if live {
+                    ProgressView().controlSize(.mini)
+                } else if let seconds {
+                    Text(Format.seconds(seconds)).font(.uiCaption.monospacedDigit()).foregroundStyle(.tertiary)
+                        .help("Time for this reply, start to finish")
+                }
+            }
+            content()
+        }
+        .padding(12)
+        .frame(maxWidth: .infinity, alignment: .topLeading)
+        .background(Forge.card, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous).strokeBorder(tint.opacity(tint == Palette.accent ? 0.45 : 0.25), lineWidth: 1))
     }
 }
 

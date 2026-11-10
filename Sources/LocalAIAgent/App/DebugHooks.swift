@@ -5,7 +5,11 @@ import WebKit
 
 /// Debug-build-only automation used for UI verification without Screen Recording permission.
 ///   LOCALAI_SNAPSHOT_DIR=/path      write window snapshots (snap-N.png) every LOCALAI_SNAPSHOT_INTERVAL seconds
-///   LOCALAI_AUTOPROMPT="text"       start a new chat and send this prompt after launch; " || " separates several
+///   LOCALAI_AUTOPROMPT="text"       start a new chat and send this prompt after launch; " || " separates several;
+///                                   LOCALAI_SIDE_BY_SIDE=1 asks the plain model and the harness each one
+///   LOCALAI_VERDICT_CHECK=/path.txt check what code says about a plain reply and a harness reply
+///   LOCALAI_DEMO=1                  run the harness demo after launch; LOCALAI_SHARE_CARD=/path.png writes the
+///                                   picture of the newest side by side reply once nothing is generating
 ///   LOCALAI_STOP_AFTER=3            press Stop this many seconds after the autoprompt starts
 ///   LOCALAI_SCROLL_TO=0.8           scroll the page to this fraction of its height after 2 s
 ///   LOCALAI_SHOW_MODEL_PICKER=1     open the model + quant picker after launch
@@ -211,6 +215,32 @@ enum DebugHooks {
                 }
             }
         }
+        if env["LOCALAI_DEMO"] != nil {
+            Task {
+                for _ in 0..<160 where !chat.canCompare { try? await Task.sleep(for: .milliseconds(250)) }
+                ui.destination = .chat
+                chat.runDemo()
+            }
+        }
+        if let path = env["LOCALAI_SHARE_CARD"] {
+            Task {
+                try? await Task.sleep(for: .seconds(6))
+                while chat.isGenerating || chat.demoRunning { try? await Task.sleep(for: .milliseconds(300)) }
+                let messages = chat.selected?.messages ?? []
+                guard let reply = messages.last(where: { $0.plain != nil }), let plain = reply.plain,
+                      let question = chat.question(for: reply.id) else { return }
+                let verdict = CompareVerdict.judge(question: question, plain: plain.content, harness: reply.content,
+                                                   result: reply.harnessResult, steps: reply.harnessSteps ?? [])
+                let card = ShareCard.Content(question: question, plain: plain.content, harness: reply.content, verdict: verdict,
+                                             model: reply.modelName.map { ModelCatalog.entry(matchingID: $0)?.displayName ?? $0 } ?? "",
+                                             machine: monitor.chipName, date: reply.createdAt,
+                                             plainSeconds: plain.metrics?.totalDuration, harnessSeconds: reply.harnessSeconds)
+                try? ShareCard.png(card)?.write(to: URL(fileURLWithPath: path))
+            }
+        }
+        if let path = env["LOCALAI_VERDICT_CHECK"] {
+            try? CompareVerdict.selfCheck().joined(separator: "\n").write(toFile: path, atomically: true, encoding: .utf8)
+        }
         if let path = env["LOCALAI_CONSENT_CHECK"] {
             Task {
                 let lines = await WebConsent.selfCheck()
@@ -403,7 +433,7 @@ enum DebugHooks {
                     }
                 }
                 for part in prompt.components(separatedBy: " || ") {
-                    chat.send(part)
+                    chat.send(part, sideBySide: env["LOCALAI_SIDE_BY_SIDE"] != nil)
                     while chat.isGenerating { try? await Task.sleep(for: .milliseconds(250)) }
                 }
             }
