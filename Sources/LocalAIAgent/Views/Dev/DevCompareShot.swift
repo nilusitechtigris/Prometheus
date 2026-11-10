@@ -63,10 +63,10 @@ private struct DevCompareShotView: View {
     private func column(_ side: DevCompareSide, image: NSImage?) -> some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack(alignment: .firstTextBaseline, spacing: 10) {
-                Text(side.harness ? "Harness on" : "Harness off")
+                Text(side.title)
                     .font(text(18, .semibold))
                     .foregroundStyle(side.harness ? Palette.accent : Forge.ink)
-                Text(side.harness ? "plans, writes each file, tries it and fixes it" : "one reply, saved as it came")
+                Text(side.summary)
                     .font(text(13))
                     .foregroundStyle(Forge.faint)
                     .lineLimit(1)

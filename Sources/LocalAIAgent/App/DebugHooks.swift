@@ -9,6 +9,8 @@ import WebKit
 ///                                   LOCALAI_SIDE_BY_SIDE=1 asks the plain model and the harness each one
 ///   LOCALAI_VERDICT_CHECK=/path.txt check what code says about a plain reply and a harness reply
 ///   LOCALAI_V6_CHECK=/path.txt      check v6's routing, sentences and loop with a scripted model and canned pages
+///   LOCALAI_DEV_V2_CHECK=/path.txt  check Dev harness v2 with a scripted model and canned page reports;
+///                                   LOCALAI_DEV_VERSION=v1|v2 picks the Dev harness for this run
 ///   LOCALAI_DEMO=1                  run the harness demo after launch; LOCALAI_SHARE_CARD=/path.png writes the
 ///                                   picture of the newest side by side reply once nothing is generating
 ///   LOCALAI_STOP_AFTER=3            press Stop this many seconds after the autoprompt starts
@@ -239,6 +241,13 @@ enum DebugHooks {
                 try? ShareCard.png(card)?.write(to: URL(fileURLWithPath: path))
             }
         }
+        if let path = env["LOCALAI_DEV_V2_CHECK"] {
+            Task {
+                let lines = await DevChecksV2.run()
+                try? lines.joined(separator: "\n").write(toFile: path, atomically: true, encoding: .utf8)
+            }
+        }
+        if let version = DevHarnessVersion(rawValue: env["LOCALAI_DEV_VERSION"] ?? "") { dev.harnessVersion = version }
         if let path = env["LOCALAI_V6_CHECK"] {
             Task {
                 let lines = await TestLab.evidenceCheck()

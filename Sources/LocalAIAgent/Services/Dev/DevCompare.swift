@@ -17,6 +17,8 @@ struct DevCompareFile: Codable, Equatable, Sendable {
 struct DevCompareSide: Codable, Equatable, Sendable {
     var folder: String
     var harness: Bool
+    /// The harness version that built this side, such as "v2". Nil with the harness off, and in older records.
+    var version: String?
     var seconds: Double?
     var calls: Int?
     var files: [DevCompareFile] = []
@@ -26,6 +28,11 @@ struct DevCompareSide: Codable, Equatable, Sendable {
     var text = ""
     var finished = false
     var stopped = false
+
+    /// "Harness v2", or what older records and the plain side were called.
+    var title: String { harness ? version.map { "Harness \($0)" } ?? "Harness on" : "Harness off" }
+    /// One line on how this side was built.
+    var summary: String { harness ? (version.flatMap(DevHarnessVersion.init(rawValue:)) ?? .v1).summary : "one reply, saved as it came" }
 
     var passed: Int { score.filter { $0.passed == true }.count }
     var total: Int { score.filter { $0.passed != nil }.count }
@@ -111,7 +118,8 @@ enum DevCompare {
         }
         let pages = entries.filter(\.isPage).map(\.path)
         if let page = pages.first(where: { $0 == "index.html" }) ?? pages.first {
-            let kind: DevPageKind = DevAgent.isGame(request) ? .game : .app
+            // By what the request names, the same for both sides. The word "play" used to make a quiz count as a game.
+            let kind: DevPageKind = DevAgent.isGameStrict(request) ? .game : .app
             let report = await DevPageCheck.run(folder: folder, page: page, kind: kind, picture: picture)
             var score = [
                 DevScoreLine(name: "Shows something", passed: report.hasContent && !report.rawTemplate,

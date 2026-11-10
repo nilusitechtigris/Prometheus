@@ -27,6 +27,8 @@ struct DevMessage: Codable, Identifiable, Equatable {
     var seconds: Double?
     /// False for a reply made with the harness off. Nil in conversations from before the switch.
     var harness: Bool?
+    /// The harness version that made the reply, such as "v2". Nil with the harness off, and in older conversations.
+    var version: String?
     /// How many times the model was asked something.
     var calls: Int?
 }
@@ -56,6 +58,7 @@ struct DevJump: Equatable {
 final class DevSession {
     private static let onKey = "devModeOn"
     private static let harnessKey = "devHarnessOn"
+    private static let versionKey = "devHarnessVersion"
     private static let recentsKey = "devRecentProjects"
     private static let maxRuns = 30
     /// Output the Terminal keeps on screen for one run.
@@ -98,6 +101,11 @@ final class DevSession {
     /// the agent gets compared with.
     var harnessOn = UserDefaults.standard.object(forKey: DevSession.harnessKey) as? Bool ?? true {
         didSet { UserDefaults.standard.set(harnessOn, forKey: Self.harnessKey) }
+    }
+
+    /// Which version of the harness works on a request while it's on.
+    var harnessVersion = DevHarnessVersion(rawValue: UserDefaults.standard.string(forKey: DevSession.versionKey) ?? "") ?? .recommended {
+        didSet { UserDefaults.standard.set(harnessVersion.rawValue, forKey: Self.versionKey) }
     }
 
     /// Every comparison made, newest first.
@@ -527,11 +535,17 @@ final class DevSession {
         let backends = backends
         let started = Date()
         let harness = harnessOn
-        if let index = messages.firstIndex(where: { $0.id == id }) { messages[index].harness = harness }
+        let version = harnessVersion
+        if let index = messages.firstIndex(where: { $0.id == id }) {
+            messages[index].harness = harness
+            messages[index].version = harness ? version.rawValue : nil
+        }
         agentTask = Task { [weak self] in
             let details = await backends.capabilities(of: model)
-            let setup = DevSetup(model: model.id, backend: backends.backend, context: details.context,
-                                 think: backends.kind.supportsThinkingControl && details.supportsThinking ? false : nil)
+            var chosen = DevSetup(model: model.id, backend: backends.backend, context: details.context,
+                                  think: backends.kind.supportsThinkingControl && details.supportsThinking ? false : nil)
+            chosen.version = version
+            let setup = chosen
             let (events, continuation) = AsyncStream.makeStream(of: DevEvent.self, bufferingPolicy: .bufferingNewest(400))
             let consumer = Task { [weak self] in
                 for await event in events { self?.handle(event, reply: id) }
@@ -690,8 +704,10 @@ final class DevSession {
             return
         }
         if message == nil { draft = "" }
+        let version = harnessVersion
         var record = DevComparison(request: request, date: date, model: model.id, framework: backends.kind.displayName, context: 0, folder: parent.path,
-                                   off: DevCompareSide(folder: off.path, harness: false), on: DevCompareSide(folder: on.path, harness: true))
+                                   off: DevCompareSide(folder: off.path, harness: false),
+                                   on: DevCompareSide(folder: on.path, harness: true, version: version.rawValue))
         comparing = record
         shownComparison = record.id
         showsCompare = true
@@ -704,8 +720,11 @@ final class DevSession {
         let backends = backends
         compareTask = Task { [weak self] in
             let details = await backends.capabilities(of: model)
-            let setup = DevSetup(model: model.id, backend: backends.backend, context: details.context,
-                                 think: backends.kind.supportsThinkingControl && details.supportsThinking ? false : nil)
+            var chosen = DevSetup(model: model.id, backend: backends.backend, context: details.context,
+                                  think: backends.kind.supportsThinkingControl && details.supportsThinking ? false : nil)
+            // The harness side is built by whichever version the switch is on.
+            chosen.version = version
+            let setup = chosen
             record.context = details.context
             self?.comparing = record
             if backends.settings.unloadOnSwitch { await backends.freeOtherFrameworks() }

@@ -1036,8 +1036,8 @@ struct DevPill: View {
     }
 }
 
-/// Turns the harness on and off for the agent's requests. Off, the model gets one go at a request and
-/// its reply is saved as it came, which is what the harness is measured against.
+/// Picks how the agent's requests are handled: off, or one of the harness's versions. Off, the model gets one
+/// go at a request and its reply is saved as it came, which is what the harness is measured against.
 private struct DevHarnessSwitch: View {
     @Environment(DevSession.self) private var dev
 
@@ -1045,22 +1045,26 @@ private struct DevHarnessSwitch: View {
         HStack(spacing: 4) {
             Text("Harness").font(.uiCaption2).foregroundStyle(Forge.faint)
             HStack(spacing: 0) {
-                segment("On", on: true)
-                segment("Off", on: false)
+                segment("Off", version: nil)
+                ForEach(DevHarnessVersion.allCases) { segment($0.short, version: $0) }
             }
             .padding(2)
             .background(Color.white.opacity(0.05), in: Capsule())
             .overlay(Capsule().strokeBorder(Forge.line, lineWidth: 1))
         }
         .disabled(dev.isWorking || dev.isComparing)
-        .help(dev.harnessOn ? "Harness on: the agent plans, writes each file, tries the result and fixes what fails. Click Off to see what the model does alone."
+        .help(dev.harnessOn ? "Harness \(dev.harnessVersion.title): the agent \(dev.harnessVersion.summary). Click Off to see what the model does alone."
                             : "Harness off: one reply from the model, saved as it came, with nothing run or checked.")
     }
 
-    private func segment(_ title: String, on: Bool) -> some View {
-        let selected = dev.harnessOn == on
+    private func segment(_ title: String, version: DevHarnessVersion?) -> some View {
+        let selected = version == nil ? !dev.harnessOn : dev.harnessOn && dev.harnessVersion == version
+        let on = version != nil
         return Button {
-            withAnimation(Motion.quick) { dev.harnessOn = on }
+            withAnimation(Motion.quick) {
+                dev.harnessOn = on
+                if let version { dev.harnessVersion = version }
+            }
         } label: {
             Text(title)
                 .font(.uiCaption2.weight(selected ? .semibold : .regular))
@@ -1071,6 +1075,8 @@ private struct DevHarnessSwitch: View {
                 .contentShape(Capsule())
         }
         .buttonStyle(.plain)
-        .accessibilityLabel("Harness \(title)")
+        .help(version.map { "\($0.title): \($0.summary)" } ?? "One reply from the model, with nothing run or checked")
+        .accessibilityLabel("Harness \(version?.title ?? "off")")
     }
 }
+

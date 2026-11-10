@@ -588,6 +588,9 @@ struct DevPageReport: Sendable {
     var controls = 0
     /// Whether what was typed into it shows up on the page afterwards. Nil if it wasn't used.
     var showsTyped: Bool?
+    /// Whether what was typed showed on the page at any point while it was used. An app with a Remove or Clear
+    /// button ends with it gone again, which `showsTyped` can't tell from never showing it.
+    var showedTyped: Bool?
     /// It shows template tags, such as {{ name }} or {% for %}, that only a server would fill in.
     var rawTemplate = false
 }
@@ -724,8 +727,11 @@ enum DevPageCheck {
       };
       const samples = { email: "sam@example.com", number: "3", tel: "5551234", url: "https://example.com", date: "2026-11-07", time: "09:30",
                         "datetime-local": "2026-11-07T09:30", month: "2026-11", week: "2026-W45", color: "#3366ff", password: "secret123" };
-      let filled = 0, actions = 0, changed = false, last = sign();
-      const settle = count => { __frames(count); const now = sign(); if (now !== last) { changed = true; last = now; } };
+      let filled = 0, actions = 0, changed = false, last = sign(), shownEver = false;
+      // What was typed counts as shown if the page showed it at any point: the next button pressed may be the
+      // one that removes it again.
+      const settle = count => { __frames(count); const now = sign(); if (now !== last) { changed = true; last = now; }
+                                if (document.body && document.body.innerText.includes("Sample item")) shownEver = true; };
       const fill = () => {
         for (const field of document.querySelectorAll("input, textarea, select")) {
           if (field.disabled || field.readOnly || !visible(field)) continue;
@@ -770,7 +776,7 @@ enum DevPageCheck {
         }
       }
       settle(10);
-      return JSON.stringify({ changed, actions, filled, shown: !!document.body && document.body.innerText.includes("Sample item") });
+      return JSON.stringify({ changed, actions, filled, shownEver, shown: !!document.body && document.body.innerText.includes("Sample item") });
     })()
     """#
 
@@ -779,6 +785,7 @@ enum DevPageCheck {
         var actions: Int
         var filled: Int
         var shown = false
+        var shownEver: Bool?
     }
 
     /// Runs a script, giving up on a page stuck in a loop of its own, which would never answer.
@@ -892,6 +899,7 @@ enum DevPageCheck {
                 usedReport = try? JSONDecoder().decode(Used.self, from: data)
                 report.used = (usedReport?.changed ?? false) || log.console.count > said
                 report.showsTyped = usedReport?.shown
+                report.showedTyped = usedReport.map { $0.shownEver ?? $0.shown }
             }
         }
         let after = kind == .app && third != nil ? await mark(host) : third

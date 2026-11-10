@@ -7,6 +7,8 @@ struct DevSetup: @unchecked Sendable {
     var backend: LLMBackend
     var context: Int
     var think: Bool?
+    /// Which coding harness does the work.
+    var version = DevHarnessVersion.v1
     /// Opens a page out of sight and tries it.
     var pageCheck: @Sendable (_ folder: URL, _ page: String, _ kind: DevPageKind) async -> DevPageReport = { folder, page, kind in
         await DevPageCheck.run(folder: folder, page: page, kind: kind)
@@ -141,6 +143,14 @@ final class DevAgent: @unchecked Sendable {
     var builtApp = false
     /// Notes already shown, so a retry doesn't repeat them.
     var noted: Set<String> = []
+    /// v2: what the last try of the page showed. Nil when the try never got as far as opening it.
+    var lastReport: DevPageReport?
+    /// v2: the attempt that got furthest so far.
+    var best: (score: Int, versions: [String: String], order: [String], verdict: Verdict)?
+    /// v2: the things a first use would show that have had their one try at a fix.
+    var raisedKeys: Set<String> = []
+    /// v2: the ones that try didn't cure, for the report.
+    var unresolved: [String] = []
 
     init(project: DevProject, setup: DevSetup, emit: @escaping @Sendable (DevEvent) -> Void = { _ in }) {
         self.project = project
@@ -239,7 +249,7 @@ final class DevAgent: @unchecked Sendable {
         }
 
         // A new page that isn't a game is built as an app, a file at a time.
-        if job.failure == nil, targets.count == 1, let page = targets.first, DevWeb.isPage(page), !project.exists(page), !Self.isGame(job.request) {
+        if job.failure == nil, targets.count == 1, let page = targets.first, DevWeb.isPage(page), !project.exists(page), !isGameRequest(job.request) {
             return await buildApp(page: page, job: job)
         }
 
@@ -271,6 +281,7 @@ final class DevAgent: @unchecked Sendable {
         var round = 0
         var seen: [String: Int] = [:]
         defer { dropped = [] }
+        noteAttempt(verdict)
         repeat {
             while case .failed(let failure) = verdict, round < Self.maxRounds {
                 if Task.isCancelled || failure.isSandboxLimit || seen[failure.signature, default: 0] >= Self.maxRepeats { break }
@@ -284,20 +295,28 @@ final class DevAgent: @unchecked Sendable {
                 }
                 record(fixed, for: path)
                 verdict = await verify(job)
+                noteAttempt(verdict)
             }
             if Task.isCancelled || backendError != nil { break }
             if case .failed = verdict { break }
             guard job.failure == nil, round < Self.maxRounds, let problem = await tryOut(job) else { break }
             verdict = .failed(problem)
+            // What looked like the best attempt has just been shown not to work, so it's no longer one to go back to.
+            best = nil
+            noteAttempt(verdict)
         } while true
         if Task.isCancelled { return DevOutcome(text: "Stopped. Nothing changed.", stopped: true, rounds: round) }
         if let backendError, versions.isEmpty { return DevOutcome(text: "The model couldn't answer: \(backendError)", worked: false) }
+        verdict = await improve(job, verdict, round: &round)
+        if Task.isCancelled { return DevOutcome(text: "Stopped. Nothing changed.", stopped: true, rounds: round) }
+        verdict = bestOf(verdict)
 
         switch verdict {
         case .worked(let output):
             let changes = save()
             if let page = triedPage {
-                return DevOutcome(text: report(changes, ending: "It loads without errors. \(output)"), changes: changes, worked: saveProblem == nil, rounds: round, page: saveProblem == nil ? page : nil)
+                let left = unresolved.isEmpty ? "" : " Not fixed: \(unresolved.joined(separator: "; "))."
+                return DevOutcome(text: report(changes, ending: "It loads without errors. \(output)\(left)"), changes: changes, worked: saveProblem == nil, rounds: round, page: saveProblem == nil ? page : nil)
             }
             let ending = output.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "It ran without errors and printed nothing." : "It ran without errors."
             return DevOutcome(text: report(changes, ending: ending + textOnlyNote), changes: changes, worked: saveProblem == nil, rounds: round)
@@ -740,7 +759,7 @@ final class DevAgent: @unchecked Sendable {
                 if let existing { extra.append("\(path) now:\n\(fence(existing, path: path))") }
                 extra.append("Task: \(job.request)")
                 var skeleton: String?
-                if existing == nil, DevWeb.isPage(path), Self.isGame(job.request) {
+                if existing == nil, DevWeb.isPage(path), isGameRequest(job.request) {
                     let firstPerson = job.request.lowercased().matches(#"\b(pov|first[- ]person|fps)\b"#)
                     skeleton = firstPerson ? DevWeb.firstPersonSkeleton : DevWeb.gameSkeleton
                     extra.append("Start from this and fill it in, keeping what's there:\n\(fence(skeleton ?? "", path: path))")
@@ -983,6 +1002,8 @@ final class DevAgent: @unchecked Sendable {
         }
         defer { try? FileManager.default.removeItem(at: folder) }
         let report = await setup.pageCheck(folder, page, pageKind(page, job: job))
+        // v2 reads more of this afterwards. v1 only reads whether it failed.
+        lastReport = report
         let output = ([report.summary] + report.console.suffix(6)).filter { !$0.isEmpty }.joined(separator: "\n")
         emit(.ran("preview \(page)", DevRunResult(output: output, exitCode: report.failure == nil ? 0 : 1, seconds: 0)))
         if let failure = report.failure { return .failed(failure) }
@@ -990,6 +1011,7 @@ final class DevAgent: @unchecked Sendable {
     }
 
     func verify(_ job: DevJob) async -> Verdict {
+        lastReport = nil
         if let page = pageToTry(job) {
             if let failure = linkCheck(page) { return .failed(failure) }
             return await tryPage(page, job: job)
@@ -1114,7 +1136,7 @@ final class DevAgent: @unchecked Sendable {
     /// One attempt at one failure. Tries what code can settle first. Handed a whole file, a small model
     /// tends to type it back unchanged, so a second try splits the job: say the cause in plain words, then
     /// rewrite only the part that holds the bug.
-    private func fix(_ path: String, failure: DevFailure, job: DevJob, round: Int, repeats: Int) async -> String? {
+    func fix(_ path: String, failure: DevFailure, job: DevJob, round: Int, repeats: Int) async -> String? {
         guard let current = source(path) else { return nil }
         if originals[path] == nil { originals[path] = .some(project.read(path)) }
         if let repaired = await importedFromProject(failure, into: path, source: current) ?? DevRepair.repair(failure, source: current) {

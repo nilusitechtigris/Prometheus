@@ -1928,7 +1928,10 @@ enum DevChecks {
                     let outcome = await DevOneReply.run(request: task.steps.joined(separator: "\n"), project: DevProject(root: root), setup: setup, emit: { _ in })
                     story = "\(outcome.changes.count) files: \(outcome.text.prefix(160))"
                 } else {
-                    story = mode == "oneshot" ? await oneShot(task, root: root, setup: setup) : await harness(task, root: root, setup: setup)
+                    // "harness" is v1, as it was when the first measures were made, and "v2" is the new one.
+                    var own = setup
+                    own.version = mode == "v2" ? .v2 : .v1
+                    story = mode == "oneshot" ? await oneShot(task, root: root, setup: setup) : await harness(task, root: root, setup: own)
                 }
                 let seconds = Date().timeIntervalSince(started)
                 let picture = URL(fileURLWithPath: out).deletingLastPathComponent().appendingPathComponent("\(mode)-\(task.id).png")
@@ -1972,10 +1975,11 @@ enum DevChecks {
                 // Used the way a person would, then held to more than the agent's own check: what was typed has
                 // to show up in an app that keeps a list.
                 let report = await DevPageCheck.run(folder: copy, page: page, kind: .app, picture: picture)
-                let extras = "styled \(report.styled), offline \(report.offline), fits \(report.fits), used \(report.used.map(String.init) ?? "-"), typed shown \(report.showsTyped.map(String.init) ?? "-")"
+                let extras = "styled \(report.styled), offline \(report.offline), fits \(report.fits), used \(report.used.map(String.init) ?? "-"), typed shown \(report.showedTyped.map(String.init) ?? "-")"
                 if let failure = report.failure { return (false, "\(failure.title) | \(extras)") }
                 if report.controls > 0, report.used != true, !report.responded { return (false, "nothing changed when used | \(extras)") }
-                if task.lists == true, report.showsTyped != true { return (false, "what was typed never showed | \(extras)") }
+                // At any point while it was used: a list with a Remove button ends with the item gone again.
+                if task.lists == true, report.showedTyped != true { return (false, "what was typed never showed | \(extras)") }
                 return (true, extras)
             }
             let report = await DevPageCheck.run(folder: copy, page: page, game: task.game ?? false, picture: picture)

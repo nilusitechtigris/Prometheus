@@ -17,11 +17,11 @@ extension DevAgent {
             [("PARTS", parts), ("DATA", data), ("ACTIONS", actions)].filter { !$0.1.isEmpty }.map { "\($0.0): \($0.1)" }.joined(separator: "\n")
         }
 
-        static func parse(_ reply: String) -> AppPlan {
+        static func parse(_ reply: String, limit: Int = 400) -> AppPlan {
             var plan = AppPlan()
             for line in reply.replacingOccurrences(of: "**", with: "").components(separatedBy: "\n") {
                 guard let parts = line.groups(of: #"^\s*[-#*]*\s*(NAME|PARTS|DATA|ACTIONS)\s*:\s*(.+?)\s*$"#, options: .caseInsensitive) else { continue }
-                let value = String(parts[2].prefix(400))
+                let value = String(parts[2].prefix(limit))
                 switch parts[1].uppercased() {
                 case "NAME": plan.name = String(value.trimmingCharacters(in: CharacterSet(charactersIn: "\"'`. ")).prefix(40))
                 case "PARTS": plan.parts = value
@@ -42,7 +42,7 @@ extension DevAgent {
         let data = dataFiles()
 
         emit(.stage("Planning the app"))
-        let plan = await planApp(job, data: data)
+        let plan = isV2 ? await planAppV2(job, data: data) : await planApp(job, data: data)
         if let stop = interrupted() { return stop }
         if !plan.name.isEmpty || !plan.parts.isEmpty {
             emit(.note("Plan: \(plan.name.isEmpty ? "the app" : plan.name). \(plan.parts.prefix(160))"))
@@ -354,6 +354,16 @@ extension DevAgent {
     func pageKind(_ page: String, job: DevJob) -> DevPageKind {
         let html = source(page) ?? ""
         let scripts = linked(from: page, html: html).scripts.compactMap(source)
+        if isV2 {
+            // An app that animates something is still an app: v1 took any animation for a game and never used it.
+            if isGameRequest(job.request) { return .game }
+            if builtApp { return .app }
+            let tags = DevWebLinks.tags(in: html)
+            let hasCanvas = tags.contains { $0.name == "canvas" }
+            let hasFields = tags.contains { ["input", "textarea", "select", "form"].contains($0.name) }
+            if hasCanvas, !hasFields, ([html] + scripts).contains(where: { $0.contains("requestAnimationFrame") }) { return .game }
+            return tags.contains { ["input", "textarea", "select", "button", "form"].contains($0.name) } ? .app : .page
+        }
         if Self.isGame(job.request) || ([html] + scripts).contains(where: { $0.contains("requestAnimationFrame") }) { return .game }
         if builtApp { return .app }
         let controls = DevWebLinks.tags(in: html).contains { ["input", "textarea", "select", "button", "form"].contains($0.name) }

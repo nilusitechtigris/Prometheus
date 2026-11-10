@@ -203,10 +203,10 @@ private struct DevCompareColumn: View {
                         .truncationMode(.tail)
                         .help(comparison.request)
                 } else {
-                    Text(side.harness ? "Harness on" : "Harness off")
+                    Text(side.title)
                         .font(.uiHeadline)
                         .foregroundStyle(side.harness ? Palette.accent : Forge.ink)
-                    Text(side.harness ? "plans, writes each file, tries it and fixes it" : "one reply, saved as it came")
+                    Text(side.summary)
                         .font(.uiCaption)
                         .foregroundStyle(Forge.faint)
                         .lineLimit(1)
