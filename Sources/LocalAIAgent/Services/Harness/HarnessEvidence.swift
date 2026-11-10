@@ -26,15 +26,18 @@ extension TestLab {
     }
 
     /// True for a question a program can answer exactly, where looking it up would only find something near it.
+    /// Each rule needs what a program would work from to be written in the question: a date, a quoted text, an
+    /// amount. "How old is the universe?" and "How many years after Apollo 11…" have none, and stay lookups.
     static func computable(_ text: String) -> Bool {
-        guard text.contains(where: \.isNumber) || text.contains("\"") || text.contains("'") else { return false }
-        // Dates and ages.
-        if has(#"\b(what|which) day of the week\b|\bwhat weekday\b|\bhow many (days|weeks|months|years)\b.*\b(between|from|since|until|after|before)\b|\bhow old (is|was|were|will|would)\b.*\d"#, text) { return true }
-        // Counting what's written in the question.
-        if has(#"\bhow many (letters|words|vowels|consonants|characters|syllables)\b|\bhow many times (does|do)\b|\bcount the\b"#, text),
-           text.contains("\"") || text.contains("'") { return true }
-        // Units.
-        if has(#"\bconvert\s+\d|\bhow many (kilometers|kilometres|km|miles|meters|metres|feet|inches|centimeters|centimetres|cm|kilograms|kg|pounds|lbs|ounces|grams|liters|litres|gallons|seconds|minutes|hours) (is|are|in)\b"#, text) { return true }
+        let hasNumber = text.contains(where: \.isNumber)
+        // Dates and ages, from a date written out in full or a span between two years.
+        if hasNumber, has(#"\b(what|which) day of the week\b|\bwhat weekday\b|\bhow many (days|weeks|months|years)\b|\bhow old (is|was|were|will|would)\b"#, text),
+           !ExactTools.dates(in: text).isEmpty || has(#"\b(from|between)\s+\d{4}\s+(to|and|until)\s+\d{4}\b"#, text) { return true }
+        // Counting what's quoted in the question. An apostrophe isn't a quotation.
+        if has(#""[^"]+"|(?:^|\s)'[^']+'(?=$|[\s?.!,;:)])"#, text),
+           has(#"\bhow many (letters|words|vowels|consonants|characters|syllables)\b|\bhow many times (does|do)\b|\bcount the\b"#, text) { return true }
+        // Units, with the amount to convert.
+        if has(#"\bconvert\s+\d|\bhow many (kilometers|kilometres|km|miles|meters|metres|feet|inches|centimeters|centimetres|cm|kilograms|kg|pounds|lbs|ounces|grams|liters|litres|gallons|seconds|minutes|hours) (is|are|in)\s+\d"#, text) { return true }
         // A word problem: a few sentences of numbers, then a question about how many or how much.
         let sentences = text.split { ".!?".contains($0) }.filter { $0.contains(where: \.isLetter) }
         let numbers = (try? NSRegularExpression(pattern: #"\d[\d,.]*"#))?.numberOfMatches(in: text, range: NSRange(text.startIndex..., in: text)) ?? 0
@@ -89,14 +92,15 @@ extension TestLab {
     /// Looks the question up, starting from the thing it names, and keeps the few sentences that bear on it.
     static func researchQuoted(_ task: HarnessTask, state: inout LoopState, setup: TestSetup, total: inout Reply) async {
         if state.hits.isEmpty {
-            var results: String?
-            // The name in the question is usually the title of the page that answers it.
+            var hits: [SearchHit] = []
+            // The name in the question is usually the title of the page that answers it. Only the page that
+            // title leads to is tried, so a wrong guess costs one page and the model's own search still runs.
             if state.queries.isEmpty, let name = HarnessText.namedThing(in: task.body) {
                 state.queries.append(name)
                 switch await WebTools.titleSearch(name) {
                 case .success(let text):
                     total.toolLog.append("Looked up: \(name)")
-                    if !HarnessText.hits(in: text).isEmpty { results = text }
+                    hits = Array(HarnessText.hits(in: text).prefix(1))
                 case .failure(let failure) where failure.message == WebTools.declined:
                     total.toolLog.append(WebTools.declinedNote)
                     state.webDeclined = true
@@ -105,7 +109,7 @@ extension TestLab {
                     total.toolLog.append("Looked up: \(name)" + HarnessTools.failedMark)
                 }
             }
-            if results == nil, let query = await strictQuery(task, state: &state, setup: setup, total: &total) {
+            if hits.isEmpty, let query = await strictQuery(task, state: &state, setup: setup, total: &total) {
                 let call = ToolCall(name: "web_search", arguments: ["query": query])
                 let found = await HarnessTools.run(call)
                 if found.failed, found.text.hasSuffix(WebTools.declined) {
@@ -115,11 +119,12 @@ extension TestLab {
                 }
                 total.toolLog.append(HarnessTools.describe(call) + (found.failed ? HarnessTools.failedMark : ""))
                 total.guardRemoved += found.removed
-                if !found.failed { results = found.text }
+                if !found.failed {
+                    let ranked = HarnessText.ranked(HarnessText.hits(in: found.text), for: task.body)
+                    hits = ranked.filter { !isListPage($0.title) } + ranked.filter { isListPage($0.title) }
+                }
             }
-            guard let results else { return }
-            let ranked = HarnessText.ranked(HarnessText.hits(in: results), for: task.body).filter { !state.opened.contains($0.url) }
-            state.hits = ranked.filter { !isListPage($0.title) } + ranked.filter { isListPage($0.title) }
+            state.hits = hits.filter { !state.opened.contains($0.url) }
         }
 
         for _ in 0..<2 where !state.hits.isEmpty {
@@ -131,15 +136,21 @@ extension TestLab {
                 continue
             }
             total.toolLog.append(describe)
-            let sentences = Quotes.sentences(of: text)
+            // From here on the reply may carry something a page said, so its links get checked whatever happens next.
+            state.readTheWeb = true
+            // The guard cleans the page before anything is picked from it, so nothing it removes can be chosen as
+            // evidence, quoted to the model, or counted as backing an answer.
+            let clean = PromptGuard.sanitize(text)
+            total.guardRemoved += clean.removed
+            let sentences = Quotes.sentences(of: clean.text)
             state.pageSentences += sentences.prefix(400)
             let picked = Quotes.pick(from: sentences, question: task.body)
             guard !picked.isEmpty else { continue }
-            let safe = PromptGuard.wrap(picked.enumerated().map { "\($0.offset + 1). \($0.element)" }.joined(separator: "\n"), source: hit.url)
+            let title = PromptGuard.sanitize(hit.title).text.prefix(80)
+            let safe = PromptGuard.wrap("From the page \"\(title)\":\n" + picked.enumerated().map { "\($0.offset + 1). \($0.element)" }.joined(separator: "\n"), source: hit.url)
             total.guardRemoved += safe.removed
             state.quotes = picked
-            state.evidence = ["Sentences from \(hit.title):\n\(safe.text)"]
-            state.readTheWeb = true
+            state.evidence = [safe.text]
             return
         }
     }
@@ -148,20 +159,17 @@ extension TestLab {
     private static func strictQuery(_ task: HarnessTask, state: inout LoopState, setup: TestSetup, total: inout Reply) async -> String? {
         let fromTask = PassageFinder.keywords(in: task.body).prefix(7).joined(separator: " ")
         // The first entry may be the name already tried as a title.
-        let written = state.queries.filter { $0 != HarnessText.namedThing(in: task.body) }.count
-        var query: String?
-        switch written {
-        case 0:
+        let name = HarnessText.namedThing(in: task.body)
+        let written = state.queries.filter { $0 != name }.count
+        var candidates: [String] = []
+        if written == 0 {
             let request = "\(task.subject)\n\n---\nWrite a web search of 3 to 8 words that would find this. Reply with only the search words."
             let reply = await stepReply(.act, [ChatTurn(role: "user", content: request)], setup: setup, tokens: 40, total: &total)
-            query = HarnessText.cleanQuery(reply.answer.split(whereSeparator: \.isNewline).first.map(String.init) ?? "")
-        case 1:
-            query = fromTask
-        default:
-            return nil
+            candidates.append(HarnessText.cleanQuery(reply.answer.split(whereSeparator: \.isNewline).first.map(String.init) ?? ""))
         }
-        let chosen = (query?.isEmpty == false ? query : fromTask) ?? fromTask
-        guard !chosen.isEmpty, !state.queries.contains(chosen) else { return nil }
+        if written <= 1 { candidates.append(fromTask) }
+        // A search the same as one already made finds the same pages, so the next one is tried instead.
+        guard let chosen = candidates.first(where: { !$0.isEmpty && !state.queries.contains($0) }) else { return nil }
         state.queries.append(chosen)
         return chosen
     }
@@ -176,31 +184,48 @@ extension TestLab {
 
     // MARK: Check
 
-    /// The names and numbers in an answer that the question didn't already hold: what makes it this answer.
-    static func distinctive(_ answer: String, beyond question: String) -> [String] {
+    private static let openers: Set<String> = ["the", "it", "a", "an", "in", "on", "this", "that", "there", "he", "she", "they", "i", "we", "yes", "no",
+                                               "who", "what", "which", "when", "where", "why", "how", "is", "are", "was", "were", "did", "does", "do",
+                                               "can", "could", "will", "would", "should", "name", "tell", "give", "according", "answer"]
+
+    private static func isNumberMark(_ mark: String) -> Bool { mark.first?.isNumber == true }
+
+    /// The names and numbers in a text that `question` didn't already hold: what makes an answer this answer.
+    /// `leading` also counts a first word that is a name, for a one-line answer such as "Canberra".
+    static func distinctive(_ answer: String, beyond question: String, leading: Bool = false) -> [String] {
         let asked = question.lowercased()
         var seen = Set<String>()
-        let words = answer.split { !$0.isLetter && !$0.isNumber && $0 != "'" && $0 != "-" }.map(String.init)
+        let words = answer.split { !$0.isLetter && !$0.isNumber && $0 != "'" && $0 != "’" && $0 != "-" }.map { word -> String in
+            var word = String(word)
+            if word.hasSuffix("'s") || word.hasSuffix("’s") { word.removeLast(2) }
+            return word.trimmingCharacters(in: CharacterSet(charactersIn: "'’-"))
+        }
         return words.enumerated().compactMap { index, word -> String? in
+            guard !word.isEmpty else { return nil }
             let isNumber = word.first?.isNumber == true
-            let isName = word.first?.isUppercase == true && word.count > 1 && index > 0
+            let isName = word.first?.isUppercase == true && word.count > 1 && (index > 0 || (leading && !openers.contains(word.lowercased())))
             guard isNumber || isName, !asked.contains(word.lowercased()), seen.insert(word.lowercased()).inserted else { return nil }
             return word
         }
     }
 
-    /// Whether a sentence is about what the question asked: it holds the question's own names and numbers when
-    /// it has any, since "atomic number 50" shares every ordinary word with a question about number 74, and
-    /// otherwise one of its words.
+    private static func holds(_ mark: String, in lower: String) -> Bool {
+        lower.range(of: "(?<![\\w])\(NSRegularExpression.escapedPattern(for: mark.lowercased()))(?![\\w])", options: .regularExpression) != nil
+    }
+
+    /// Whether a sentence is about what the question asked. It has to hold every number the question gives,
+    /// since "the 2010 World Cup" shares every other word with a question about 2014, and at least half its
+    /// names. A question with neither only needs one of its words.
     private static func isAbout(_ sentence: String, task: HarnessTask) -> Bool {
         let lower = sentence.lowercased()
-        func holds(_ mark: String) -> Bool {
-            lower.range(of: "\\b\(NSRegularExpression.escapedPattern(for: mark.lowercased()))\\b", options: .regularExpression) != nil
-        }
         let marks = distinctive(task.body, beyond: "")
-        if !marks.isEmpty { return marks.filter(holds).count >= max(1, (marks.count + 1) / 2) }
-        let asked = Set(PassageFinder.keywords(in: task.body))
-        return PassageFinder.keywords(in: sentence).contains(where: asked.contains)
+        if marks.isEmpty {
+            let asked = Set(PassageFinder.keywords(in: task.body))
+            return PassageFinder.keywords(in: sentence).contains(where: asked.contains)
+        }
+        let numbers = marks.filter(isNumberMark), names = marks.filter { !isNumberMark($0) }
+        guard numbers.allSatisfy({ holds($0, in: lower) }) else { return false }
+        return names.isEmpty || names.filter { holds($0, in: lower) }.count >= (names.count + 1) / 2
     }
 
     /// A sentence that holds one of these names or numbers and is about what the question asked.
@@ -208,40 +233,53 @@ extension TestLab {
         guard !marks.isEmpty else { return nil }
         return sentences.first { sentence in
             let lower = sentence.lowercased()
-            guard marks.contains(where: { lower.range(of: "\\b\(NSRegularExpression.escapedPattern(for: $0.lowercased()))\\b", options: .regularExpression) != nil }) else { return false }
-            return isAbout(sentence, task: task)
+            return marks.contains { holds($0, in: lower) } && isAbout(sentence, task: task)
         }
     }
 
     /// Whether one of the quoted sentences holds what the reply adds to the question and is about what was
-    /// asked. Words that turn up anywhere on a page aren't enough: that is how a nearby year or a neighbouring
-    /// row passed in v3.
+    /// asked. What the reply adds is its names and numbers when it has any: an answer of "1890" isn't backed by
+    /// a sentence that shares the word "built" and says 1887. Words that turn up anywhere on a page aren't
+    /// enough either: that is how a nearby year or a neighbouring row passed in v3.
     static func isBacked(_ text: String, by quotes: [String], task: HarnessTask) -> Bool {
+        let answer = ModelTestSuite.finalAnswer(text)
+        let marks = distinctive(answer, beyond: task.body, leading: true)
+        if !marks.isEmpty {
+            return quotes.contains { quote in
+                let lower = quote.lowercased()
+                return marks.contains { holds($0, in: lower) } && isAbout(quote, task: task)
+            }
+        }
         let asked = Set(PassageFinder.keywords(in: task.body))
-        let added = PassageFinder.keywords(in: ModelTestSuite.finalAnswer(text)).filter { !asked.contains($0) }
+        let added = PassageFinder.keywords(in: answer).filter { !asked.contains($0) }
         guard !added.isEmpty else { return true }
         return quotes.contains { quote in
             PassageFinder.keywords(in: quote).contains(where: added.contains) && isAbout(quote, task: task)
         }
     }
 
-    /// After Check: when the model's own answer and the page's differ, puts the sentences behind each in front
-    /// of it, once. Returns the attempt, marked to go round again if so.
-    static func reconciled(_ attempt: Attempt, task: HarnessTask, state: inout LoopState, total: inout Reply) -> Attempt {
-        guard state.kind == .fact, !state.reconciled, let memory = state.memoryAnswer, !attempt.text.isEmpty,
+    /// After Check: when the model's own answer and the page's give different names or numbers, puts the
+    /// sentences behind each in front of it, once, and only while there's a round left to read them in.
+    /// A reply that just leaves out part of what memory said isn't a disagreement.
+    static func reconciled(_ attempt: Attempt, task: HarnessTask, state: inout LoopState, total: inout Reply, mayGoAgain: Bool) -> Attempt {
+        guard mayGoAgain, state.kind == .fact, !state.reconciled, let memory = state.memoryAnswer, !attempt.text.isEmpty,
               !state.pageSentences.isEmpty else { return attempt }
-        let missing = distinctive(memory, beyond: task.body).filter { !attempt.text.lowercased().contains($0.lowercased()) }
-        guard !missing.isEmpty, let rival = sentence(holding: missing, task: task, in: state.pageSentences) else { return attempt }
-        // What the page's answer has that the model's own didn't, and the sentence it came from.
-        let differing = distinctive(ModelTestSuite.finalAnswer(attempt.text), beyond: task.body).filter { !memory.lowercased().contains($0.lowercased()) }
+        let reply = ModelTestSuite.finalAnswer(attempt.text)
+        let missing = distinctive(memory, beyond: task.body, leading: true).filter { !holds($0, in: attempt.text.lowercased()) }
+        let differing = distinctive(reply, beyond: task.body, leading: true).filter { !holds($0, in: memory.lowercased()) }
+        // A year against a year, or a name against a name.
+        let clash = (missing.contains(where: isNumberMark) && differing.contains(where: isNumberMark))
+            || (missing.contains { !isNumberMark($0) } && differing.contains { !isNumberMark($0) })
+        guard clash, let rival = sentence(holding: missing, task: task, in: state.pageSentences) else { return attempt }
         let own = sentence(holding: differing, task: task, in: state.quotes)
         guard own != rival else { return attempt }
         state.reconciled = true
+        state.readTheWeb = true
         let pair = [own, rival].compactMap { $0 }
         let safe = PromptGuard.wrap(pair.enumerated().map { "\($0.offset + 1). \($0.element)" }.joined(separator: "\n"), source: "the page")
         total.guardRemoved += safe.removed
         state.quotes = pair
-        state.evidence = ["Sentences from the page:\n\(safe.text)"]
+        state.evidence = [safe.text]
         total.toolLog.append(pair.count == 2 ? "Two sentences point to different answers, so it reads both again"
                                              : "A sentence on the page backs the answer from memory, so it reads that again")
         let problem = Problem.rule(pair.count == 2
@@ -250,17 +288,22 @@ extension TestLab {
         return Attempt(text: attempt.text, problems: [problem] + attempt.problems.filter { $0 != .unsupported })
     }
 
-    /// The last line of a reply's steps in v6: what code checked, said plainly.
+    /// The last line of a reply's steps in v6: what was checked, and by what, said plainly.
     static func checkedLine(_ best: Attempt?, state: LoopState) -> String {
         guard let best, !best.text.isEmpty else { return "Not checked: there was no reply to check" }
-        if state.result != nil { return "Checked: code worked this out" }
-        if !best.problems.isEmpty { return "Not checked: \(best.problems[0].text)" }
-        if state.kind == .fact {
-            if !state.quotes.isEmpty { return "Checked: a sentence from the page backs this" }
-            return state.webDeclined ? "Not checked: answered from memory, with no lookup" : "Not checked: nothing found backs this, so it's from memory"
+        if state.result != nil {
+            return state.computedByCode ? "Checked: code worked this out" : "Checked: a program was run for this, and the reply states what it printed"
         }
-        if state.rules.hasShape { return "Checked: the rules in the message, by code" }
-        return "Nothing here for code to check"
+        if !best.problems.isEmpty { return "Not checked: \(best.problems[0].text)" }
+        switch state.kind {
+        case .fact:
+            if !state.quotes.isEmpty { return "Checked: a sentence from the page holds this answer" }
+            return state.webDeclined ? "Not checked: answered from memory, with no lookup" : "Not checked: nothing found backs this, so it's from memory"
+        case .calculation, .code:
+            return "Not checked: no program ran to the end, so this is the model's own working"
+        default:
+            return state.rules.hasShape ? "Checked: the rules in the message, by code" : "Nothing here for code to check"
+        }
     }
 }
 
@@ -297,9 +340,17 @@ extension HarnessText {
         "cathedral", "temple", "canal", "university", "museum", "inequality", "function", "series", "sequence", "scale", "test",
     ]
     private static let joiners: Set<String> = ["of", "the", "de", "van", "von", "da", "di", "la", "le", "del", "al", "bin", "ibn"]
+    /// Words a question starts with, which are capitalised without naming anything.
+    private static let questionWords: Set<String> = [
+        "who", "whom", "whose", "what", "which", "when", "where", "why", "how", "is", "are", "was", "were", "did", "does", "do", "can",
+        "could", "will", "would", "should", "has", "have", "had", "in", "on", "at", "the", "a", "an", "name", "tell", "give", "list",
+        "explain", "describe", "according", "please", "if", "for", "to", "from", "by", "with", "about", "after", "before", "during",
+    ]
 
     /// The one thing a question names, such as "Mordell conjecture" or "Battle of Kadesh". Nil when it names
-    /// nothing or several things, because guessing which of several pages matters is the model's job.
+    /// nothing or several things, because guessing which of several pages matters is the model's job. A single
+    /// word that reads as "of somewhere", such as American or Chinese, names a people or a language, not a page
+    /// worth opening first.
     static func namedThing(in question: String) -> String? {
         var runs: [[String]] = []
         for sentence in question.split(whereSeparator: { ".!?\n".contains($0) }) {
@@ -311,10 +362,11 @@ extension HarnessText {
                 run = []
             }
             for (index, word) in words.enumerated() {
-                let plain = word.trimmingCharacters(in: CharacterSet(charactersIn: "'’"))
+                var plain = word.trimmingCharacters(in: CharacterSet(charactersIn: "'’"))
+                if plain.hasSuffix("'s") || plain.hasSuffix("’s") { plain.removeLast(2) }
                 let capital = plain.first?.isUppercase == true && plain.contains(where: \.isLetter)
-                if capital, index > 0 || (words.count > 1 && words[1].first?.isUppercase == true) {
-                    run.append(plain.hasSuffix("'s") || plain.hasSuffix("’s") ? String(plain.dropLast(2)) : plain)
+                if capital, index > 0 || !questionWords.contains(plain.lowercased()) {
+                    run.append(plain)
                 } else if !run.isEmpty, joiners.contains(plain.lowercased()) {
                     run.append(plain)
                 } else if run.count == 1, kindWords.contains(plain.lowercased()) {
@@ -326,7 +378,11 @@ extension HarnessText {
             }
             close()
         }
-        let named = runs.map { $0.joined(separator: " ") }.filter { $0.count > 2 }
+        let named = runs.map { $0.joined(separator: " ") }.filter { name in
+            guard name.count > 2 else { return false }
+            let single = !name.contains(" ")
+            return !(single && name.lowercased().range(of: #"(ian|ean|ese|ish|ch|can|man)$"#, options: .regularExpression) != nil)
+        }
         return Set(named).count == 1 ? named.first : nil
     }
 }

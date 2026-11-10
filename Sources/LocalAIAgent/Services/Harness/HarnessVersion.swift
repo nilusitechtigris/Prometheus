@@ -47,7 +47,7 @@ enum HarnessVersion: String, Codable, CaseIterable, Identifiable {
         case .loop: return "The pipeline, plus code that checks each reply and goes round again until it passes."
         case .thinking: return "The loop, with the model thinking through every step it takes part in. Needs Think on: with it off, this is v3."
         case .council: return "Code prepares a shared notes file, then three agents with their own personality and temperature discuss the task in it, thinking on."
-        case .evidence: return "The loop with stricter evidence. Code works out dates, counts and sums itself, a lookup has to quote the sentence it answers from, and the reply says what couldn't be checked. Not measured yet."
+        case .evidence: return "The loop with stricter evidence. Code works out dates, letter counts and sums itself, a looked-up answer only counts when one sentence on the page holds it, and its steps end by saying what was checked. Two rounds at most. Not measured yet."
         }
     }
 

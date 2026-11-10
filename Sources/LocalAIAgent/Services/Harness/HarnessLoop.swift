@@ -63,6 +63,8 @@ extension TestLab {
         var memoryAnswer: String?
         /// True once the two answers' sentences have been put side by side, which happens once.
         var reconciled = false
+        /// True when the result came from plain code, as opposed to a program the model wrote.
+        var computedByCode = false
         /// True while the next Act should look for more.
         var wantsEvidence = true
         var failedProgram: (problem: String, code: String)?
@@ -193,7 +195,7 @@ extension TestLab {
                 }
                 attempt = judge(reply.answer, cut: reply.stats?.stopReason == "length", task: task, state: state)
             }
-            if strict { attempt = reconciled(attempt, task: task, state: &state, total: &total) }
+            if strict { attempt = reconciled(attempt, task: task, state: &state, total: &total, mayGoAgain: round < rounds) }
 
             total.onStage?(.check, round)
             if attempt.rank < best?.rank ?? Int.max || best == nil {

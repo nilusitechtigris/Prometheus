@@ -13,7 +13,11 @@ extension TestLab {
                                   ("How many times does the letter \"s\" appear in \"Mississippi\"?", "4"),
                                   ("Count the letter e in \"Tennessee\"", "4"),
                                   ("How many r's are in the word arrow?", "2"),
-                                  ("How many words are in \"the quick brown fox\"?", "4"),
+                                  ("How many times does the letter \"r\" appear in strawberry?", "3"),
+                                  ("How many r's are in 'strawberry'?", "3"),
+                                  ("How many times does the letter 'r' appear in 'strawberry raspberry'?", "6"),
+                                  ("How many times does the letter t appear in 'don't stop'?", "2"),
+                                  ("How many words are in the sentence \"the quick brown fox\"?", "4"),
                                   ("What day of the week was 14 March 1879?", "Friday"),
                                   ("What day of the week was July 4, 1776?", "Thursday"),
                                   ("On what day of the week will 2030-01-01 fall?", "Tuesday"),
@@ -25,7 +29,9 @@ extension TestLab {
         for question in ["How many moons does Mars have?", "What day of the week is best for a meeting?",
                          "How many times does the letter r appear in the Bible?", "What day of the week was 1 January 1500?",
                          "How many days are there between Christmas and Easter?", "How many r's are in this sentence, roughly?",
-                         "Who was born on 14 March 1879?"] {
+                         "Who was born on 14 March 1879?", "What day of the week is 10 days after 1 March 2024?",
+                         "How many days from 1 March 2024 to 10 March 2024 inclusive?", "How many words are in \"War and Peace\"?",
+                         "How many m in km?", "What day of the week was 23 April 1616?", "How many working days are there from 1 March 2024 to 10 March 2024?"] {
             expect("exact leaves alone: \(question)", ExactTools.solve(question) == nil)
         }
 
@@ -38,7 +44,9 @@ extension TestLab {
             expect("goes to code: \(prompt.prefix(60))", kind(prompt) == .calculation)
         }
         for prompt in ["How many moons does Mars have?", "Who proved the Mordell conjecture, and in what year?",
-                       "How many countries joined the European Union between 2004 and 2007?", "What is the capital of Burkina Faso?"] {
+                       "How many countries joined the European Union between 2004 and 2007?", "What is the capital of Burkina Faso?",
+                       "How many kilometers is Earth's circumference?", "How old is the universe according to 2018 Planck data?",
+                       "How many years after Apollo 11 did the Shuttle first fly?"] {
             expect("stays a lookup or a plain question: \(prompt.prefix(60))", kind(prompt) != .calculation)
         }
         let suite = ModelTestSuite.questions(contextLength: 4_096)
@@ -59,10 +67,10 @@ extension TestLab {
         // The name a question is about.
         for (question, name) in [("Who proved the Mordell conjecture, and in what year?", "Mordell conjecture"),
                                  ("What is the capital of Burkina Faso?", "Burkina Faso"),
-                                 ("When was the Treaty of Versailles signed?", "Treaty of Versailles")] {
+                                 ("When was the Treaty of Versailles signed?", "Treaty of Versailles"), ("Is Pluto a planet?", "Pluto")] {
             expect("names \(name): \(HarnessText.namedThing(in: question) ?? "nothing")", HarnessText.namedThing(in: question) == name)
         }
-        for question in ["Which chemical element has atomic number 74?",
+        for question in ["Which chemical element has atomic number 74?", "Which American president served the shortest term?",
                          "Which Hittite king concluded the peace treaty with Ramesses II after the Battle of Kadesh?"] {
             expect("names nothing single: \(question.prefix(50))", HarnessText.namedThing(in: question) == nil)
         }
@@ -84,6 +92,16 @@ extension TestLab {
         expect("a neighbouring row doesn't back an answer", !isBacked("Tin", by: rows, task: element))
         expect("the right row does", isBacked("Tungsten", by: rows, task: element))
         expect("an answer that adds nothing is left alone", isBacked("The element with atomic number 74.", by: rows, task: element))
+        let moons = HarnessTask(prompt: "How many moons does Mars have?")
+        expect("a one-digit answer needs its digit in the sentence", !isBacked("Mars has 3 moons.", by: ["Mars has two moons, Phobos and Deimos, discovered in 1877."], task: moons)
+               && isBacked("Mars has 2 moons.", by: ["Mars has 2 known moons, Phobos and Deimos."], task: moons))
+        let cup = HarnessTask(prompt: "Who won the FIFA World Cup in 2014?")
+        expect("a sentence about another year doesn't back it", !isBacked("Spain", by: ["Spain won the 2010 FIFA World Cup in South Africa."], task: cup)
+               && isBacked("Germany", by: ["Germany won the 2014 FIFA World Cup in Brazil."], task: cup))
+        let built = HarnessTask(prompt: "When was the Eiffel Tower built?")
+        expect("a shared ordinary word doesn't back a different year", !isBacked("It was built in 1890.", by: ["The Eiffel Tower was built from 1887 to 1889."], task: built))
+        expect("a possessive in the question still matches", isBacked("74", by: rows, task: HarnessTask(prompt: "What is Tungsten's atomic number?")))
+        expect("a one-word answer counts as a name", distinctive("Canberra", beyond: "What is the capital of Australia?", leading: true) == ["Canberra"])
 
         // The whole loop, with a scripted model and canned pages.
         func finished(_ reason: String = "stop") -> StreamEvent {
@@ -131,13 +149,19 @@ extension TestLab {
         expect("a page that talks the model out of its answer gets both sentences put to it",
                talkedOut.reply.toolLog.contains("Two sentences point to different answers, so it reads both again"))
         expect("and the reply is the one it settles on: \(talkedOut.reply.answer)", talkedOut.reply.answer.contains("1983") && !talkedOut.reply.answer.contains("1986"))
-        expect("which a sentence backs", talkedOut.reply.toolLog.last == "Checked: a sentence from the page backs this")
+        expect("which a sentence backs", talkedOut.reply.toolLog.last == "Checked: a sentence from the page holds this answer")
 
         let agreed = await run(.evidence, mordell.prompt) { asked in
             asked.contains("Answer in one short line") ? "Faltings in 1983" : "Gerd Faltings proved it in 1983."
         }
         expect("when memory and the page agree there's no second round", !agreed.reply.toolLog.contains { $0.contains("different answers") }
                && agreed.asked.filter { $0.contains("Your tools found") }.count == 1)
+        let shorter = await run(.evidence, mordell.prompt) { asked in
+            asked.contains("Answer in one short line") ? "Gerd Faltings, 1983" : "It was proved by Gerd Faltings."
+        }
+        expect("a reply that only leaves the year out isn't a disagreement", !shorter.reply.toolLog.contains { $0.contains("reads") })
+        expect("what the model reads from a page is inside the guard's wrapper",
+               talkedOut.asked.filter { $0.contains("Your tools found") }.allSatisfy { $0.contains("<untrusted source=") && !$0.contains("Sentences from") })
 
         let tungsten = await run(.evidence, element.prompt) { asked in
             if asked.contains("Answer in one short line") { return "I don't know" }
@@ -146,7 +170,7 @@ extension TestLab {
         }
         let opened = tungsten.reply.toolLog.filter { $0.hasPrefix("Opened") }
         expect("a list page isn't opened ahead of the page about the thing: \(opened)", opened.first?.contains("Tungsten") == true)
-        expect("the answer is backed by the row with 74", tungsten.reply.answer.lowercased().contains("tungsten") && tungsten.reply.toolLog.last == "Checked: a sentence from the page backs this")
+        expect("the answer is backed by the row with 74", tungsten.reply.answer.lowercased().contains("tungsten") && tungsten.reply.toolLog.last == "Checked: a sentence from the page holds this answer")
         expect("not being sure is logged as that", tungsten.reply.toolLog.contains("From memory: not sure"))
 
         let neighbour = await run(.evidence, element.prompt) { asked in
@@ -176,6 +200,10 @@ extension TestLab {
         }
         expect("a guessed program is sent back, and the computed one stands: \(guessed.reply.result ?? "nothing")",
                guessed.reply.result == "42" && guessed.reply.toolLog.contains { $0.contains("only printed its own guess") })
+        expect("and its steps say a program was run, not that code checked it: \(guessed.reply.toolLog.last ?? "")",
+               guessed.reply.toolLog.last == "Checked: a program was run for this, and the reply states what it printed")
+        let hello = await run(.evidence, "What does this Python program print?\n\nprint('hello')") { _ in "It prints hello." }
+        expect("code shown in the message is run as it is: \(hello.reply.result ?? "nothing")", hello.reply.result == "hello")
         return lines
     }
 }

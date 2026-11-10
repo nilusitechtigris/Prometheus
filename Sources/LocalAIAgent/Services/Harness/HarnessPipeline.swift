@@ -134,8 +134,9 @@ extension TestLab {
                 await runProgram(task, state: &state, mayConfirm: false, setup: setup, total: &total)
             }
         case .fact where state.strict:
-            // What the model says by itself comes first, to compare with what a page makes it say.
-            if round == 1 { state.memoryAnswer = await fromMemory(task, setup: setup, total: &total) }
+            // What the model says by itself comes first, to compare with what a page makes it say. With lookups
+            // switched off there's no page to compare with, so it isn't asked twice.
+            if round == 1, WebConsent.shared.lookupsPossible { state.memoryAnswer = await fromMemory(task, setup: setup, total: &total) }
             if !state.webDeclined, round == 1 || state.wantsEvidence { await researchQuoted(task, state: &state, setup: setup, total: &total) }
         case .fact:
             if !state.webDeclined, round == 1 || state.wantsEvidence { await research(task, state: &state, setup: setup, total: &total) }
@@ -160,12 +161,14 @@ extension TestLab {
             total.toolLog.append("Worked out: \(exact.what)")
             state.evidence = ["Code worked out \(exact.what): \(exact.value)"]
             state.result = exact.value
+            state.computedByCode = true
             return
         }
         if state.kind == .calculation, let (expression, value) = exactArithmetic(in: task.body) {
             total.toolLog.append("Calculated: \(expression)")
             state.evidence = ["The calculator worked out \(expression) = \(value)"]
             state.result = value
+            state.computedByCode = true
             return
         }
         if state.kind == .code, !state.triedShownCode, let (language, code) = shownCode(in: task.prompt) {
@@ -236,7 +239,7 @@ extension TestLab {
                 total.toolLog.append("Wrote no program\(HarnessTools.failedMark)")
                 return nil
             }
-            if state.strict, onlyPrintsLiteral(code) {
+            if state.strict, state.kind == .calculation, onlyPrintsLiteral(code) {
                 total.toolLog.append("Wrote a program that only printed its own guess\(HarnessTools.failedMark)")
                 state.failedProgram = ("It only prints a value you worked out yourself. The program has to compute the answer from the numbers in the task, step by step.",
                                        String(code.prefix(1_200)))

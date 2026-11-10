@@ -161,6 +161,9 @@ final class WebConsent {
     /// A test looks things up without stopping to ask, so whoever starts one is told first.
     var testNeedsAsking: Bool { effective != .allowed }
 
+    /// False when nothing can be looked up for this reply, so a step that only matters beside a lookup can be skipped.
+    var lookupsPossible: Bool { Self.inTest || effective != .off }
+
     /// Where searches go, said the same way everywhere.
     static let destinations = "Wikipedia, Stack Overflow, arXiv and MDN"
 

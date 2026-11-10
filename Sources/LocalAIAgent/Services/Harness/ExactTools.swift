@@ -4,8 +4,10 @@ import Foundation
 /// letters and words in a quoted text, the weekday of a date, and the days between two dates. Small models get
 /// these wrong in ways that look right, and a lookup can't help, so v6 settles them here.
 ///
-/// Each one only fires when the whole question is about it. A shortcut that fires on the wrong question would
-/// override a reply the model got right, so a near miss returns nil and the question goes the usual way.
+/// Each one only fires when the whole question is about it and nothing else. A shortcut that fires on the wrong
+/// question overrides a reply the model might have got right, and says code checked it. So anything left over
+/// in the question that code doesn't understand ("10 days after", "inclusive") makes it return nil, and the
+/// question goes the usual way.
 enum ExactTools {
     struct Answer: Equatable {
         /// What was worked out, for the log and for the model.
@@ -23,40 +25,45 @@ enum ExactTools {
 
     // MARK: Text
 
+    private static func matches(_ pattern: String, in text: String) -> [NSTextCheckingResult] {
+        guard let regex = try? NSRegularExpression(pattern: pattern, options: [.caseInsensitive]) else { return [] }
+        return regex.matches(in: text, range: NSRange(text.startIndex..., in: text))
+    }
+
     private static func groups(_ pattern: String, in text: String) -> [String]? {
-        guard let regex = try? NSRegularExpression(pattern: pattern, options: [.caseInsensitive]),
-              let match = regex.firstMatch(in: text, range: NSRange(text.startIndex..., in: text)) else { return nil }
+        guard let match = matches(pattern, in: text).first else { return nil }
         return (1..<match.numberOfRanges).map { Range(match.range(at: $0), in: text).map { String(text[$0]) } ?? "" }
     }
 
-    /// The text a question quotes. With double quotes that's the last quoted stretch, so a quoted letter before it
-    /// isn't taken for the text. With single quotes it runs to the last mark, so an apostrophe inside survives.
-    private static func quoted(in text: String) -> String? {
-        if let parts = try? NSRegularExpression(pattern: "\"([^\"]+)\""), let last = parts.matches(in: text, range: NSRange(text.startIndex..., in: text)).last,
-           let range = Range(last.range(at: 1), in: text) {
-            let inside = String(text[range])
-            if !inside.trimmingCharacters(in: .whitespaces).isEmpty { return inside }
+    /// The text a question quotes: its last quoted stretch. A single quote only opens one after a space, so the
+    /// apostrophe in "r's" or "don't" isn't taken for one, and a stretch that is just the letter being counted
+    /// isn't the text.
+    private static func quoted(in text: String, besides letter: Character? = nil) -> String? {
+        var found: [(location: Int, inside: String)] = []
+        for pattern in ["\"([^\"]+)\"", #"(?:^|(?<=[\s(]))'(.+?)'(?=$|[\s?.!,;:)])"#] {
+            for match in matches(pattern, in: text) {
+                guard let range = Range(match.range(at: 1), in: text) else { continue }
+                found.append((match.range.location, String(text[range])))
+            }
         }
-        let marks = text.indices.filter { text[$0] == "'" }
-        guard marks.count >= 2, let last = marks.last else { return nil }
-        // 'r' ... 'strawberry': the first pair holds the letter, so the text starts at the third mark.
-        var open = marks[0]
-        if marks.count >= 4, text.distance(from: marks[0], to: marks[1]) == 2 { open = marks[2] }
-        let start = text.index(after: open)
-        guard start < last else { return nil }
-        let inside = String(text[start..<last])
-        return inside.contains("?") || inside.trimmingCharacters(in: .whitespaces).isEmpty ? nil : inside
+        let real = found.sorted { $0.location < $1.location }.map(\.inside).filter { inside in
+            let trimmed = inside.trimmingCharacters(in: .whitespaces)
+            if trimmed.isEmpty { return false }
+            if let letter, trimmed.count == 1, trimmed.lowercased().first == letter { return false }
+            return true
+        }
+        return real.last
     }
 
     private static func letterCount(_ text: String) -> Answer? {
         let lead = #"^\W*(?:and\s+|so\s+|now\s+|ok\s+|okay\s+)?"#
-        // "How many times does the letter r appear in 'strawberry'?"
-        let asked = lead + #"(?:how many|count the(?: number of)?)\s+(?:times\s+)?(?:does\s+|do\s+|is\s+)?(?:the\s+)?letters?\s+["']?([a-z])["']?\s+(?:appears?|occurs?|shows? up|comes? up|is used|is there|are there)?"#
-        // "How many r's are in strawberry?"
-        let short = lead + #"(?:how many|count the(?: number of)?)\s+(?:of\s+the\s+letter\s+|letters?\s+)?["']?([a-z])["']?(?:'s|s)?\s+(?:are|is|appear|occur)?\s*(?:there\s+)?in\b"#
+        // "How many times does the letter r appear in 'strawberry'?" The word "letter" is what makes it this question.
+        let asked = lead + #"(?:how many|count the(?: number of)?)\s+(?:times\s+)?(?:does\s+|do\s+|is\s+)?(?:the\s+)?letters?\s+["']?([a-z])["']?(?:'s|s)?\s+(?:appears?|occurs?|shows? up|comes? up|is used|is there|are there)?"#
+        // "How many r's are in strawberry?" Without the word "letter" the s has to be there: "how many m in km" is about units.
+        let short = lead + #"(?:how many|count the(?: number of)?)\s+["']?([a-z])["']?(?:'s|s)\s+(?:are|is|appear|occur)?\s*(?:there\s+)?in\b"#
         guard let letter = (groups(asked, in: text) ?? groups(short, in: text))?.first?.lowercased().first else { return nil }
         let target: String
-        if let inside = quoted(in: text) {
+        if let inside = quoted(in: text, besides: letter) {
             target = inside
         } else if let word = (groups(#"\bin\s+the\s+(?:word|name)\s+([a-z]+)\s*[?.!]*$"#, in: text) ?? groups(#"\bin\s+([a-z]+)\s*[?.!]*$"#, in: text))?.first,
                   !word.isEmpty, !["the", "this", "that", "it", "total", "all", "there", "english", "here"].contains(word.lowercased()) {
@@ -69,8 +76,11 @@ enum ExactTools {
         return Answer(what: "how many times the letter \(letter) appears in \"\(target)\"", value: "\(count)")
     }
 
+    /// Only when the question calls it a sentence or a phrase. "How many words are in 'War and Peace'?" may mean
+    /// the book.
     private static func wordCount(_ text: String) -> Answer? {
-        guard groups(#"^\W*how many words\s+(?:are|is)\s+(?:there\s+)?in\b"#, in: text) != nil, let inside = quoted(in: text) else { return nil }
+        guard groups(#"^\W*how many words\s+(?:are|is)\s+(?:there\s+)?in\s+(?:the|this)\s+(?:sentence|phrase|text|string|line|title)\b"#, in: text) != nil,
+              let inside = quoted(in: text) else { return nil }
         let count = inside.split(whereSeparator: \.isWhitespace).count
         return Answer(what: "how many words are in \"\(inside)\"", value: "\(count)")
     }
@@ -92,10 +102,10 @@ enum ExactTools {
         return months.firstIndex { $0 == lower || (lower.count >= 3 && $0.hasPrefix(lower)) }.map { $0 + 1 }
     }
 
-    /// A real day in the calendar in use today. Before 1583 countries disagreed on the date, so those are left
-    /// to the model and a lookup.
+    /// A real day in the calendar in use today. Before 1753 countries disagreed on the date, Britain among the
+    /// last, so those are left to the model and a lookup.
     private static func date(day: Int, month: Int, year: Int) -> Date? {
-        guard (1583...9999).contains(year) else { return nil }
+        guard (1753...9999).contains(year) else { return nil }
         let parts = DateComponents(year: year, month: month, day: day)
         guard let date = calendar.date(from: parts) else { return nil }
         let back = calendar.dateComponents([.year, .month, .day], from: date)
@@ -112,8 +122,7 @@ enum ExactTools {
         ]
         var found: [(location: Int, date: Date, written: String)] = []
         for (pattern, read) in patterns {
-            guard let regex = try? NSRegularExpression(pattern: pattern, options: [.caseInsensitive]) else { continue }
-            for match in regex.matches(in: text, range: NSRange(text.startIndex..., in: text)) {
+            for match in matches(pattern, in: text) {
                 let parts = (1..<match.numberOfRanges).map { Range(match.range(at: $0), in: text).map { String(text[$0]) } ?? "" }
                 guard let (day, month, year) = read(parts), let date = date(day: day, month: month, year: year),
                       let whole = Range(match.range, in: text), !found.contains(where: { $0.location == match.range.location }) else { continue }
@@ -123,10 +132,20 @@ enum ExactTools {
         return found.sorted { $0.location < $1.location }.map { ($0.date, $0.written) }
     }
 
+    /// True when, with the dates taken out, the question holds nothing but these words. Anything else, such as
+    /// "10 days after" or "inclusive", changes what is being asked.
+    private static func isOnly(_ text: String, dates: [String], words: Set<String>) -> Bool {
+        var rest = text
+        for written in dates { rest = rest.replacingOccurrences(of: written, with: " ") }
+        return rest.lowercased().split { !$0.isLetter && !$0.isNumber }.allSatisfy { words.contains(String($0)) }
+    }
+
     private static func weekday(_ text: String) -> Answer? {
-        guard groups(#"\b(?:what|which)\s+day\s+of\s+the\s+week\b|\bwhat\s+weekday\b|\bon\s+what\s+day\s+of\s+the\s+week\b"#, in: text) != nil else { return nil }
+        guard groups(#"\b(?:what|which)\s+day\s+of\s+the\s+week\b|\bwhat\s+weekday\b"#, in: text) != nil else { return nil }
         let found = dates(in: text)
-        guard found.count == 1, let day = found.first else { return nil }
+        guard found.count == 1, let day = found.first,
+              isOnly(text, dates: [day.written], words: ["what", "which", "on", "day", "of", "the", "week", "weekday", "was", "is", "will", "did", "does", "be",
+                                                         "fall", "falls", "fell", "it", "date", "that", "a", "tell", "me", "please", "were", "would", "have", "been"]) else { return nil }
         let name = weekdays[calendar.component(.weekday, from: day.date) - 1]
         return Answer(what: "the day of the week of \(day.written)", value: name)
     }
@@ -134,7 +153,10 @@ enum ExactTools {
     private static func daysBetween(_ text: String) -> Answer? {
         guard groups(#"\bhow\s+many\s+days\b.*\b(?:between|from)\b"#, in: text) != nil else { return nil }
         let found = dates(in: text)
-        guard found.count == 2, let days = calendar.dateComponents([.day], from: found[0].date, to: found[1].date).day else { return nil }
+        guard found.count == 2,
+              isOnly(text, dates: found.map(\.written), words: ["how", "many", "days", "are", "there", "is", "it", "between", "from", "to", "and", "until", "the",
+                                                                "dates", "of", "were", "was", "passed", "elapsed", "did", "pass", "have", "please", "tell", "me"]),
+              let days = calendar.dateComponents([.day], from: found[0].date, to: found[1].date).day else { return nil }
         return Answer(what: "the days from \(found[0].written) to \(found[1].written)", value: "\(abs(days))")
     }
 }

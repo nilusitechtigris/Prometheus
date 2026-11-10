@@ -323,7 +323,8 @@ final class TestLab {
                     }) else { break }
                     run.baselineRunID = baseline?.id
                     run.toolsAvailable = setup.supportsTools
-                    run.harnessRounds = version.usesRounds ? setup.maxRounds : nil
+                    // v6 stops at two rounds whatever the setting says, so that's what the run records.
+                    run.harnessRounds = version.usesRounds ? (version == .evidence ? min(setup.maxRounds, 2) : setup.maxRounds) : nil
                     run.injectionWithout = without
                     run.injectionWith = with
                     run.duration = Date().timeIntervalSince(began)
