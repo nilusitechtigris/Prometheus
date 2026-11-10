@@ -8,6 +8,7 @@ import WebKit
 ///   LOCALAI_AUTOPROMPT="text"       start a new chat and send this prompt after launch; " || " separates several;
 ///                                   LOCALAI_SIDE_BY_SIDE=1 asks the plain model and the harness each one
 ///   LOCALAI_VERDICT_CHECK=/path.txt check what code says about a plain reply and a harness reply
+///   LOCALAI_V6_CHECK=/path.txt      check v6's routing, sentences and loop with a scripted model and canned pages
 ///   LOCALAI_DEMO=1                  run the harness demo after launch; LOCALAI_SHARE_CARD=/path.png writes the
 ///                                   picture of the newest side by side reply once nothing is generating
 ///   LOCALAI_STOP_AFTER=3            press Stop this many seconds after the autoprompt starts
@@ -236,6 +237,12 @@ enum DebugHooks {
                                              machine: monitor.chipName, date: reply.createdAt,
                                              plainSeconds: plain.metrics?.totalDuration, harnessSeconds: reply.harnessSeconds)
                 try? ShareCard.png(card)?.write(to: URL(fileURLWithPath: path))
+            }
+        }
+        if let path = env["LOCALAI_V6_CHECK"] {
+            Task {
+                let lines = await TestLab.evidenceCheck()
+                try? lines.joined(separator: "\n").write(toFile: path, atomically: true, encoding: .utf8)
             }
         }
         if let path = env["LOCALAI_VERDICT_CHECK"] {

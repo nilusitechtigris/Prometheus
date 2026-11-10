@@ -53,6 +53,16 @@ extension TestLab {
         var readTheWeb = false
         /// The person said no to a lookup for this reply, so later rounds don't try again.
         var webDeclined = false
+        /// True in v6, where evidence has to meet stricter rules (see HarnessEvidence.swift).
+        var strict = false
+        /// The sentences the model was given to answer from, in v6.
+        var quotes: [String] = []
+        /// Sentences of every page opened, to look for what backs an answer.
+        var pageSentences: [String] = []
+        /// What the model answered before any page was read. Nil when it wasn't sure or wasn't asked.
+        var memoryAnswer: String?
+        /// True once the two answers' sentences have been put side by side, which happens once.
+        var reconciled = false
         /// True while the next Act should look for more.
         var wantsEvidence = true
         var failedProgram: (problem: String, code: String)?
@@ -126,10 +136,12 @@ extension TestLab {
     /// Works a task through the loop. `answer` is how the caller gets a reply from the model, so chat can
     /// stream it. `earlier` is the chat so far. The result lands in `total.answer`.
     /// `thinkEachStep` is the difference between v3 and v4, and only counts with thinking on.
-    static func runLoop(prompt: String, earlier: String = "", setup: TestSetup, thinkEachStep: Bool = false, total: inout Reply,
-                        answer: (AnswerPlan) async -> Reply) async {
+    /// `strict` is v6: the same loop with stricter evidence, and at most two rounds, which is where studies of
+    /// repair loops on small models found nearly all of the gain.
+    static func runLoop(prompt: String, earlier: String = "", setup: TestSetup, thinkEachStep: Bool = false, strict: Bool = false,
+                        total: inout Reply, answer: (AnswerPlan) async -> Reply) async {
         let started = Date()
-        let rounds = max(setup.maxRounds, 1)
+        let rounds = strict ? min(max(setup.maxRounds, 1), 2) : max(setup.maxRounds, 1)
         let thinks = thinkEachStep && setup.think == true
         let budget = Double(rounds) * (thinks ? thinkingSecondsPerRound : secondsPerRound)
         let task = HarnessTask(prompt: prompt, earlier: earlier)
@@ -137,9 +149,12 @@ extension TestLab {
         if thinks { setup.thinkingUntil = started.addingTimeInterval(budget) }
 
         total.onStage?(.understand, 1)
-        let kind = await understand(task, setup: setup, total: &total)
+        let kind = strict ? await understandStrict(task, setup: setup, total: &total) : await understand(task, setup: setup, total: &total)
         total.toolLog.append("Understood: \(kind.rawValue) task")
         var state = LoopState(kind: kind, rules: kind == .writing ? task.rules : task.rules.onlyFinalLine)
+        state.strict = strict
+        // v6 doesn't cut a reply to a word count, so a one-sentence count is put where a rewrite can meet it.
+        if strict { state.rules = state.rules.countingTheOnlyUnit }
 
         var best: Attempt?, last: Attempt?
         var roundsRun = 0
@@ -154,8 +169,8 @@ extension TestLab {
             await act(task, state: &state, round: round, mayConfirm: hasTime, setup: setup, total: &total)
 
             total.onStage?(.answer, round)
-            let attempt: Attempt
-            if state.kind == .writing, round > 1, state.rules.unit != nil {
+            var attempt: Attempt
+            if state.kind == .writing, round > 1, state.rules.unit != nil, !strict || state.rules.hasUnitRules {
                 let draft = await repairUnits(of: best?.text ?? "", task: task, state: &state, setup: setup, total: &total)
                 attempt = judge(draft, cut: false, task: task, state: state)
             } else {
@@ -178,6 +193,7 @@ extension TestLab {
                 }
                 attempt = judge(reply.answer, cut: reply.stats?.stopReason == "length", task: task, state: state)
             }
+            if strict { attempt = reconciled(attempt, task: task, state: &state, total: &total) }
 
             total.onStage?(.check, round)
             if attempt.rank < best?.rank ?? Int.max || best == nil {
@@ -200,11 +216,14 @@ extension TestLab {
         if let result = state.result, !HarnessText.mentions(result, in: text, label: state.rules.finalLabel) {
             text = HarnessText.adding(result, to: text, label: state.rules.finalLabel)
             total.toolLog.append("Wrote the result into the reply")
+        } else if state.strict {
+            // v6 ends its steps with what was checked instead, just below.
         } else if let problem = best?.problems.first {
             total.toolLog.append("Stopped after \(rounds) round\(rounds == 1 ? "" : "s"): \(problem.text)")
         } else if best != nil {
             total.toolLog.append("Passed the checks in round \(rounds)")
         }
+        if state.strict { total.toolLog.append(checkedLine(best, state: state)) }
         if state.readTheWeb {
             let filtered = PromptGuard.filterReply(text)
             text = filtered.text
@@ -224,7 +243,7 @@ extension TestLab {
     /// it room for both, unless the last reply got cut off, when thinking is what there wasn't room for.
     private static func plan(round: Int, task: HarnessTask, state: LoopState, last: Attempt?, setup: TestSetup) -> AnswerPlan {
         var plan = AnswerPlan(task: task.ask)
-        plan.addendum = evidenceNote(state.evidence)
+        plan.addendum = state.strict && !state.quotes.isEmpty ? quotedNote(state.evidence) : evidenceNote(state.evidence)
         if let result = state.result {
             plan.addendum += "\n\nThe exact result is: \(result)"
             if let label = state.rules.finalLabel { plan.addendum += "\nEnd your reply with this line:\n\(label): \(result)" }
@@ -297,7 +316,8 @@ extension TestLab {
     // MARK: Check
 
     static func judge(_ raw: String, cut: Bool, task: HarnessTask, state: LoopState) -> Attempt {
-        let text = state.rules.tidied(raw)
+        // v6 doesn't cut a reply down to a word count: that passes the rule and breaks the sentence.
+        let text = state.rules.tidied(raw, cutting: !state.strict)
         guard !text.isEmpty else { return Attempt(text: "", problems: [.empty]) }
         var problems: [Problem] = []
         let finished = state.rules.finalLabel.map { raw.lowercased().contains($0.lowercased() + ":") } ?? false
@@ -305,8 +325,10 @@ extension TestLab {
         if let result = state.result, !HarnessText.mentions(result, in: text, label: state.rules.finalLabel) {
             problems.append(.missingResult)
         }
-        if state.kind == .fact || state.kind == .document, state.result == nil, !state.evidence.isEmpty,
-           !isSupported(text, by: state.evidence, task: task) {
+        if state.strict, state.kind == .fact {
+            if state.result == nil, !state.quotes.isEmpty, !isBacked(text, by: state.quotes, task: task) { problems.append(.unsupported) }
+        } else if state.kind == .fact || state.kind == .document, state.result == nil, !state.evidence.isEmpty,
+                  !isSupported(text, by: state.evidence, task: task) {
             problems.append(.unsupported)
         }
         return Attempt(text: text, problems: problems + state.rules.violations(of: text).map(Problem.rule))

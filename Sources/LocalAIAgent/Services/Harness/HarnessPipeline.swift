@@ -133,6 +133,10 @@ extension TestLab {
             if round > 1, task.needsCounting, state.result == nil {
                 await runProgram(task, state: &state, mayConfirm: false, setup: setup, total: &total)
             }
+        case .fact where state.strict:
+            // What the model says by itself comes first, to compare with what a page makes it say.
+            if round == 1 { state.memoryAnswer = await fromMemory(task, setup: setup, total: &total) }
+            if !state.webDeclined, round == 1 || state.wantsEvidence { await researchQuoted(task, state: &state, setup: setup, total: &total) }
         case .fact:
             if !state.webDeclined, round == 1 || state.wantsEvidence { await research(task, state: &state, setup: setup, total: &total) }
         case .writing, .other:
@@ -152,6 +156,12 @@ extension TestLab {
     }
 
     private static func runProgram(_ task: HarnessTask, state: inout LoopState, mayConfirm: Bool, setup: TestSetup, total: inout Reply) async {
+        if state.strict, state.kind == .calculation, let exact = ExactTools.solve(task.body) {
+            total.toolLog.append("Worked out: \(exact.what)")
+            state.evidence = ["Code worked out \(exact.what): \(exact.value)"]
+            state.result = exact.value
+            return
+        }
         if state.kind == .calculation, let (expression, value) = exactArithmetic(in: task.body) {
             total.toolLog.append("Calculated: \(expression)")
             state.evidence = ["The calculator worked out \(expression) = \(value)"]
@@ -225,6 +235,12 @@ extension TestLab {
             guard let (language, code) = codeBlock(in: reply.answer) else {
                 total.toolLog.append("Wrote no program\(HarnessTools.failedMark)")
                 return nil
+            }
+            if state.strict, onlyPrintsLiteral(code) {
+                total.toolLog.append("Wrote a program that only printed its own guess\(HarnessTools.failedMark)")
+                state.failedProgram = ("It only prints a value you worked out yourself. The program has to compute the answer from the numbers in the task, step by step.",
+                                       String(code.prefix(1_200)))
+                continue
             }
             let outcome = await CodeRunner.run(code, language: language, files: ["task.txt": task.document ?? task.prompt])
             let worked = outcome.succeeded && !outcome.output.isEmpty

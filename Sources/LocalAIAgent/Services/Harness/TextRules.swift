@@ -35,6 +35,18 @@ struct TextRules {
             || lowercase || uppercase || noPunctuation || jsonOnly
     }
 
+    /// True when a rule applies to each sentence or line by itself, which is what rewriting one at a time fixes.
+    var hasUnitRules: Bool { unit != nil && (!wordsAt.isEmpty || wordsEach != nil || startLetter != nil) }
+
+    /// One sentence or line with a word count for the whole reply is the same as a count for that one sentence,
+    /// and said that way it can be rewritten by itself until it fits.
+    var countingTheOnlyUnit: TextRules {
+        guard unit != nil, count == 1, let totalWords, wordsAt.isEmpty, wordsEach == nil else { return self }
+        var rules = self
+        rules.wordsAt[0] = totalWords
+        return rules
+    }
+
     /// The same task, keeping only its rule about the last line.
     var onlyFinalLine: TextRules {
         var rules = TextRules(task: "")
@@ -261,8 +273,10 @@ struct TextRules {
 
     // MARK: Fixing what code can fix
 
-    /// Fixes everything that needs no judgment, so the model is only asked about the rest.
-    func tidied(_ reply: String) -> String {
+    /// Fixes everything that needs no judgment, so the model is only asked about the rest. `cutting` also trims
+    /// a reply with too many words down to the count, which v6 leaves to the model: a sentence cut short keeps
+    /// the rule and stops being a sentence.
+    func tidied(_ reply: String, cutting: Bool = true) -> String {
         var text = reply
         for echo in ["/no_think", "/think"] { text = text.replacingOccurrences(of: echo, with: "") }
         text = text.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -287,7 +301,7 @@ struct TextRules {
             let parts = units(of: text)
             if parts.count > count { text = joined(Array(parts.prefix(count))) }
         }
-        if let totalWords {
+        if cutting, let totalWords {
             let words = text.split(whereSeparator: \.isWhitespace).map(String.init)
             if words.count > totalWords { text = words.prefix(totalWords).joined(separator: " ") }
         }

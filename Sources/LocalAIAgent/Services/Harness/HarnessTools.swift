@@ -130,9 +130,18 @@ enum WebTools {
     nonisolated(unsafe) static var lastError = ""
     #endif
 
+    #if DEBUG
+    /// Pages for automated checks, by address, so the harness's reading can be checked without the internet.
+    nonisolated(unsafe) static var stub: ((URL) -> String?)?
+    #endif
+
     /// All web traffic goes through here.
     private static func fetch(_ url: URL) async throws -> (Data, URLResponse) {
         #if DEBUG
+        if let canned = stub?(url) {
+            let response = HTTPURLResponse(url: url, statusCode: 200, httpVersion: nil, headerFields: ["Content-Type": "text/html"])
+            return (Data(canned.utf8), response ?? URLResponse())
+        }
         if ProcessInfo.processInfo.environment["LOCALAI_WEB_VIA_CURL"] != nil { return try await fetchWithCurl(url) }
         #endif
         return try await session.data(from: url)
@@ -293,6 +302,26 @@ enum WebTools {
         guard !results.isEmpty else { return .success("No results for \"\(query)\".") }
         let text = results.enumerated().map { "\($0.offset + 1). \($0.element)" }.joined(separator: "\n")
         // A yes to this search covers reading what it found.
+        await WebConsent.shared.noteResults(HarnessText.hits(in: text).map(\.url), of: query)
+        return .success(text)
+    }
+
+    /// Looks a name up among Wikipedia's page titles, following redirects, so "Mordell conjecture" finds the
+    /// page that covers it. Results come back in the same form as `search`.
+    static func titleSearch(_ title: String) async -> Result<String, Failure> {
+        let query = String(title.trimmingCharacters(in: .whitespacesAndNewlines).prefix(maxQueryCharacters))
+        guard !query.isEmpty else { return .failure(Failure(message: "the search was empty.")) }
+        guard await WebConsent.shared.mayUseWeb(detail: query, isSearch: true) else { return .failure(Failure(message: declined)) }
+        guard let object = await json("https://en.wikipedia.org/w/rest.php/v1/search/title?limit=3&q=\(encoded(query))") else {
+            return .failure(Failure(message: "no search service could be reached."))
+        }
+        let results = (object["pages"] as? [[String: Any]] ?? []).compactMap { page -> String? in
+            guard let title = page["title"] as? String, let key = page["key"] as? String else { return nil }
+            let path = key.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? key
+            return "\(title) — https://en.wikipedia.org/wiki/\(path)\n   \(snippet(page["description"] as? String))"
+        }
+        guard !results.isEmpty else { return .success("No results for \"\(query)\".") }
+        let text = results.enumerated().map { "\($0.offset + 1). \($0.element)" }.joined(separator: "\n")
         await WebConsent.shared.noteResults(HarnessText.hits(in: text).map(\.url), of: query)
         return .success(text)
     }
