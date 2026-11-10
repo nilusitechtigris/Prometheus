@@ -1,0 +1,64 @@
+{
+  "counts": {
+    "heldout": {
+      "gsm8k": 20,
+      "gsmplus": 20,
+      "ifeval": 40,
+      "mbpp": 40
+    },
+    "practice": {
+      "gsm8k": 10,
+      "gsmplus": 10,
+      "ifeval": 20,
+      "mbpp": 20
+    }
+  },
+  "files": {
+    "NOTICE.md": {
+      "bytes": 2251,
+      "sha256": "78a51228e8901aa21471d6b9181a11b0283e77cfc71108828f8ab442d1fa7232"
+    },
+    "heldout-v1.jsonl": {
+      "bytes": 69033,
+      "sha256": "25bb0e057e7cb08de87ac2d91e158af403e39ea3b30a64abfd04e739e6add0e4"
+    },
+    "practice-v1.jsonl": {
+      "bytes": 31664,
+      "sha256": "00b98cad26a7b2ca34293e49f62c0fffc497baa34db9b5548150575697839768"
+    }
+  },
+  "pools": {
+    "heldout": {
+      "gsm8k": 863,
+      "gsmplus": 1340,
+      "ifeval": 261,
+      "mbpp": 170
+    },
+    "practice": {
+      "gsm8k": 455,
+      "gsmplus": 746,
+      "ifeval": 125,
+      "mbpp": 87
+    }
+  },
+  "seed": 20261110,
+  "sources": {
+    "gsm8k": {
+      "sha256": "3730d312f6e3440559ace48831e51066acaca737f6eabec99bccb9e4b3c39d14",
+      "url": "https://raw.githubusercontent.com/openai/grade-school-math/3101c7d5072418e28b9008a6636bde82a006892c/grade_school_math/data/test.jsonl"
+    },
+    "gsmplus": {
+      "sha256": "6653b4b941956da12ba0af2eae660800db13a901123553b163b77be2d20eb7d5",
+      "url": "https://huggingface.co/datasets/qintongli/GSM-Plus/resolve/3b708db57b96a16e8e3368ed2956990c0809440e/data/testmini-00000-of-00001.jsonl"
+    },
+    "ifeval": {
+      "sha256": "6a85310ca8ce15eff755aa08a3a4ff931c7e273e7515ebb3c492ea85fd8288f2",
+      "url": "https://huggingface.co/datasets/google/IFEval/resolve/966cd89545d6b6acfd7638bc708b98261ca58e84/ifeval_input_data.jsonl"
+    },
+    "mbpp": {
+      "sha256": "ca95deaa9a01ef0a6f439f88bcf0dd3db3563d22f22aad6cae04ebb9a8d8c8e9",
+      "url": "https://raw.githubusercontent.com/google-research/google-research/f82046ba5aabbbb427dbfd38a254d26bff08b533/mbpp/sanitized-mbpp.json"
+    }
+  },
+  "version": 1
+}
