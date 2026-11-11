@@ -15,6 +15,12 @@ enum TestTab: String, CaseIterable, Identifiable {
         case .publish: return "Publish"
         }
     }
+
+    /// The tabs this copy shows. Publish sends results to the project's page, which is the lab's work:
+    /// the public app has every test, and nothing to publish them with.
+    static func shown(in edition: Edition = .current) -> [TestTab] {
+        edition.isLab ? allCases : allCases.filter { $0 != .publish }
+    }
 }
 
 /// The one Tests page: choose which test's results to see, then read them in the same layout.
@@ -24,8 +30,10 @@ struct TestsPage: View {
     var body: some View {
         VStack(spacing: 0) {
             TestTabBar()
-            PageSwap(value: ui.testTab) {
-                switch ui.testTab {
+            // A tab this copy doesn't show (Publish, outside the lab) falls back to the overview.
+            let tab = TestTab.shown().contains(ui.testTab) ? ui.testTab : .overview
+            PageSwap(value: tab) {
+                switch tab {
                 case .overview: TestsOverview()
                 case .model: ModelTestDashboard()
                 case .hardware: HardwareTestDashboard()
@@ -47,7 +55,7 @@ private struct TestTabBar: View {
         // Every test is here for everyone. There used to be a Lab switch that hid the Model Test, the
         // Harness Test and Publish; which harness versions a copy offers is the edition's business now.
         HStack(spacing: 22) {
-            ForEach(TestTab.allCases) { tab(for: $0) }
+            ForEach(TestTab.shown()) { tab(for: $0) }
             Spacer()
         }
         .animation(Motion.page, value: ui.testTab)

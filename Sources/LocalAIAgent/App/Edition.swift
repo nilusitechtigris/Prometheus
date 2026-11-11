@@ -35,6 +35,8 @@ enum Edition: String {
     static func selfCheck() -> [String] {
         var lines: [String] = []
         func expect(_ name: String, _ ok: Bool) { lines.append("\(ok ? "PASS" : "FAIL") \(name)") }
+        expect("Publish is a tab in the lab only", TestTab.shown(in: .lab).contains(.publish) && !TestTab.shown(in: .standard).contains(.publish))
+        expect("every test is a tab in both", [TestTab.overview, .model, .hardware, .harness].allSatisfy { TestTab.shown(in: .standard).contains($0) && TestTab.shown(in: .lab).contains($0) })
         let usual = HarnessVersion.recommended
         expect("the standard edition offers one harness", HarnessVersion.offered(in: .standard) == [usual])
         expect("the lab offers every version", HarnessVersion.offered(in: .lab) == HarnessVersion.allCases)

@@ -264,8 +264,11 @@ struct LocalAIAgentApp: App {
                     .keyboardShortcut("4", modifiers: [.command, .option])
                 Button("Harness Test Results") { settings.showLab = true; ui.openTests(.harness) }
                     .keyboardShortcut("5", modifiers: [.command, .option])
-                Button("Publish Test Results") { settings.showLab = true; ui.openTests(.publish) }
-                    .keyboardShortcut("6", modifiers: [.command, .option])
+                // Only the lab publishes results, so only the lab has the command.
+                if Edition.current.isLab {
+                    Button("Publish Test Results") { settings.showLab = true; ui.openTests(.publish) }
+                        .keyboardShortcut("6", modifiers: [.command, .option])
+                }
             }
         }
     }

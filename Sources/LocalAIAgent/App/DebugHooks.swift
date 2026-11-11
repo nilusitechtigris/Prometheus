@@ -75,6 +75,7 @@ import WebKit
 ///   LOCALAI_WINDOW_SIZE=1380x2400   resize the main window after launch, to snapshot more of a page
 ///   LOCALAI_RENDER_DIR=/path        render both full dashboards (narrow and wide) after LOCALAI_RENDER_DELAY seconds
 ///   LOCALAI_BACKUP_CHECK=/path.txt  check the copy made of saved data before a new build touches it
+///   LOCALAI_SEED_CHECK=/path.txt    check the copy Prometheus Lab makes of the public app's data on its first run
 ///   LOCALAI_WEB=allowed|off|ask     how the harness may use the web in this run, without saving it;
 ///                                   LOCALAI_WEB_ANSWER=once|always|no answers its question 2 s after it shows
 ///   LOCALAI_CONSENT_CHECK=/path.txt check the question the harness asks before a web lookup
@@ -361,6 +362,9 @@ enum DebugHooks {
                     try? await Task.sleep(for: .milliseconds(200))
                 }
             }
+        }
+        if let path = env["LOCALAI_SEED_CHECK"] {
+            try? ConversationStore.seedCheck().joined(separator: "\n").write(toFile: path, atomically: true, encoding: .utf8)
         }
         if let path = env["LOCALAI_BACKUP_CHECK"] {
             var lines = DataBackup.selfCheck()
