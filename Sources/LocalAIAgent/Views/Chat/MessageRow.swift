@@ -47,7 +47,6 @@ private struct AssistantMessage: View {
 
     var body: some View {
         HStack(alignment: .top, spacing: 12) {
-            BrandMark(size: 26)
             VStack(alignment: .leading, spacing: 8) {
                 HStack(spacing: 6) {
                     Text(message.modelName.map { ModelCatalog.entry(matchingID: $0)?.displayName ?? $0 } ?? "Assistant")
