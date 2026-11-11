@@ -117,6 +117,9 @@ struct ModelTestResult: Codable, Identifiable, Equatable {
     var toolsAvailable: Bool?
     /// Rounds the harness's loop could take on each question. Nil for runs from before the loop.
     var harnessRounds: Int?
+    /// Which revision of the one harness ran. It keeps one name while it changes, so this is what tells two runs
+    /// of it apart. Nil for every other version.
+    var harnessRevision: Int?
     /// True for Harness - Normal, which asks only some of the questions. Its scores don't compare with a
     /// full run's. A plain flag rather than a name, so a later build's new size can't fail the whole file.
     var quick: Bool?
@@ -235,6 +238,9 @@ struct ModelTestItemResult: Codable, Equatable, Identifiable {
     var guardRemoved: Int?
     /// Tools the model called by itself. Nil in runs from before this was counted.
     var modelToolCalls: Int?
+    /// The route the one harness sent this question down, by name. Nil for every other version, which only log
+    /// the kind of task they took it for.
+    var route: String?
     /// The end of what the model thought, which is where it decides. Nil in runs from before this was kept.
     var thinking: String?
 

@@ -208,6 +208,8 @@ final class TestLab {
     private func newestHarnessRun(in runs: [ModelTestResult], for modelID: String?) -> ModelTestResult? {
         runs.first { $0.usesHarness && $0.isCurrentSuite && $0.model == modelID && (harnessChoice == nil || $0.version == harnessChoice) }
             ?? runs.first { $0.usesHarness && $0.isCurrentSuite && $0.model == modelID }
+            // With nothing on this model, another model's run of the chosen version says more than any version's.
+            ?? runs.first { $0.usesHarness && $0.isCurrentSuite && harnessChoice != nil && $0.version == harnessChoice }
             ?? runs.first { $0.usesHarness && $0.isCurrentSuite }
             ?? runs.first { $0.usesHarness && $0.model == modelID }
             ?? runs.first { $0.usesHarness }
@@ -239,7 +241,10 @@ final class TestLab {
         var runs: [HarnessVersion: ModelTestResult] = [:]
         for candidate in modelResults where candidate.suiteVersion == run.suiteVersion && candidate.size == run.size && candidate.askedSet == run.askedSet && candidate.model == run.model
             && candidate.contextLength == run.contextLength && candidate.thinking == run.thinking {
-            if let version = candidate.version, runs[version] == nil { runs[version] = candidate }
+            // The one harness keeps its name while it changes, so only runs of the revision in this copy stand for it.
+            if let version = candidate.version, runs[version] == nil, version != .unified || candidate.harnessRevision == HarnessPolicy.revision {
+                runs[version] = candidate
+            }
         }
         if let version = run.version { runs[version] = run }
         return runs
@@ -453,6 +458,7 @@ final class TestLab {
                                      contextLength: setup.context)
         result.quick = quick ? true : nil
         result.questionSet = size.questionSet
+        result.harnessRevision = harness == .unified ? HarnessPolicy.revision : nil
         var generated = 0, generationSeconds = 0.0
         var firstTokens: [Double] = []
         var promptReadTokens = 0
@@ -500,9 +506,7 @@ final class TestLab {
         if let harness {
             reply = await harnessReply(harness, prompt: question.prompt, setup: setup, maxTokens: limit, notesName: "Tests/\(question.id)")
         } else {
-            let system = ModelTestSuite.systemPrompt
-            reply = await converse([ChatTurn(role: "system", content: system), ChatTurn(role: "user", content: question.prompt)],
-                                   setup: setup, maxTokens: limit, useTools: false)
+            reply = await plainReply(question.prompt, setup: setup, maxTokens: limit)
         }
         let stats = reply.stats
         // Timed before grading: a code question's tests can take seconds, and those aren't the model's.
@@ -528,8 +532,16 @@ final class TestLab {
             item.toolLog = reply.toolLog
             item.guardRemoved = reply.guardRemoved
             item.modelToolCalls = reply.modelToolCalls
+            item.route = reply.route?.rawValue
         }
         return (item, stats)
+    }
+
+    /// A question put to the model with the harness off. The one harness's Direct route calls this too, so that
+    /// route sends the same request, word for word, as a run without the harness.
+    static func plainReply(_ prompt: String, setup: TestSetup, maxTokens: Int) async -> Reply {
+        await converse([ChatTurn(role: "system", content: ModelTestSuite.systemPrompt), ChatTurn(role: "user", content: prompt)],
+                       setup: setup, maxTokens: maxTokens, useTools: false)
     }
 
     struct Reply {
@@ -542,6 +554,8 @@ final class TestLab {
         var toolLog: [String] = [] { didSet { onLog?(toolLog) } }
         /// The exact value a tool worked out, when one did.
         var result: String?
+        /// Where the one harness sent the task. Nil for every other version.
+        var route: HarnessRoute?
         var guardRemoved = 0
         /// Tools the model called by itself, as opposed to the harness running them for it.
         var modelToolCalls = 0

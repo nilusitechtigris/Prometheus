@@ -3,7 +3,7 @@ import Foundation
 /// The harness as it was built, one version at a time. All of them stay runnable, in chat and in the
 /// Harness Test, so their results can be compared on the same model.
 enum HarnessVersion: String, Codable, CaseIterable, Identifiable {
-    case tools, pipeline, loop, thinking, council, evidence
+    case tools, pipeline, loop, thinking, council, evidence, unified
 
     /// What "harness on" means unless someone picks another. The loop led every measured comparison so far:
     /// 66 against 47 for the council on the published Mac mini run, and it works at the speed of the model's
@@ -21,6 +21,7 @@ enum HarnessVersion: String, Codable, CaseIterable, Identifiable {
         case .thinking: return "v4"
         case .council: return "v5"
         case .evidence: return "v6"
+        case .unified: return "v7"
         }
     }
 
@@ -32,6 +33,7 @@ enum HarnessVersion: String, Codable, CaseIterable, Identifiable {
         case .thinking: return "Thinking loop"
         case .council: return "Council"
         case .evidence: return "Evidence loop"
+        case .unified: return "One harness"
         }
     }
 
@@ -71,6 +73,7 @@ enum HarnessVersion: String, Codable, CaseIterable, Identifiable {
         case .thinking: return "The loop, with the model thinking through every step it takes part in. Needs Think on: with it off, this is v3."
         case .council: return "Code prepares a shared notes file, then three agents with their own personality and temperature discuss the task in it, thinking on."
         case .evidence: return "The loop with stricter evidence. Code works out dates, letter counts and sums itself, a looked-up answer only counts when one sentence on the page holds it, and its steps end by saying what was checked. Two rounds at most. Not measured yet."
+        case .unified: return "One harness for every kind of task. It sends each task down one route and switches on only the parts that route needs: nothing at all, exact code, a program, the reply's own code run on the examples given, a lookup only when the model isn't sure, a long text's passages, or rule checks. Every route starts from the plain model's reply where it can. Not measured yet."
         }
     }
 
@@ -83,6 +86,7 @@ enum HarnessVersion: String, Codable, CaseIterable, Identifiable {
         case .thinking: return ["Task", "Think, understand", "Think, act", "Think, answer", "Code checks it", "Reply"]
         case .council: return ["Task", "Code prepares the notes", "Three agents discuss", "One writes the reply", "Code checks it", "Reply"]
         case .evidence: return ["Task", "Understand", "Code works out what it can", "Answer from quoted sentences", "Code checks it", "Reply"]
+        case .unified: return ["Task", "Pick a route", "Only that route's parts", "Code checks what it can", "Reply"]
         }
     }
 
@@ -134,6 +138,8 @@ extension TestLab {
             await runCouncil(prompt: prompt, earlier: earlier, setup: setup, maxTokens: maxTokens, total: &total, answer: answer)
         case .evidence:
             await runLoop(prompt: prompt, earlier: earlier, setup: setup, strict: true, total: &total, answer: answer)
+        case .unified:
+            await runOne(prompt: prompt, earlier: earlier, setup: setup, total: &total, answer: answer)
         }
     }
 
@@ -164,6 +170,7 @@ extension TestLab {
         var total = Reply()
         total.notesName = notesName
         await work(version, prompt: prompt, setup: setup, maxTokens: maxTokens, total: &total) { plan in
+            if plan.direct { return await plainReply(plan.task, setup: setup, maxTokens: plan.maxTokens ?? maxTokens) }
             let think: Bool?? = plan.think == nil ? .none : .some(plan.think)
             if let agent = plan.agent {
                 var own = setup

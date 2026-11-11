@@ -204,7 +204,7 @@ extension TestLab {
 
     /// Has the model write a program from a skeleton and runs it in the sandbox. What went wrong with
     /// the last program goes into the next request, across rounds. Returns everything it printed.
-    private static func writeProgram(_ task: HarnessTask, note: String, state: inout LoopState, setup: TestSetup, total: inout Reply) async -> String? {
+    static func writeProgram(_ task: HarnessTask, note: String, state: inout LoopState, setup: TestSetup, total: inout Reply) async -> String? {
         let description: String
         var extra = "Prefer simple brute force over clever maths, and check every case."
         if let document = task.document {

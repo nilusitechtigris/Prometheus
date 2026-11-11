@@ -220,3 +220,68 @@ enum HarnessRouter {
         }
     }
 }
+
+// MARK: - By route
+
+/// One line of the Harness Test's "By route": how the questions that took one route did, with the harness and
+/// without. A route is judged on its own questions, which is what says whether it earns its time.
+struct RouteRow: Identifiable, Equatable {
+    /// Nil for questions whose route isn't known, from a version that logged none.
+    let route: HarnessRoute?
+    var questions = 0
+    var right = 0
+    /// Nil when there's no run without the harness to compare with.
+    var rightPlain: Int?
+    /// Wrong without the harness and right with it, and the other way round.
+    var gained = 0
+    var lost = 0
+    var seconds = 0.0
+    var secondsPlain: Double?
+
+    var id: String { route?.rawValue ?? "unknown" }
+    var title: String { route?.title ?? "Not known" }
+}
+
+extension ModelTestItemResult {
+    /// The route this question took. The one harness saves it. The loop versions before it only logged the kind
+    /// of task they took a question for, and whether plain code or a program worked it out, which is enough to
+    /// say which route that would have been. Nil for a version that logged neither.
+    var routeTaken: HarnessRoute? {
+        if let route { return HarnessRoute(rawValue: route) }
+        let log = toolLog ?? []
+        guard let line = log.first(where: { $0.hasPrefix("Understood: ") }) else { return nil }
+        switch line.dropFirst("Understood: ".count).split(separator: " ").first.map(String.init) {
+        case "calculation": return log.contains { $0.hasPrefix("Calculated:") || $0.hasPrefix("Worked out:") } ? .exact : .program
+        case "code": return .program
+        case "fact": return .lookup
+        case "document": return .document
+        case "writing": return .rules
+        case "other": return .direct
+        default: return nil
+        }
+    }
+}
+
+extension ModelTestResult {
+    /// This run's questions by the route they took, each beside the same questions in a run without the harness.
+    func routeRows(against plain: ModelTestResult?) -> [RouteRow] {
+        var before: [String: ModelTestItemResult] = [:]
+        for item in plain?.items ?? [] { before[item.id] = item }
+        var rows: [String: RouteRow] = [:]
+        for item in items {
+            let route = item.routeTaken
+            var row = rows[route?.rawValue ?? "unknown"] ?? RouteRow(route: route)
+            row.questions += 1
+            row.seconds += item.seconds
+            if item.passed { row.right += 1 }
+            if let old = before[item.id] {
+                row.rightPlain = (row.rightPlain ?? 0) + (old.passed ? 1 : 0)
+                row.secondsPlain = (row.secondsPlain ?? 0) + old.seconds
+                if item.passed, !old.passed { row.gained += 1 }
+                if !item.passed, old.passed { row.lost += 1 }
+            }
+            rows[row.id] = row
+        }
+        return HarnessRoute.allCases.compactMap { rows[$0.rawValue] } + [rows["unknown"]].compactMap { $0 }
+    }
+}

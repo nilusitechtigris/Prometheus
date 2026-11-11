@@ -10,6 +10,7 @@ import WebKit
 ///   LOCALAI_VERDICT_CHECK=/path.txt check what code says about a plain reply and a harness reply
 ///   LOCALAI_V6_CHECK=/path.txt      check v6's routing, sentences and loop with a scripted model and canned pages
 ///   LOCALAI_ROUTER_CHECK=/path.txt  check where the one harness's router sends a task, with a scripted model
+///   LOCALAI_ONE_CHECK=/path.txt     check the one harness on every route, with a scripted model, canned pages and the sandbox
 ///   LOCALAI_EDITION=lab|standard    which edition this run is; LOCALAI_EDITION_CHECK=/path.txt checks what each one offers,
 ///                                   runs and calls a version
 ///   LOCALAI_TRACE_CHECK=/path.txt   run every finished harness version, chat and Dev, against a scripted model and compare
@@ -223,6 +224,7 @@ enum DebugHooks {
                                                   ("harness-versions", AnyView(HarnessTestDashboard(scrollable: false, detail: .versions))),
                                                   ("harness-picker", AnyView(HarnessPopover {})),
                                                   ("harness-changes", AnyView(HarnessTestDashboard(scrollable: false, detail: .changes))),
+                                                  ("harness-routes", AnyView(HarnessTestDashboard(scrollable: false, detail: .routes))),
                                                   ("harness-tools", AnyView(HarnessTestDashboard(scrollable: false, detail: .tools))),
                                                   ("harness-sites", AnyView(HarnessTestDashboard(scrollable: false, detail: .sites)))]
                 for (name, page) in pages {
@@ -316,6 +318,12 @@ enum DebugHooks {
         if let path = env["LOCALAI_V6_CHECK"] {
             afterOtherChecks {
                 let lines = await TestLab.evidenceCheck()
+                try? lines.joined(separator: "\n").write(toFile: path, atomically: true, encoding: .utf8)
+            }
+        }
+        if let path = env["LOCALAI_ONE_CHECK"] {
+            afterOtherChecks {
+                let lines = await TestLab.oneHarnessCheck()
                 try? lines.joined(separator: "\n").write(toFile: path, atomically: true, encoding: .utf8)
             }
         }

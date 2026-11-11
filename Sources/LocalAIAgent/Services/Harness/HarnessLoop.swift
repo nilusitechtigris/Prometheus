@@ -25,6 +25,9 @@ extension TestLab {
         var maxTokens: Int?
         /// Set on v5's turns, which stand alone instead of following the chat.
         var agent: AgentTurn?
+        /// Set by the one harness when it wants the reply the plain model gives. The caller then sends exactly the
+        /// request it sends with the harness off, and nothing else in this plan counts.
+        var direct = false
     }
 
     /// Something Check found wrong with a reply.
