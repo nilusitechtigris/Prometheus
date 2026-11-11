@@ -65,7 +65,8 @@ import WebKit
 ///   LOCALAI_CHAT_SEARCH=text        search the chats for this after launch
 ///   LOCALAI_HARNESS_SAMPLE=id,id    run these questions through the harness; LOCALAI_SAMPLE_OUT=/path gets the report
 ///   LOCALAI_CHAT_HARNESS=1          turn the harness on for chat
-///   LOCALAI_HARNESS_VERSION=tools|pipeline|loop|thinking|council   the version chat, the sample and the Harness tab use
+///   LOCALAI_HARNESS_VERSION=tools|pipeline|loop|thinking|council   the version chat, the sample and the Harness tab use;
+///                                   chat and the Harness tab only follow it with LOCALAI_EDITION=lab
 ///   LOCALAI_SETTINGS_TAB=safety     open that section of the Settings page
 ///   LOCALAI_PRESS_UPDATE=3          press Update this many seconds after launch
 ///   LOCALAI_PICK_CHATS=all|2        start in the chats' Select mode with these chats ticked
@@ -79,6 +80,18 @@ import WebKit
 ///   LOCALAI_FLAME_TRACE=/path.txt   write where the flame is each time it is drawn, to check its flight (FlameView.swift)
 @MainActor
 enum DebugHooks {
+    private static var lastCheck: Task<Void, Never>?
+
+    /// Runs a check once the ones started before it have ended. Checks that put canned pages in place of the web
+    /// share one switch for it, and the first to end would otherwise leave the others on the real web.
+    private static func afterOtherChecks(_ check: @escaping @MainActor () async -> Void) {
+        let before = lastCheck
+        lastCheck = Task { @MainActor in
+            await before?.value
+            await check()
+        }
+    }
+
     static func install(chat: ChatController, ui: UIState, lab: TestLab, backends: BackendController,
                         monitor: SystemMonitor, settings: AppSettings, updater: AppUpdater, dev: DevSession) {
         let env = ProcessInfo.processInfo.environment
@@ -301,7 +314,7 @@ enum DebugHooks {
         }
         if let version = DevHarnessVersion(rawValue: env["LOCALAI_DEV_VERSION"] ?? "") { dev.harnessVersion = version }
         if let path = env["LOCALAI_V6_CHECK"] {
-            Task {
+            afterOtherChecks {
                 let lines = await TestLab.evidenceCheck()
                 try? lines.joined(separator: "\n").write(toFile: path, atomically: true, encoding: .utf8)
             }
@@ -316,7 +329,7 @@ enum DebugHooks {
             try? Edition.selfCheck().joined(separator: "\n").write(toFile: path, atomically: true, encoding: .utf8)
         }
         if let path = env["LOCALAI_TRACE_CHECK"] {
-            Task {
+            afterOtherChecks {
                 let lines = await HarnessTraces.run(record: env["LOCALAI_TRACE_RECORD"] != nil)
                 try? lines.joined(separator: "\n").write(toFile: path, atomically: true, encoding: .utf8)
             }

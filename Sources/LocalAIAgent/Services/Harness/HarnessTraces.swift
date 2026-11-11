@@ -46,17 +46,18 @@ enum HarnessTraces {
                 lines.append("FAIL \(trace.name) has no recording in checks/traces")
                 continue
             }
-            if saved == text {
-                lines.append("PASS \(trace.name) is unchanged (\(count) lines)")
-                continue
-            }
             let was = saved.components(separatedBy: "\n"), now = text.components(separatedBy: "\n")
-            if was.first != now.first {
-                lines.append("SKIP \(trace.name) was recorded with \(was.first ?? "another Python"), and this Mac has \(now.first ?? "none")")
+            // The first line only says which Python recorded it. A run that reads the same is unchanged whatever it says.
+            let samePython = was.first == now.first
+            if was.dropFirst().elementsEqual(now.dropFirst()) {
+                lines.append("PASS \(trace.name) is unchanged (\(count) lines)" + (samePython ? "" : ", though it was recorded with \(was.first ?? "another Python")"))
                 continue
             }
-            let index = (0..<min(was.count, now.count)).first { was[$0] != now[$0] } ?? min(was.count, now.count)
-            lines.append("FAIL \(trace.name) differs at line \(index + 1)\n     was: \(index < was.count ? was[index] : "(the end)")\n     now: \(index < now.count ? now[index] : "(the end)")")
+            let index = (1..<min(was.count, now.count)).first { was[$0] != now[$0] } ?? min(was.count, now.count)
+            let place = "differs at line \(index + 1)\n     was: \(index < was.count ? was[index] : "(the end)")\n     now: \(index < now.count ? now[index] : "(the end)")"
+            // A failed run's message is worded by Python, so with another version the difference may be Python's.
+            lines.append(samePython ? "FAIL \(trace.name) \(place)"
+                                    : "SKIP \(trace.name) \(place)\n     It was recorded with \(was.first ?? "another Python") and this Mac has \(now.first ?? "none"), so this may be Python's wording.")
         }
         return lines
     }
@@ -130,8 +131,11 @@ enum HarnessTraces {
 
     private static func chat(_ version: HarnessVersion) async -> String {
         WebConsent.shared.allowForChecks()
+        // Whatever stood in for the web before goes back afterwards. The checks that do this run one at a time
+        // (see DebugHooks), because a check that ended first would otherwise leave this one on the real web.
+        let before = WebTools.stub
         WebTools.stub = { pages($0) }
-        defer { WebTools.stub = nil }
+        defer { WebTools.stub = before }
         var out: [String] = []
         for scene in scenes {
             let backend = ScriptedBackend(script: model)

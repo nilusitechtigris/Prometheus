@@ -104,7 +104,7 @@ brew install node
 
 **3. Download a model.** With no model yet, the chat page offers a starter picked for your Mac's memory, with one button. On 16 GB that's Qwen3 4B Instruct 2507. **Models** in the sidebar has the rest, and shows which ones fit your Mac.
 
-**4. Chat.** Open **Chat** and send a message, or press **See the harness at work** for the three-question demo. The **Harness** button under the message box turns the harness off and on. The other versions of it are there too, under **Other versions**.
+**4. Chat.** Open **Chat** and send a message, or press **See the harness at work** for the three-question demo. The **Harness** button under the message box turns the harness off and on.
 
 ### Updating
 
@@ -145,7 +145,7 @@ Press **Dev** (`</>`) under the message box, then start a **New Project** or ope
 - **Terminal:** shows what a program prints. Type into it when a program asks for input, press Stop, or type a command like `python main.py 5`. After an error, click the file and line to jump there, or press **Fix with Agent**.
 - **Preview:** games, charts and web pages run here, with real graphics, keyboard and mouse. Ask for one and it opens by itself. Any errors show up in the Terminal, ready for **Fix with Agent**.
 - **Agent:** tell it what to build or change, or ask about the code. It shows each step and each file it changed, with **Undo** for every reply.
-- **Harness Off / v1 / v2,** above the agent. Off, the model gets one go at your request, and every file in its reply is saved as it came, with nothing run or checked. That's what using the model in a plain chat gives you. **v1** is the agent described below. **v2**, the checked build, builds and fixes like v1, then checks what a first use of the app would show. It tries one fix for each thing it finds, keeps the fix only if it holds, and says what it couldn't fix. v2 is new and has no scores yet, so the switch starts on v1.
+- **Harness Off / On,** above the agent. Off, the model gets one go at your request, and every file in its reply is saved as it came, with nothing run or checked. That's what using the model in a plain chat gives you. On is the agent described below. A second version, the checked build, builds and fixes the same way, then checks what a first use of the app would show. It tries one fix for each thing it finds, keeps the fix only if it holds, and says what it couldn't fix. It's new and has no scores yet, so it's only in the lab edition (see [The harness](#the-harness)).
 - **Compare** (⧉ beside Send, or the Compare page): builds a request twice on the same model, in two new folders under Documents › Prometheus Projects › Comparisons, first with the harness off and then on. Both apps run side by side, each with its time, its number of model calls and the same scorecard, checked by code: does it show something, open without errors, look styled, work offline, work when used and fit the window. Earlier comparisons stay in a list, and either side opens as a project. Prompts made for testing it, with what each one tests, are in [docs/dev-mode-test-prompts.md](docs/dev-mode-test-prompts.md) and in the Compare page's **Prompts** menu.
 
 The agent is made for small models, which lose track when they drive a long loop of tools by themselves. So code runs the loop, and the model gets one small job at a time, with only what that job needs:
@@ -223,7 +223,15 @@ The Tests page opens on the **Hardware Test**. Turn on **Lab** there for the res
 
 ## The harness
 
-**Harness on** means v3, the loop. In the one published run where every version shared a setup it scored highest, level with v4, and it's the simplest of the versions that check a reply and try again. Every other version stays in the app, under **Other versions** in chat and in the Harness Test, so you can compare them on your own models.
+**Harness on** means v3, the loop. In the one published run where every version shared a setup it scored highest, level with v4, and it's the simplest of the versions that check a reply and try again. The app runs that one, and there's nothing to choose.
+
+Every other version stays in the code, so the results below can be repeated. One line in Terminal turns a copy into the **lab edition**, which adds **Other versions** to the Harness button in chat, a version to pick in the Harness Test, the Versions tab, and v1 and v2 in Dev mode:
+
+```sh
+defaults write com.localaiagent.app edition lab
+```
+
+Quit and open the app again after it. `defaults delete com.localaiagent.app edition` turns it back. Your chats and test runs are the same in both.
 
 | Version | What it does |
 | --- | --- |
@@ -236,7 +244,7 @@ The Tests page opens on the **Hardware Test**. Turn on **Lab** there for the res
 
 ![The Harness Test results](docs/screenshots/harness.png)
 
-The Versions tab puts them side by side, question by question, for runs on the same model and setup:
+In the lab edition, the Versions tab puts them side by side, question by question, for runs on the same model and setup:
 
 ![Each harness version compared, question by question](docs/screenshots/harness-versions.png)
 

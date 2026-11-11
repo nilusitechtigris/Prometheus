@@ -97,7 +97,7 @@ struct HarnessTestDashboard: View {
         if model.id != run.model { return "Not tested yet. Showing \(run.displayName) \(run.quant)." }
         if let choice = lab.harnessChoice, let shown = run.version, choice != shown {
             return Edition.current.isLab ? "\(choice.title) not tested on this model yet. Showing \(shown.title)."
-                                         : "The harness isn't tested on this model yet. Showing a run of an earlier harness."
+                                         : "This run was made by another version of the harness."
         }
         return nil
     }
@@ -347,7 +347,7 @@ struct HarnessTestDashboard: View {
     /// Every version beside the run with the harness off, so the results sit side by side.
     private func topics(_ run: ModelTestResult, _ baseline: ModelTestResult?) -> some View {
         let runs = lab.comparableRuns(to: run)
-        // Outside the lab: the harness in use, and the shown run's own version when that's an earlier one.
+        // Outside the lab: the harness in use, and the shown run's own version when that's another one.
         let columns = HarnessVersion.offered() + [run.version].compactMap { $0 }.filter { !HarnessVersion.offered().contains($0) }
         return TestPanel(title: "By topic", symbol: "square.grid.3x2.fill", note: "score, on this model and setup") {
             Grid(alignment: .leading, horizontalSpacing: 12, verticalSpacing: 16) {
