@@ -119,8 +119,11 @@ enum DevOneReply {
         emit(.stage("Asking the model once"))
         let user = prompt(for: request, project: project, budget: setup.context / 2, failure: failure)
         let used = DevAgent.tokens(system) + DevAgent.tokens(user) + 64
+        // 8,192 with v1 or v2 chosen. With v3 the plain model gets the room v3 gives itself, so that a
+        // comparison measures the harness and not the cap.
+        let cap = DevBudget.of(setup.version, context: setup.context).oneReply
         let chat = ChatRequest(model: setup.model, messages: [ChatTurn(role: "system", content: system), ChatTurn(role: "user", content: user)],
-                               temperature: 0.2, contextLength: setup.context, maxTokens: min(8_192, max(setup.context - used, 512)), think: setup.think)
+                               temperature: 0.2, contextLength: setup.context, maxTokens: min(cap, max(setup.context - used, 512)), think: setup.think)
         var text = ""
         var parser = ThinkTagParser()
         var chunks = 0

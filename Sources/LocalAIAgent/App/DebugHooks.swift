@@ -22,7 +22,8 @@ import WebKit
 ///   LOCALAI_FIRSTRUN_CHECK=/path.txt check the first-run steps, starter models and download messages;
 ///                                   LOCALAI_PRETEND_NO_OLLAMA=1 and LOCALAI_OLLAMA_URL=http://127.0.0.1:port show those pages
 ///   LOCALAI_DEV_V2_CHECK=/path.txt  check Dev harness v2 with a scripted model and canned page reports;
-///                                   LOCALAI_DEV_VERSION=v1|v2 picks the Dev harness for this run
+///                                   LOCALAI_DEV_V3_CHECK=/path.txt checks v3's sizes at each context window;
+///                                   LOCALAI_DEV_VERSION=v1|v2|v3 picks the Dev harness for this run
 ///   LOCALAI_DEMO=1                  run the harness demo after launch; LOCALAI_SHARE_CARD=/path.png writes the
 ///                                   picture of the newest side by side reply once nothing is generating
 ///   LOCALAI_STOP_AFTER=3            press Stop this many seconds after the autoprompt starts
@@ -322,6 +323,12 @@ enum DebugHooks {
         if let path = env["LOCALAI_DEV_V2_CHECK"] {
             Task {
                 let lines = await DevChecksV2.run()
+                try? lines.joined(separator: "\n").write(toFile: path, atomically: true, encoding: .utf8)
+            }
+        }
+        if let path = env["LOCALAI_DEV_V3_CHECK"] {
+            Task {
+                let lines = await DevChecksV3.run()
                 try? lines.joined(separator: "\n").write(toFile: path, atomically: true, encoding: .utf8)
             }
         }

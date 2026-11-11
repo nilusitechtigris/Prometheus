@@ -86,7 +86,9 @@ How it's written, and why (the smoothie bar builds on the same ideas):
 
 ## The festival: four pages
 
-The hardest prompt here: four pages in one app, saved acts and tickets that show up on other pages, two themes and more motion. It's new, and no runs of it are recorded yet. Give it a **16K** context window or more, and expect it to take longer than the smoothie bar on each side.
+The hardest prompt here: four pages in one app, saved acts and tickets that show up on other pages, two themes and more motion. It's new, and no runs of it are recorded yet.
+
+It is too large for the agent the app uses by default. That agent writes each file in one reply of at most 4,096 tokens and asks for a page under 90 lines, whatever the context window is, and this app's script alone is likely to need more. So run it with **v3, the roomy build**, whose sizes follow the context window: in the lab edition, choose **v3** on the Harness switch above the agent, and a **32K** context window. With v3 chosen, the harness-off side gets the same room for its one reply, so the comparison is a fair one. Expect it to take much longer than the smoothie bar on each side.
 
 ```text
 Build a web app for a two-day music festival called Aurora Nights, with a dark, glowing look, bold colour and smooth animation. It has four pages: Home, Lineup, My schedule and Tickets. The pages are parts of one page: only one shows at a time, and moving between them loads nothing.

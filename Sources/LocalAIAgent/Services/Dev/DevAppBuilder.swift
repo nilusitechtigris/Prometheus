@@ -42,7 +42,7 @@ extension DevAgent {
         let data = dataFiles()
 
         emit(.stage("Planning the app"))
-        let plan = isV2 ? await planAppV2(job, data: data) : await planApp(job, data: data)
+        let plan = isV3 ? await planAppV3(job, data: data) : isV2 ? await planAppV2(job, data: data) : await planApp(job, data: data)
         if let stop = interrupted() { return stop }
         if !plan.name.isEmpty || !plan.parts.isEmpty {
             emit(.note("Plan: \(plan.name.isEmpty ? "the app" : plan.name). \(plan.parts.prefix(160))"))
@@ -55,6 +55,8 @@ extension DevAgent {
 
         // The markup.
         emit(.stage("Writing \(page)"))
+        // The sizes asked for are the budget's: 90 and 40 lines in v1 and v2, more in v3 with a large window.
+        let budget = budget
         let bodyRules = """
         You write the HTML for one page of a web app. Rules:
         - Reply with one ```html block holding only what goes inside <body>, and nothing else.
@@ -63,7 +65,7 @@ extension DevAgent {
         - Give an id to every element app.js will use: forms, inputs, buttons, and the places where lists, totals and results show. Write ids in lowercase with dashes, like task-input.
         - Leave lists and results empty. app.js fills them from its data.
         - No <script>, <style> or <link>, and nothing from the internet.
-        - Build every part of the plan. Keep it under 90 lines.
+        - Build every part of the plan. Keep it under \(budget.pageLines) lines.
         """
         let example = "The look to aim for, from a different app:\n\(fence(DevKit.example, path: page))"
         guard let drafted = await draft(page, system: bodyRules, parts: planned + data + [example, "Task: \(job.request)"], ask: "Write the body of \(page).",
@@ -87,7 +89,7 @@ extension DevAgent {
         - Only add what the classes don't already do: the app's own colours and character, its header, hover effects, and how the things app.js draws look.
         - To change the main colour, set it once: :root { --bs-primary: #hex; --bs-primary-rgb: r, g, b; }
         - Never make body a flex or grid, never give the page a fixed width or height, and never hide anything.
-        - Nothing from the internet: no fonts or images. Keep it under 40 lines.
+        - Nothing from the internet: no fonts or images. Keep it under \(budget.styleLines) lines.
         """
         let css = await draft(names.styles, system: stylesRules, parts: planned + ["\(page) uses:\n\(DevWebLinks.styleHooks(in: body))", "Task: \(job.request)"],
                               ask: "Write \(names.styles).", extract: { [self] in webCode($0, path: names.styles) },

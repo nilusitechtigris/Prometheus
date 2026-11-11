@@ -54,7 +54,7 @@ enum Edition: String {
         expect("the lab's run labels are the old ones", other.runTitle(in: .lab) == other.title && other.runShort(in: .lab) == other.short && other.runPhrase(in: .lab) == other.title)
         expect("Dev: standard runs the agent in use when v2 is stored", DevHarnessVersion.allowed(.v2, in: .standard) == .recommended)
         expect("Dev: the lab runs v2 when it's stored", DevHarnessVersion.allowed(.v2, in: .lab) == .v2)
-        expect("Dev: standard offers one, the lab both", DevHarnessVersion.offered(in: .standard) == [.recommended] && DevHarnessVersion.offered(in: .lab) == DevHarnessVersion.allCases)
+        expect("Dev: standard offers one, the lab all of them", DevHarnessVersion.offered(in: .standard) == [.recommended] && DevHarnessVersion.offered(in: .lab) == DevHarnessVersion.allCases)
         var side = DevCompareSide(folder: "/tmp/x/harness-on", harness: true, version: DevHarnessVersion.recommended.rawValue)
         expect("a Dev comparison built by the agent in use: \(side.title(in: .standard)) and \(side.title(in: .lab))",
                side.title(in: .standard) == "Harness on" && side.title(in: .lab) == "Harness \(DevHarnessVersion.recommended.rawValue)" && side.summary(in: .standard) == DevHarnessVersion.recommended.summary)

@@ -3,7 +3,7 @@ import Foundation
 /// Which coding harness works on a request. Every version stays in the app, so Compare and the measuring runs
 /// can show what each adds on the same model.
 enum DevHarnessVersion: String, CaseIterable, Identifiable, Sendable {
-    case v1, v2
+    case v1, v2, v3
 
     var id: String { rawValue }
     var short: String { rawValue }
@@ -12,6 +12,7 @@ enum DevHarnessVersion: String, CaseIterable, Identifiable, Sendable {
         switch self {
         case .v1: return "Agent"
         case .v2: return "Checked build"
+        case .v3: return "Roomy build"
         }
     }
 
@@ -21,13 +22,14 @@ enum DevHarnessVersion: String, CaseIterable, Identifiable, Sendable {
         switch self {
         case .v1: return "plans, writes each file, tries it and fixes it"
         case .v2: return "builds and fixes like v1, then checks what a first use would show"
+        case .v3: return "works like v2, with replies and files as large as the context window allows"
         }
     }
 
-    /// What Dev mode uses unless someone picks another. v2 has no measured run yet, so v1 stays.
+    /// What Dev mode uses unless someone picks another. v2 and v3 have no measured run yet, so v1 stays.
     static let recommended = DevHarnessVersion.v1
 
-    /// The versions this copy offers: both in the lab, the recommended one elsewhere.
+    /// The versions this copy offers: all of them in the lab, the recommended one elsewhere.
     static func offered(in edition: Edition = .current) -> [DevHarnessVersion] { edition.isLab ? allCases : [recommended] }
 
     /// The version that works on a request when `chosen` is the one stored. Outside the lab that's the
@@ -53,7 +55,8 @@ enum DevHarnessVersion: String, CaseIterable, Identifiable, Sendable {
 ///
 /// Nothing here changes v1: every difference sits behind `setup.version`.
 extension DevAgent {
-    var isV2: Bool { setup.version == .v2 }
+    /// v2, and v3, which is built on it (DevAgentV3.swift).
+    var isV2: Bool { setup.version != .v1 }
 
     /// v1's rule, without the uses of "play" that belong to apps: play again, a play button, play the song.
     static func isGameStrict(_ request: String) -> Bool {

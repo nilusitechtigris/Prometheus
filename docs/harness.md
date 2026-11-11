@@ -2,7 +2,7 @@
 
 **Harness on** means v3, the loop. In the one published run where every version shared a setup it scored highest, level with v4, and it's the simplest of the versions that check a reply and try again. The app runs that one, and there's nothing to choose.
 
-Every other version stays in the code, so the results below can be repeated. One line in Terminal turns a copy into the **lab edition**, which adds **Other versions** to the Harness button in chat, a version to pick in the Harness Test, the Versions tab, Publish on the Tests page, and v1 and v2 in Dev mode:
+Every other version stays in the code, so the results below can be repeated. One line in Terminal turns a copy into the **lab edition**, which adds **Other versions** to the Harness button in chat, a version to pick in the Harness Test, the Versions tab, Publish on the Tests page, and v1, v2 and v3 in Dev mode:
 
 ```sh
 defaults write com.localaiagent.app edition lab

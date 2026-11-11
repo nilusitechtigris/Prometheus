@@ -1269,11 +1269,13 @@ final class DevAgent: @unchecked Sendable {
         return lines.suffix(10).allSatisfy { $0 == last }
     }
 
-    func complete(system: String, user: String, temperature: Double, limit: Int = 4_096, quiet: Bool = false, think: Bool?? = .none,
+    /// `limit` is the most tokens the reply may run to. A step that doesn't set one gets the budget's: 4,096
+    /// in v1 and v2, more in v3 when the context window is large (`DevBudget`).
+    func complete(system: String, user: String, temperature: Double, limit: Int? = nil, quiet: Bool = false, think: Bool?? = .none,
                   onText: (String) -> Void = { _ in }) async -> Reply {
         calls += 1
         let prompt = Self.tokens(system) + Self.tokens(user) + 16
-        let room = max(min(limit, setup.context - prompt - 16), 96)
+        let room = max(min(limit ?? budget.reply, setup.context - prompt - 16), 96)
         let request = ChatRequest(model: setup.model, messages: [ChatTurn(role: "system", content: system), ChatTurn(role: "user", content: user)],
                                   temperature: temperature, contextLength: setup.context, maxTokens: room, think: think ?? setup.think)
         var reply = Reply()

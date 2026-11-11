@@ -11,7 +11,7 @@ import Foundation
 enum HarnessTraces {
     /// The versions that are finished. A version still being worked on has no recording to keep to.
     static let frozen: [HarnessVersion] = [.tools, .pipeline, .loop, .thinking, .council, .evidence]
-    static let frozenDev: [DevHarnessVersion] = [.v1, .v2]
+    static let frozenDev: [DevHarnessVersion] = [.v1, .v2, .v3]
 
     static var folder: URL {
         var url = URL(fileURLWithPath: #filePath)
@@ -321,7 +321,8 @@ enum HarnessTraces {
         let asked = Counter(), tried = Counter()
         let replies = scene.replies, reports = scene.reports
         let backend = ScriptedBackend { _ in [.content(replies[min(asked.next(), replies.count - 1)]), stop] }
-        var setup = DevSetup(model: "scripted", backend: backend, context: 8_192, think: false)
+        // v3 is recorded at 32K, where its sizes are its own. At 8K it asks what v2 asks (DevChecksV3).
+        var setup = DevSetup(model: "scripted", backend: backend, context: version == .v3 ? 32_768 : 8_192, think: false)
         setup.version = version
         setup.pageCheck = { _, _, _ in reports[min(tried.next(), reports.count - 1)] }
         return (setup, backend)
