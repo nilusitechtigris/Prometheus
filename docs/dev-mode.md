@@ -2,7 +2,7 @@
 
 ![Dev mode with a project open: files, editor, Terminal and the agent](screenshots/dev.png)
 
-On **Home**, flip the switch in the top left corner from **Ask** to **Dev** (or press ⇧⌘D), then start a **New Project** or open a folder. The page becomes a workspace, with a coding agent that runs on your own model:
+On **Home**, turn on **Dev** under the question, choose a project folder there (or let Send ask for one) and say what to build. **Compare**, beside it, builds the request twice instead, with the harness off and on. Either way the work starts on the **Chat** page, whose switch at the top left goes between **Ask** and **Dev** (⇧⌘D from anywhere). In Dev the page is a workspace, with a coding agent that runs on your own model:
 
 - **Files:** hover over a Python file and press ▶ to run it.
 - **Editor:** line numbers, Python colours, find (⌘F), save (⌘S) and run (⌘R).

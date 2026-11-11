@@ -420,6 +420,75 @@ extension View {
     }
 }
 
+/// A small card that explains a control while the pointer rests on it: more room than a tooltip, and it
+/// comes sooner. It is drawn in the window, above the control, and takes no clicks.
+private struct HoverCard: ViewModifier {
+    let title: String
+    let text: String
+    @State private var shown = HoverCard.alwaysShown
+    @State private var waiting: Task<Void, Never>?
+
+    /// Debug builds can show every card without a pointer, for pictures (LOCALAI_SHOW_HOVER_CARDS).
+    private static var alwaysShown: Bool {
+        #if DEBUG
+        return ProcessInfo.processInfo.environment["LOCALAI_SHOW_HOVER_CARDS"] != nil
+        #else
+        return false
+        #endif
+    }
+
+    func body(content: Content) -> some View {
+        let shape = RoundedRectangle(cornerRadius: 12, style: .continuous)
+        content
+            .onHover { inside in
+                waiting?.cancel()
+                guard inside else {
+                    shown = Self.alwaysShown
+                    return
+                }
+                waiting = Task {
+                    try? await Task.sleep(for: .milliseconds(350))
+                    if !Task.isCancelled { shown = true }
+                }
+            }
+            .overlay(alignment: .topLeading) {
+                // A point at the control's top left corner. The card stands on it, so it grows upwards and to
+                // the right whatever its size, clear of the rows below and in line with the control's edge.
+                Color.clear.frame(width: 0, height: 0).overlay(alignment: .bottomLeading) {
+                    if shown {
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text(title).font(.uiCallout.weight(.semibold)).foregroundStyle(Forge.ink)
+                            Text(text)
+                                .font(.uiCaption)
+                                .foregroundStyle(Forge.dim)
+                                .multilineTextAlignment(.leading)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
+                        .padding(12)
+                        .frame(width: 290, alignment: .leading)
+                        .background(Forge.card, in: shape)
+                        .overlay(shape.strokeBorder(Color.white.opacity(0.18), lineWidth: 1))
+                        .shadow(color: .black.opacity(0.5), radius: 16, y: 6)
+                        .padding(.bottom, 8)
+                        .fixedSize()
+                        .transition(.opacity)
+                    }
+                }
+                .allowsHitTesting(false)
+            }
+            .animation(Motion.quick, value: shown)
+            .zIndex(shown ? 10 : 0)
+            .accessibilityHint(text)
+    }
+}
+
+extension View {
+    /// Explains this control in a card while the pointer rests on it.
+    func hoverCard(_ title: String, _ text: String) -> some View {
+        modifier(HoverCard(title: title, text: text))
+    }
+}
+
 /// A row of neighbouring controls.
 struct GlassGroup<Content: View>: View {
     var spacing: CGFloat = 8

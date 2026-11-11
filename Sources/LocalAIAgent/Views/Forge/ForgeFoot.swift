@@ -23,7 +23,6 @@ struct ForgeFoot: View {
 
 /// The pages, in a row.
 private struct ForgeDock: View {
-    @Environment(AppSettings.self) private var settings
     @Environment(UIState.self) private var ui
     @Environment(TestLab.self) private var lab
     /// So the highlight slides from one item to the next.
@@ -31,15 +30,12 @@ private struct ForgeDock: View {
 
     var body: some View {
         HStack(spacing: 4) {
-            // Home has two faces, Ask and Dev, and its own switch between them (HomeModeSwitch).
             item("house", "Home", selected: ui.destination == .home) { ui.destination = .home }
-                .help("Ask for something, or build with Dev (⌘1)")
-            // Always the chats, with the list showing. It used to fold the list away on a second click.
-            item("bubble.left.and.bubble.right", "Chat", selected: ui.destination == .chat) {
-                settings.chatsOpen = true
-                ui.destination = .chat
-            }
-            .help("Your chats (⌘2, and ⌥⌘2 folds the list away)")
+                .help("Start something new (⌘1)")
+            // The Chat page as it was left: Ask or Dev (ChatModeSwitch), the list of chats shown or hidden.
+            // It used to open the list every time, which was the only way to get a hidden list back.
+            item("bubble.left.and.bubble.right", "Chat", selected: ui.destination == .chat) { ui.destination = .chat }
+                .help("Your chats, and Dev (⌘2)")
             item("cube", "Models", selected: ui.destination == .library) { ui.destination = .library }
             item("checklist", "Tests", selected: ui.destination == .tests, busy: lab.isRunning) { ui.destination = .tests }
             item("gearshape", "Settings", selected: ui.destination == .settings) { ui.destination = .settings }

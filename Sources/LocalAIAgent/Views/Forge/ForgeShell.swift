@@ -10,8 +10,7 @@ struct ForgeShell: View {
 
     /// One side of a comparison has the whole window, so the name and the dock step aside too.
     private var pageFills: Bool { ui.showsDev(dev) && dev.compareFillsWindow }
-    /// Home's Ask face: the question, with no panel behind it. Its Dev face is a page like the others.
-    private var isHome: Bool { ui.destination == .home && !dev.isOn }
+    private var isHome: Bool { ui.destination == .home }
 
     var body: some View {
         let shape = RoundedRectangle(cornerRadius: 20, style: .continuous)

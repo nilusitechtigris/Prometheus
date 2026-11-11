@@ -64,6 +64,10 @@ import WebKit
 ///   LOCALAI_WEB_VIA_CURL=1          make the harness's web requests with curl (see WebTools)
 ///   LOCALAI_CLOSE_MAIN=3            close the main window after this many seconds, like its red button
 ///   LOCALAI_CHATS=0|1               start with the chats closed or open
+///   LOCALAI_HOME_DEV=1              turn Home's Dev toggle on; LOCALAI_HOME_COMPARE=1 its Compare toggle;
+///                                   LOCALAI_HOME_PROJECT=/path opens a project without leaving Home;
+///                                   LOCALAI_HOME_SEND=text sends from Home's box, as its Send button does;
+///                                   LOCALAI_SHOW_HOVER_CARDS=1 shows every hover card without a pointer
 ///   LOCALAI_CHAT_SEARCH=text        search the chats for this after launch
 ///   LOCALAI_HARNESS_SAMPLE=id,id    run these questions through the harness; LOCALAI_SAMPLE_OUT=/path gets the report
 ///   LOCALAI_CHAT_HARNESS=1          turn the harness on for chat
@@ -172,6 +176,17 @@ enum DebugHooks {
             }
         }
         if let chats = env["LOCALAI_CHATS"] { settings.chatsOpen = chats != "0" }
+        if env["LOCALAI_HOME_DEV"] != nil { dev.isOn = true }
+        if env["LOCALAI_HOME_COMPARE"] != nil { ui.homeCompare = true }
+        if let folder = env["LOCALAI_HOME_PROJECT"] { dev.open(URL(fileURLWithPath: folder)) }
+        if let text = env["LOCALAI_HOME_SEND"] {
+            // What Home's Send does, once the model can answer.
+            Task {
+                for _ in 0..<160 where !(dev.isOn ? dev.canCompare : chat.canSend) { try? await Task.sleep(for: .milliseconds(250)) }
+                let started = HomeTask.start(text, compare: ui.homeCompare, ui: ui, chat: chat, dev: dev)
+                print("home send:", started ? "started" : "not started", "· page:", ui.destination, "· dev:", dev.isOn)
+            }
+        }
         if let search = env["LOCALAI_CHAT_SEARCH"] { ui.chatSearch = search }
         func go(to page: String?) {
             switch page {
@@ -385,7 +400,7 @@ enum DebugHooks {
         }
         if let folder = env["LOCALAI_DEV_PROJECT"] {
             dev.isOn = true
-            ui.destination = .home
+            ui.destination = .chat
             dev.open(URL(fileURLWithPath: folder))
             if let file = env["LOCALAI_DEV_OPEN"] { dev.openFile(file) }
             if let page = env["LOCALAI_DEV_PREVIEW"] { dev.preview(page) }

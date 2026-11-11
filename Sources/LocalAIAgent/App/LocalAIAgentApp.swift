@@ -17,6 +17,8 @@ final class UIState {
     private(set) var beforeTelemetry: Destination = .home
     /// What is typed on Home and not sent yet. It is kept here, so a look at another page doesn't lose it.
     var homeDraft = ""
+    /// Home's Compare toggle: the next task is done twice, without the harness and with it.
+    var homeCompare = false
     /// Which results the Tests page shows.
     var testTab: TestTab = .overview
     /// Which section the Settings page shows.
@@ -203,6 +205,7 @@ struct LocalAIAgentApp: App {
             }
             CommandGroup(replacing: .newItem) {
                 Button("New Chat") {
+                    dev.isOn = false
                     ui.destination = .chat
                     chat.newConversation()
                     ui.composerFocusRequest += 1
@@ -212,10 +215,10 @@ struct LocalAIAgentApp: App {
             CommandGroup(before: .sidebar) {
                 Button("Home") { ui.destination = .home }
                     .keyboardShortcut("1")
-                // Home's switch, from the keyboard and from any page.
+                // The Chat page's switch, from the keyboard and from any page.
                 Button(inDev ? "Leave Dev Mode" : "Dev Mode") {
                     dev.isOn = !inDev
-                    ui.destination = .home
+                    ui.destination = .chat
                 }
                 .keyboardShortcut("d", modifiers: [.command, .shift])
                 Button("Chat") { ui.destination = .chat }

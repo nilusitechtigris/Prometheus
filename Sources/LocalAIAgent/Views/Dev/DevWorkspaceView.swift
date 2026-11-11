@@ -46,7 +46,7 @@ struct DevWorkspaceView: View {
             if let failure = dev.failureText {
                 ErrorBanner(text: failure) { dev.failureText = nil }
                     .padding(.horizontal, 20)
-                    .padding(.top, HomeModeSwitch.barHeight + 8)
+                    .padding(.top, ChatModeSwitch.barHeight + 8)
             }
         }
     }
@@ -113,7 +113,7 @@ private struct DevPaneTitle: View {
     }
 }
 
-/// One line: Home's switch and the project at the left, what answers at the right. Every control is a pill
+/// One line: the Ask | Dev switch and the project at the left, what answers at the right. Every control is a pill
 /// of one height, in the middle of the bar.
 private struct DevTopBar: View {
     @Environment(DevSession.self) private var dev
@@ -121,9 +121,9 @@ private struct DevTopBar: View {
 
     var body: some View {
         HStack(spacing: 8) {
-            // Home's switch between Ask and Dev is drawn over this corner (see `MainPage`), so it stays
+            // The switch between Ask and Dev is drawn over this corner (see `MainPage`), so it stays
             // where it was when the page under it changes. The bar leaves its room free.
-            Color.clear.frame(width: HomeModeSwitch.width, height: Forge.pillHeight)
+            Color.clear.frame(width: ChatModeSwitch.width, height: Forge.pillHeight)
             if let project = dev.project {
                 Button { showProject.toggle() } label: {
                     PickerPill {
@@ -165,8 +165,8 @@ private struct DevTopBar: View {
             ModelPickerButton(narrow: true)
             ContextPickerButton(compact: true)
         }
-        .padding(.horizontal, HomeModeSwitch.barInset)
-        .frame(height: HomeModeSwitch.barHeight)
+        .padding(.horizontal, ChatModeSwitch.barInset)
+        .frame(height: ChatModeSwitch.barHeight)
     }
 
     private static func short(_ name: String) -> String {
@@ -174,20 +174,23 @@ private struct DevTopBar: View {
     }
 }
 
-/// What can be done with the project: another one, its folder, or closing it.
-private struct DevProjectMenu: View {
+/// What can be done with the project: another one, its folder, or closing it. With no project open yet
+/// (on Home, before the first one) it offers the ways to get one.
+struct DevProjectMenu: View {
     @Environment(DevSession.self) private var dev
-    let project: DevProject
+    let project: DevProject?
     let dismiss: () -> Void
 
     var body: some View {
-        let others = dev.recents.filter { $0 != project.root.path }
+        let others = dev.recents.filter { $0 != project?.root.path && FileManager.default.fileExists(atPath: $0) }
         VStack(alignment: .leading, spacing: 2) {
-            Text(project.name).font(.uiHeadline).lineLimit(1).truncationMode(.middle)
+            Text(project?.name ?? "Project").font(.uiHeadline).lineLimit(1).truncationMode(.middle)
                 .padding(.horizontal, 8).padding(.bottom, 4)
             row("New Project…", "plus.rectangle.on.folder") { dev.newProject() }
             row("Open Folder…", "folder") { dev.chooseFolder() }
-            row("Show in Finder", "arrow.up.forward.square") { dev.revealInFinder() }
+            if project != nil {
+                row("Show in Finder", "arrow.up.forward.square") { dev.revealInFinder() }
+            }
             if !others.isEmpty {
                 Divider().padding(.vertical, 4)
                 Forge.label("Recent").padding(.horizontal, 8).padding(.bottom, 2)
@@ -196,8 +199,10 @@ private struct DevProjectMenu: View {
                         .help(path)
                 }
             }
-            Divider().padding(.vertical, 4)
-            row("Close Project", "xmark") { dev.closeProject() }
+            if project != nil {
+                Divider().padding(.vertical, 4)
+                row("Close Project", "xmark") { dev.closeProject() }
+            }
         }
         .padding(12)
         .frame(width: 280)

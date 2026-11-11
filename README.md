@@ -44,17 +44,17 @@ That's all. It works on a Mac with nothing installed: it sets up what's missing,
 
 ![A chat with the harness on](docs/screenshots/chat.png)
 
-Type a question on **Home** and the answer arrives in a chat, with speed and token numbers under every reply.
+Type a question on **Home** and the answer arrives in **Chat**, with speed and token numbers under every reply.
 
 - **The harness is on from the start.** Its math, code and rule checks run on your Mac. Before any web search it shows what it would send, and waits for your yes.
-- **Side by side** (⇧⌘↩) asks the plain model and the harness the same thing, shows both replies with a line from code about what it could check, and saves a picture to share.
+- **Compare** on Home (or ⇧⌘↩ in a chat) asks the plain model and the harness the same thing, shows both replies side by side with a line from code about what it could check, and saves a picture to share.
 - **Model, harness and context window** are one click away, right under the question.
 
 ### Build things with Dev
 
 ![Dev mode: the agent fixed an error in a Python file and ran it again](docs/screenshots/dev.png)
 
-Flip Home's switch from **Ask** to **Dev** and the page becomes a workspace: your files, an editor, a Terminal and a coding agent that runs on your own model. Above, it read a traceback, changed one line and ran the program again to check.
+Turn on **Dev** under the question on Home, say what to build, and the work starts in a workspace: your files, an editor, a Terminal and a coding agent that runs on your own model. Above, it read a traceback, changed one line and ran the program again to check.
 
 ![A shooter game the agent wrote, open in Preview and waiting for a click](docs/screenshots/preview.png)
 
