@@ -25,7 +25,7 @@ enum ResultsReport {
     private static func title(_ run: ModelTestResult) -> String {
         var parts = ["\(run.displayName) \(run.quant)", run.backend, "\(run.contextLength / 1_024)K context"]
         parts.append(run.thinking ? "thinking on" : "thinking off")
-        parts.append(run.version.map { "harness \($0.short)" } ?? "harness off")
+        parts.append(run.version.map { "harness \($0.short)" } ?? (run.usesHarness ? "harness, a version this copy doesn't know" : "harness off"))
         if run.size != .max { parts.append(run.askedSet.map { "\(run.size.title) (\($0))" } ?? run.size.title) }
         if let index = run.repeatIndex { parts.append("round \(index)") }
         return parts.joined(separator: " · ")

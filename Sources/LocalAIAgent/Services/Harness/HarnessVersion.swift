@@ -39,10 +39,11 @@ enum HarnessVersion: String, Codable, CaseIterable, Identifiable {
 
     /// How a reply or a status line names it: plain "Harness" unless someone picked another version. Outside the
     /// lab nobody picks one, so a reply another version made, in a copy that once had the choice, only says so.
+    /// "Another", not "earlier": some of them are later designs than the one in use.
     var label: String { label(in: .current) }
 
     func label(in edition: Edition) -> String {
-        self == .recommended ? "Harness" : edition.isLab ? "Harness \(short)" : "Harness (earlier version)"
+        self == .recommended ? "Harness" : edition.isLab ? "Harness \(short)" : "Harness (another version)"
     }
 
     /// The versions this copy offers to use and to test: every one in the lab, the recommended one elsewhere.
@@ -53,14 +54,14 @@ enum HarnessVersion: String, Codable, CaseIterable, Identifiable {
     static func allowed(_ chosen: HarnessVersion, in edition: Edition = .current) -> HarnessVersion { edition.isLab ? chosen : recommended }
 
     /// What a saved run calls it: its number and name in the lab, and elsewhere only whether it's the harness in
-    /// use or an earlier one.
-    func runTitle(in edition: Edition = .current) -> String { edition.isLab ? title : self == .recommended ? "Harness" : "Earlier harness" }
+    /// use or another one.
+    func runTitle(in edition: Edition = .current) -> String { edition.isLab ? title : self == .recommended ? "Harness" : "Another harness" }
 
     /// The same for a column heading.
-    func runShort(in edition: Edition = .current) -> String { edition.isLab ? short : self == .recommended ? "On" : "Earlier" }
+    func runShort(in edition: Edition = .current) -> String { edition.isLab ? short : self == .recommended ? "On" : "Other" }
 
     /// The same inside a sentence, as in "No change with the harness".
-    func runPhrase(in edition: Edition = .current) -> String { edition.isLab ? title : self == .recommended ? "the harness" : "an earlier harness" }
+    func runPhrase(in edition: Edition = .current) -> String { edition.isLab ? title : self == .recommended ? "the harness" : "another harness" }
 
     var summary: String {
         switch self {

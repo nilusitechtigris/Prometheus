@@ -32,12 +32,24 @@ struct DevCompareSide: Codable, Equatable, Sendable {
     /// "Harness v2", or what older records and the plain side were called.
     var title: String { title(in: .current) }
 
-    /// Outside the lab a side is only on or off, whichever version built it.
+    /// Outside the lab a side built by the agent in use is "on", and one built by another version only says so.
     func title(in edition: Edition) -> String {
-        harness ? (edition.isLab ? version.map { "Harness \($0)" } : nil) ?? "Harness on" : "Harness off"
+        guard harness else { return "Harness off" }
+        if edition.isLab { return version.map { "Harness \($0)" } ?? "Harness on" }
+        return builtByAnother ? "Another harness" : "Harness on"
     }
+
+    /// True for a side a version other than the agent in use built. Older records name no version: that was v1.
+    private var builtByAnother: Bool { (version ?? DevHarnessVersion.v1.rawValue) != DevHarnessVersion.recommended.rawValue }
+
     /// One line on how this side was built.
-    var summary: String { harness ? (version.flatMap(DevHarnessVersion.init(rawValue:)) ?? .v1).summary : "one reply, saved as it came" }
+    var summary: String { summary(in: .current) }
+
+    func summary(in edition: Edition) -> String {
+        guard harness else { return "one reply, saved as it came" }
+        if !edition.isLab, builtByAnother { return "built by another version of the agent" }
+        return (version.flatMap(DevHarnessVersion.init(rawValue:)) ?? .v1).summary
+    }
 
     var passed: Int { score.filter { $0.passed == true }.count }
     var total: Int { score.filter { $0.passed != nil }.count }

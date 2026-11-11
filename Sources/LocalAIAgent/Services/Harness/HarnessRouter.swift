@@ -98,8 +98,9 @@ enum HarnessRouter {
 
     /// Layer 2: what plain rules make of a task, with no model. Nil when they say nothing.
     static func byRules(_ task: HarnessTask) -> HarnessRouting? {
-        // Before anything else: a message that asks for code may show a call to print, and that isn't code to run.
-        if asksForCode(task.prompt) {
+        // Before the others: a message that asks for code may show a call to print, and that isn't code to run. Only
+        // what is asked counts, not a long text it came with.
+        if asksForCode(task.body) {
             return HarnessRouting(route: .code, kind: .other, reason: "code to write, which can be run")
         }
         if let exact = ExactTools.solve(task.body) {
@@ -113,25 +114,47 @@ enum HarnessRouter {
         case .document: return HarnessRouting(route: .document, kind: .document, reason: "a long text to read from")
         case .writing: return HarnessRouting(route: .rules, kind: .writing, reason: "rules code can measure")
         case .calculation: return HarnessRouting(route: .program, kind: .calculation, reason: "numbers a program can work from")
-        case .fact: return HarnessRouting(route: .lookup, kind: .fact, reason: "a short question about a fact")
+        case .fact:
+            // A lookup needs something to look for: a name, or a few words that carry meaning. "Which one is
+            // better?" has neither, and would only put a question about searching in front of whoever asked.
+            guard HarnessText.namedThing(in: task.body) != nil || PassageFinder.keywords(in: task.body).count >= 3 else {
+                return HarnessRouting(route: .direct, kind: .other, reason: "a question with nothing in it to look up")
+            }
+            return HarnessRouting(route: .lookup, kind: .fact, reason: "a short question about a fact")
         case .other: return HarnessRouting(route: .direct, kind: .other, reason: "a question to reason about, with nothing for code to check")
         case nil: return nil
         }
     }
 
-    /// True when the message asks for code to be written, as opposed to showing code and asking what it does.
-    /// "Write a function", "implement the class", "write Python code that": a verb, at most three words, then what
-    /// to write, with no "of" or "about" in between: "a list of five script ideas" and "a story about a function"
-    /// ask for something else. A signature to fill in, or examples the code must pass, also count. A wrong yes
-    /// costs nothing, because this route starts from the model's own reply and only acts on code it finds there.
-    static func asksForCode(_ text: String) -> Bool {
-        func has(_ pattern: String) -> Bool { text.range(of: pattern, options: [.regularExpression, .caseInsensitive]) != nil }
-        if has(#"\b(write|implement|create|define|complete|make|build|code)\s+(?:me\s+)?(?:an?\s+|the\s+|some\s+)?(?:(?!(?:of|about|for|on|with|in|to|from)\b)[\w+#.-]+\s+){0,3}(function|program|script|class|method|code)\b"#) { return true }
-        if has(#"(?m)^\s*def \w+\(.*\):\s*$"#), has(#"\b(complete|implement|fill in|finish|write)\b"#) { return true }
-        return has(#"(?m)^\s*assert \w+\("#) && has(#"\b(function|pass(es)? (these|the) tests?)\b"#)
+    /// Words that only turn up when the talk is about programming.
+    private static let codeCue = #"\b(python|javascript|typescript|java|swift|kotlin|rust|golang|ruby|php|c\+\+|c#|bash|shell|sql|html|css|node|regex|json|csv|returns?|prints?|takes|inputs?|outputs?|arrays?|lists?|strings?|integers?|loops?|recursive|recursion|algorithm|variables?|parameters?|arguments?|files?|folder|directory|command line|stdin|stdout)\b|\(\)"#
+
+    /// A line that is code, as opposed to a sentence about it.
+    private static func looksLikeCode(_ line: Substring) -> Bool {
+        line.range(of: #"^\s{2,}\S|^\s*(def |class |import |from \w+ import|return\b|assert |print\(|for .+ in .+:|while .+:|if .+:|#|//|[A-Za-z_][\w.]*\s*(=|\+=|-=)[^=]|[A-Za-z_][\w.]*\(.*\)\s*;?\s*$)"#, options: .regularExpression) != nil
     }
 
-    private static let numberWords = #"\b(one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|twenty|thirty|forty|fifty|sixty|seventy|eighty|ninety|hundred|thousand|million|billion|half|third|quarter|twice|double|triple|dozen|percent)\b"#
+    /// True when the message asks for code to be written, as opposed to showing code and asking what it does.
+    /// "Write a function", "implement the class in JavaScript", "write Python code that": a verb, at most three
+    /// words with no "of" or "about" among them, then what to write. A function is always code. A program, a
+    /// script, a class or a method is only code when something else in the message is about programming: a radio
+    /// script and a training program are not. A signature to fill in, or examples the code must pass, also count,
+    /// when the asking is done in a sentence and not by a word inside the code.
+    static func asksForCode(_ text: String) -> Bool {
+        func has(_ pattern: String, in text: String = text) -> Bool { text.range(of: pattern, options: [.regularExpression, .caseInsensitive]) != nil }
+        // Code that's shown with a question about what it does is code to run.
+        if has(#"\bwhat (does|will|would|is)\b[^.?!\n]{0,60}\b(print|output|return|do|display|result)"#) { return false }
+        let verb = #"\b(write|implement|create|define|complete|make|build|code)\s+(?:me\s+)?(?:an?\s+|the\s+|some\s+|this\s+)?"#
+        let between = #"(?:(?!(?:of|about|for|on|with|in|to|from)\b)[\w+#.-]+\s+){0,3}"#
+        if has(verb + between + #"function\b"#) { return true }
+        if has(verb + between + #"(program|script|class|method|code)\b"#), has(codeCue) { return true }
+        let sentences = text.split(whereSeparator: \.isNewline).filter { !looksLikeCode($0) }.joined(separator: "\n")
+        if has(#"(?m)^\s*def \w+\(.*\):\s*$"#), has(#"\b(complete|implement|fill in|finish|write)\b"#, in: sentences) { return true }
+        return has(#"(?m)^\s*assert \w+\("#) && has(#"\b(function|pass(es)? (these|the) tests?)\b"#, in: sentences)
+    }
+
+    /// "One" is left out: "which one" asks for nothing to be worked out.
+    private static let numberWords = #"\b(zero|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|thirteen|fourteen|fifteen|sixteen|seventeen|eighteen|nineteen|twenty|thirty|forty|fifty|sixty|seventy|eighty|ninety|hundreds?|thousands?|millions?|billions?|hal(f|ves)|thirds?|quarters?|twice|double|triple|dozens?|couple|pair|percent)\b"#
 
     /// A program needs something to work from. With no number in the message, written either way, the model isn't
     /// even asked: logic puzzles and plain questions are where a small model's program is worse than its answer.
@@ -158,11 +181,14 @@ enum HarnessRouter {
         """
     }
 
-    /// The letter a reply picks: an A or a B standing by itself at the start of its first line, after at most the
-    /// word "answer". Nil for anything else. "Both" and "Because" aren't letters.
+    /// The letter a reply picks: an A or a B standing by itself at the start of its first line of text, after at
+    /// most a lead-in such as "The answer is" or "Option". Thinking written into the reply isn't the answer.
+    /// Nil for anything else: "Both" and "Because" aren't letters.
     static func letter(in reply: String) -> Character? {
-        let line = reply.split(whereSeparator: \.isNewline).first.map(String.init) ?? ""
-        guard let regex = try? NSRegularExpression(pattern: #"^\W*(?:answer\W+)?([AB])(?![A-Za-z])"#, options: .caseInsensitive),
+        let spoken = reply.replacingOccurrences(of: #"(?s)<think>.*?(</think>|\z)"#, with: "", options: .regularExpression)
+        let line = spoken.split(whereSeparator: \.isNewline).map { $0.trimmingCharacters(in: .whitespaces) }.first { !$0.isEmpty } ?? ""
+        let pattern = #"^\W*(?:(?:the\s+)?(?:correct\s+|right\s+)?(?:answer|option|choice)\b\W*(?:is\b\W*)?)?([AB])(?![A-Za-z])"#
+        guard let regex = try? NSRegularExpression(pattern: pattern, options: .caseInsensitive),
               let match = regex.firstMatch(in: line, range: NSRange(line.startIndex..., in: line)),
               let range = Range(match.range(at: 1), in: line) else { return nil }
         return line[range].uppercased().first

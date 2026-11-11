@@ -38,6 +38,14 @@ extension HarnessRouter {
             ("Implement the Stack class with push, pop and peek in JavaScript.", .code, .other),
             ("Complete this function.\n\ndef mean(values):\n", .code, .other),
             ("Write Python code that prints the first ten squares, like print(1), print(4) and so on.", .code, .other),
+            ("Write a script to rename the files in a folder by date.", .code, .other),
+            ("Write a 30-second radio script in exactly 3 sentences.", .rules, .writing),
+            ("What does this print?\n\ndef complete(n):\n    return n * 2\n\nprint(complete(4))", .program, .code),
+            (longText + "\n\nThe clerks want to build a program for onboarding. Who signed the lease for lot 22?", .document, .document),
+            ("Which one is better?", .direct, .other),
+            ("When was it built?", .direct, .other),
+            ("What is the capital of Australia?", .lookup, .fact),
+            ("What year did the first crewed moon landing happen?", .lookup, .fact),
             ("Who proved the Mordell conjecture?", .lookup, .fact),
             (longText + "\n\nWho signed the lease for lot 22?", .document, .document),
             ("Write exactly 2 sentences about rain. Each sentence must start with the letter S.", .rules, .writing),
@@ -52,7 +60,9 @@ extension HarnessRouter {
                    got.routing.route == wanted && got.routing.kind == kind && got.asked.isEmpty && got.routing.calls == 0)
         }
         for prompt in ["Write a short story about a programmer who loved one function.", "Write exactly 2 sentences about rain.",
-                       "What does this print?\n\nprint(sum(range(4)))", "Explain what a class method is.", "Make me a list of five script ideas for a podcast."] {
+                       "What does this print?\n\nprint(sum(range(4)))", "Explain what a class method is.", "Make me a list of five script ideas for a podcast.",
+                       "Create a 12-week training program for a first marathon.", "Write a class reunion invitation.", "Define method acting in two sentences.",
+                       "What does this print?\n\nimport sys\ndef finish(n):\n    sys.stdout.write(str(n))\nfinish(3)"] {
             expect("not a request for code: \(prompt.prefix(50).replacingOccurrences(of: "\n", with: " "))", !HarnessRouter.asksForCode(prompt))
         }
         expect("every route has a name and a line on what it does", HarnessRoute.allCases.allSatisfy { !$0.title.isEmpty && $0.summary.count > 30 })
@@ -82,9 +92,16 @@ extension HarnessRouter {
         for (reply, letter) in [("A", "A"), ("b", "B"), ("  B.", "B"), ("**A**", "A"), ("Answer: B", "B"), ("(A)", "A"), ("A) the first", "A")] as [(String, Character)] {
             expect("reads \"\(reply)\" as \(letter)", HarnessRouter.letter(in: reply) == letter)
         }
-        for reply in ["", "Because it has numbers", "Apples", "The answer is 9", "Both", "AB", "Option A"] {
+        for (reply, letter) in [("The answer is A", "A"), ("Option B", "B"), ("\n  \nB", "B"), ("<think>Is it A? Let me see.</think>\nB", "B"), ("The correct answer is: (a)", "A")] as [(String, Character)] {
+            expect("reads \"\(reply.replacingOccurrences(of: "\n", with: " "))\" as \(letter)", HarnessRouter.letter(in: reply) == letter)
+        }
+        for reply in ["", "Because it has numbers", "Apples", "The answer is 9", "Both", "AB", "An answer needs thought", "<think>A</think>"] {
             expect("reads no letter in \"\(reply)\"", HarnessRouter.letter(in: reply) == nil)
         }
+        let words = "Thirteen friends each bring fifteen cookies to the party, so what do they have altogether"
+        expect("numbers written as words are something to compute from", HarnessRouter.hasSomethingToCompute(words) && HarnessRouter.byRules(HarnessTask(prompt: words)) == nil)
+        let spelled = await route(words, ["A", "B"])
+        expect("so the model is asked about them: \(spelled.routing.step)", spelled.routing.route == .program && spelled.asked.count == 2)
         let long = String(repeating: "The ledger has 12 lines and each line has 4 numbers. ", count: 60) + "so what is all of it worth to me"
         let cut = HarnessRouter.question(for: HarnessTask(prompt: long), programFirst: true)
         expect("a long message is cut for the question (\(cut.count) characters)", cut.count < 900)

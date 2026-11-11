@@ -229,7 +229,7 @@ final class TestLab {
     func show(harnessRun run: ModelTestResult) {
         selectedHarnessRunID = run.id
         testModelID = run.model
-        // Outside the lab the harness in use is the only one to test, whichever version an old run was made with.
+        // Outside the lab the harness in use is the only one to test, whichever version a shown run was made with.
         if Edition.current.isLab { harnessChoice = run.version }
         harnessSize = run.size
     }
@@ -369,7 +369,7 @@ final class TestLab {
                 var stopped = false
                 for (position, version) in versions.enumerated() where !Task.isCancelled {
                     let began = Date()
-                    let step = versions.count > 1 ? "\(version.title), \(position + 1) of \(versions.count)" : "With \(version.title)"
+                    let step = versions.count > 1 ? "\(version.title), \(position + 1) of \(versions.count)" : "With \(version.runPhrase())"
                     let done = withoutShare + pagesShare + suiteShare * Double(position)
                     guard var run = await self.runSuite(setup, harness: version, size: size, report: { index, total, question in
                         report(step, "Question \(index + 1) of \(total) · \(question.title)", done + suiteShare * Double(index) / Double(total))

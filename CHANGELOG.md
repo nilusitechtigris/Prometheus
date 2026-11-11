@@ -13,13 +13,13 @@ Every number this project quotes comes from a run someone made in the app. Where
 - **Setup without Terminal.** With nothing installed, the chat page has a Get Ollama button and then one button for a starter model picked for the Mac's memory. A failed download says what to do about it.
 - **Held-out test.** 120 public questions (GSM8K, GSM-Plus, IFEval, MBPP) that the harness is never tuned on, graded by code. The app shows totals and keeps the questions and replies closed. A separate 60-question practice set is where failures get studied.
 - **Repeat runs.** Run a Harness Test three times and see every round's score, the mean and the spread. For any two runs on the same questions, the app says how often chance alone would flip that many answers that unevenly.
-- **Harness v6, the evidence loop.** It answers from memory first, looks things up only where that helps, reads a page as a few quoted sentences, and settles letter counts, word counts, weekdays and day spans with plain code. Not the default, and not scored yet.
-- **Dev harness v2, the checked build.** After an app works it runs extra checks, tries one fix for each thing it finds, and keeps the fix only if it holds. It reports what it could not fix. Not the default, and not scored yet.
+- **Harness v6, the evidence loop.** It answers from memory first, looks things up only where that helps, reads a page as a few quoted sentences, and settles letter counts, word counts, weekdays and day spans with plain code. Not the default and not scored yet, so it shows in the lab edition only.
+- **Dev harness v2, the checked build.** After an app works it runs extra checks, tries one fix for each thing it finds, and keeps the fix only if it holds. It reports what it could not fix. Not the default and not scored yet, so it shows in the lab edition only.
 - **A copy of your data before every new build touches it.** Chats, test history, Dev mode's chats and comparisons, and shared notes are copied once per build into `Backups`, and the newest five copies are kept.
 
 ### Changed
 
-- **Harness on now means one thing:** v3, the loop. The other versions are under "Other versions".
+- **Harness on now means one thing:** v3, the loop, and the app offers no other. The earlier and newer versions stay in the code so results can be repeated. One Terminal line turns a copy into the lab edition, which shows them: see "The harness" in the README.
 - **New installs start with the harness on.** Existing installs keep their setting.
 - **Web lookups ask first.** Before the harness searches or opens a page it shows what it will send and where. "Always" and "Never" are in Settings › Harness.
 - **Tests has a Lab switch.** With it off, Tests shows the Hardware Test. With it on, the Model and Harness tests and Publish are there too.
