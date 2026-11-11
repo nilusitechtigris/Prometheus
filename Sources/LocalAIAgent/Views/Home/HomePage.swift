@@ -79,7 +79,11 @@ private struct AskBox: View {
     }
 
     private var placeholder: String {
-        if dev.isOn { return compare ? "A web app to build twice: harness off, then on…" : "What should the agent build or change?" }
+        if dev.isOn {
+            if compare { return "A web app to build twice: harness off, then on…" }
+            // The project's chip is only a folder now, so the box says which one the agent will work in.
+            return dev.project.map { "What should the agent build or change in \(Self.short($0.name))?" } ?? "What should the agent build?"
+        }
         return "Summarize this document in 3 key points…"
     }
 
@@ -96,8 +100,11 @@ private struct AskBox: View {
                     .focused($focused)
                     .onSubmit(send)
                     .accessibilityLabel("Your task")
-                kindRow
+                // One line. Only the model keeps its name: the rest are icons that light up when they're on,
+                // each explained by a card under the pointer.
                 HStack(spacing: 8) {
+                    kindChips
+                    Forge.line.frame(width: 1, height: 18).padding(.horizontal, 2)
                     answerChips
                     Spacer(minLength: 8)
                     Button { showOptions.toggle() } label: {
@@ -164,43 +171,45 @@ private struct AskBox: View {
 
     // MARK: What kind of work
 
-    /// Two switches, each explained by a card under the pointer: Dev, and doing the task both ways. With Dev
-    /// on, the project the agent will work in is chosen here too.
-    private var kindRow: some View {
-        @Bindable var ui = ui
-        return HStack(spacing: 8) {
-            Button { dev.isOn.toggle() } label: {
-                toggleChip("chevron.left.forwardslash.chevron.right", "Dev", on: dev.isOn)
-            }
-            .buttonStyle(.soft)
-            .hoverCard("Dev mode", "Instead of an answer in a chat, a coding agent builds what you ask for in a project folder. It writes the files, runs them and fixes what fails. Web apps and games open in Preview, in the window. It all stays on this Mac.")
-            .accessibilityLabel("Dev mode")
-            .accessibilityValue(dev.isOn ? "on" : "off")
-
-            if dev.isOn && !compare {
-                Button { showProject.toggle() } label: {
-                    chip("folder", dev.project.map { Self.short($0.name) } ?? "Choose a project", tinted: dev.project != nil)
-                }
-                .buttonStyle(.soft)
-                .help(dev.project?.root.path ?? "The folder the agent works in. Start a new one or open one you have.")
-                .popover(isPresented: $showProject, arrowEdge: .top) {
-                    DevProjectMenu(project: dev.project) { showProject = false }
-                }
-                .transition(.opacity)
-            }
-
-            Button { ui.homeCompare.toggle() } label: {
-                toggleChip("square.split.2x1", "Compare", on: compare)
-            }
-            .buttonStyle(.soft)
-            .disabled(!dev.isOn && !backends.kind.supportsTools)
-            .hoverCard("See both results",
-                       dev.isOn ? "Your request is built twice, in two new folders: once with the harness off and once with it on. Both apps open side by side with the same scorecard, so you see what the harness adds."
-                                : "Ask once and get two replies side by side: the plain model, and the same model with the harness. A line from code says what it could check.")
-            .accessibilityLabel("Compare")
-            .accessibilityValue(compare ? "on" : "off")
-            Spacer(minLength: 0)
+    /// Two switches: Dev, and doing the task both ways. With Dev on, the project the agent will work in is
+    /// chosen here too.
+    @ViewBuilder
+    private var kindChips: some View {
+        Button { dev.isOn.toggle() } label: {
+            iconChip("chevron.left.forwardslash.chevron.right", lit: dev.isOn)
         }
+        .buttonStyle(.soft)
+        .hoverCard("Dev mode · \(dev.isOn ? "on" : "off")", "Instead of an answer in a chat, a coding agent builds what you ask for in a project folder. It writes the files, runs them and fixes what fails. Web apps and games open in Preview, in the window. It all stays on this Mac.")
+        .accessibilityLabel("Dev mode")
+        .accessibilityValue(dev.isOn ? "on" : "off")
+
+        if dev.isOn && !compare {
+            Button { showProject.toggle() } label: {
+                iconChip(dev.project == nil ? "folder.badge.plus" : "folder.fill", lit: dev.project != nil)
+            }
+            .buttonStyle(.soft)
+            .hoverCard(dev.project.map { "Project · \(Self.short($0.name))" } ?? "Project · none yet",
+                       dev.project == nil ? "The folder the agent works in. Click to start a new one or open one you have. If you skip this, Send asks for one."
+                                          : "The agent works in this folder and nowhere else. Click to start a new project, open another folder or go back to a recent one.",
+                       hidden: showProject)
+            .accessibilityLabel("Project")
+            .accessibilityValue(dev.project?.name ?? "none")
+            .popover(isPresented: $showProject, arrowEdge: .top) {
+                DevProjectMenu(project: dev.project) { showProject = false }
+            }
+            .transition(.opacity)
+        }
+
+        Button { ui.homeCompare.toggle() } label: {
+            iconChip("square.split.2x1", lit: compare)
+        }
+        .buttonStyle(.soft)
+        .disabled(!dev.isOn && !backends.kind.supportsTools)
+        .hoverCard("Compare · \(compare ? "on" : "off")",
+                   dev.isOn ? "See both results. Your request is built twice, in two new folders: once with the harness off and once with it on. Both apps open side by side with the same scorecard, so you see what the harness adds."
+                            : "See both results. Ask once and get two replies side by side: the plain model, and the same model with the harness. A line from code says what it could check.")
+        .accessibilityLabel("Compare")
+        .accessibilityValue(compare ? "on" : "off")
     }
 
     // MARK: What answers
@@ -234,10 +243,12 @@ private struct AskBox: View {
         harnessChip
 
         Button { showContext.toggle() } label: {
-            chip("text.alignleft", "\(Format.tokens(backends.effectiveContext)) context")
+            iconChip("text.alignleft", lit: false)
         }
         .buttonStyle(.soft)
-        .help("How much text the model keeps in view. More takes more memory.")
+        .hoverCard("Context window · \(Format.tokens(backends.effectiveContext))", "How much text the model keeps in view. More takes more memory. Click to change it.", hidden: showContext)
+        .accessibilityLabel("Context window")
+        .accessibilityValue("\(Format.tokens(backends.effectiveContext)) tokens")
         .popover(isPresented: $showContext, arrowEdge: .top) {
             ContextPopover { showContext = false }
         }
@@ -248,28 +259,35 @@ private struct AskBox: View {
     @ViewBuilder
     private var harnessChip: some View {
         if compare {
-            chip("checkmark.shield", "Harness off and on", tinted: true, menu: false)
-                .opacity(0.7)
-                .help("Compare does the task both ways")
+            iconChip("checkmark.shield", lit: true)
+                .opacity(0.6)
+                .hoverCard("Harness · off and on", "Compare does the task both ways, so there is nothing to choose here.")
+                .accessibilityLabel("Harness, off and on")
         } else if dev.isOn {
             Button { dev.harnessOn.toggle() } label: {
-                chip(dev.harnessOn ? "checkmark.shield" : "shield.slash", dev.harnessOn ? "Harness on" : "Harness off", tinted: dev.harnessOn, menu: false)
+                iconChip(dev.harnessOn ? "checkmark.shield" : "shield.slash", lit: dev.harnessOn)
             }
             .buttonStyle(.soft)
             .disabled(dev.isBusy)
-            .help(dev.harnessOn ? "The agent plans, writes each file, runs the result and fixes what fails. Click for the plain model instead."
-                                : "One reply from the model, saved as it came, with nothing run or checked. Click to turn the agent's harness on.")
+            .hoverCard("Agent's harness · \(dev.harnessOn ? "on" : "off")",
+                       dev.harnessOn ? "The agent plans, writes each file, runs the result and fixes what fails. Click for the plain model instead."
+                                     : "One reply from the model, saved as it came, with nothing run or checked. Click to turn the agent's harness on.")
+            .accessibilityLabel("Agent's harness")
+            .accessibilityValue(dev.harnessOn ? "on" : "off")
         } else {
             Button { showHarness.toggle() } label: {
-                // The label is safe for either edition: "Harness" for everyone, the version's name in the lab.
-                chip(harnessOn ? "checkmark.shield" : "shield.slash",
-                     harnessOn ? "\(settings.activeHarness.label) on" : "Harness off", tinted: harnessOn)
+                iconChip(harnessOn ? "checkmark.shield" : "shield.slash", lit: harnessOn)
             }
             .buttonStyle(.soft)
             .disabled(!backends.kind.supportsTools)
-            .help(backends.kind.supportsTools
-                  ? "The harness checks a small model's maths, code and rules before you see the reply. Click to turn it on or off."
-                  : "The harness works with Ollama and MLX LM")
+            // The title is safe for either edition: "Harness" for everyone, the version's name in the lab.
+            .hoverCard(harnessOn ? "\(settings.activeHarness.label) · on" : "Harness · off",
+                       backends.kind.supportsTools
+                           ? "Code checks a small model's maths, code and rules before you see the reply, and can look facts up. Click to turn it on or off."
+                           : "The harness works with Ollama and MLX LM.",
+                       hidden: showHarness)
+            .accessibilityLabel("Harness")
+            .accessibilityValue(harnessOn ? "on" : "off")
             .popover(isPresented: $showHarness, arrowEdge: .top) {
                 HarnessPopover { showHarness = false }
             }
@@ -304,25 +322,18 @@ private struct AskBox: View {
         .contentShape(shape)
     }
 
-    /// A chip that is on or off. The small switch at its end is what tells it from a menu.
-    private func toggleChip(_ symbol: String, _ title: String, on: Bool) -> some View {
+    /// A choice shown as its icon alone. It is lit while it's on; what it is, and its state in words, are in
+    /// its hover card.
+    private func iconChip(_ symbol: String, lit: Bool) -> some View {
         let shape = RoundedRectangle(cornerRadius: 11, style: .continuous)
-        return HStack(spacing: 7) {
-            Image(systemName: symbol).font(.system(size: 11, weight: .medium))
-            Text(title).font(.uiCallout.weight(on ? .semibold : .regular)).lineLimit(1)
-            ZStack(alignment: on ? .trailing : .leading) {
-                Capsule(style: .circular).fill(on ? AnyShapeStyle(Palette.accent) : AnyShapeStyle(Color.white.opacity(0.2)))
-                Circle().fill(on ? Palette.onAccent : Color.white.opacity(0.85)).padding(2)
-            }
-            .frame(width: 22, height: 13)
-        }
-        .foregroundStyle(on ? Palette.accent : Forge.ink)
-        .padding(.horizontal, 11)
-        .frame(height: 32)
-        .background(on ? Palette.accent.opacity(0.15) : Color.white.opacity(0.07), in: shape)
-        .overlay(shape.strokeBorder(on ? Palette.accent.opacity(0.5) : Color.white.opacity(0.12), lineWidth: 1))
-        .hoverFill(shape, when: !on)
-        .contentShape(shape)
+        return Image(systemName: symbol)
+            .font(.system(size: 13, weight: .medium))
+            .foregroundStyle(lit ? Palette.accent : Forge.dim)
+            .frame(width: 34, height: 32)
+            .background(lit ? Palette.accent.opacity(0.16) : Color.white.opacity(0.07), in: shape)
+            .overlay(shape.strokeBorder(lit ? Palette.accent.opacity(0.55) : Color.white.opacity(0.12), lineWidth: 1))
+            .hoverFill(shape, when: !lit)
+            .contentShape(shape)
     }
 
     private func pill(_ title: String) -> some View {

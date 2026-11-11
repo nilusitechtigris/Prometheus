@@ -425,6 +425,8 @@ extension View {
 private struct HoverCard: ViewModifier {
     let title: String
     let text: String
+    /// True while the control's own menu is open, which opens in the same place.
+    let hidden: Bool
     @State private var shown = HoverCard.alwaysShown
     @State private var waiting: Task<Void, Never>?
 
@@ -455,7 +457,7 @@ private struct HoverCard: ViewModifier {
                 // A point at the control's top left corner. The card stands on it, so it grows upwards and to
                 // the right whatever its size, clear of the rows below and in line with the control's edge.
                 Color.clear.frame(width: 0, height: 0).overlay(alignment: .bottomLeading) {
-                    if shown {
+                    if shown && !hidden {
                         VStack(alignment: .leading, spacing: 4) {
                             Text(title).font(.uiCallout.weight(.semibold)).foregroundStyle(Forge.ink)
                             Text(text)
@@ -476,7 +478,7 @@ private struct HoverCard: ViewModifier {
                 }
                 .allowsHitTesting(false)
             }
-            .animation(Motion.quick, value: shown)
+            .animation(Motion.quick, value: shown && !hidden)
             .zIndex(shown ? 10 : 0)
             .accessibilityHint(text)
     }
@@ -484,8 +486,8 @@ private struct HoverCard: ViewModifier {
 
 extension View {
     /// Explains this control in a card while the pointer rests on it.
-    func hoverCard(_ title: String, _ text: String) -> some View {
-        modifier(HoverCard(title: title, text: text))
+    func hoverCard(_ title: String, _ text: String, hidden: Bool = false) -> some View {
+        modifier(HoverCard(title: title, text: text, hidden: hidden))
     }
 }
 
