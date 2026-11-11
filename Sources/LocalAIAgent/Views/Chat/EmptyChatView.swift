@@ -46,8 +46,7 @@ private struct WelcomeHero: View {
     var body: some View {
         VStack(spacing: 22) {
             VStack(spacing: 12) {
-                BrandMark(size: 64)
-                BrandWordmark(size: 24)
+                // No mark here: the header has the name, with the one flame beside it.
                 Text(Brand.tagline)
                     .font(.uiCallout)
                     .foregroundStyle(Palette.accent)
@@ -125,7 +124,6 @@ private struct FrameworkSetupCard: View {
 
     private var card: some View {
         VStack(spacing: 18) {
-            BrandMark(size: 56)
             VStack(spacing: 6) {
                 Text(needsOllama ? "First, get Ollama" : "\(name) isn't running")
                     .font(.uiTitle2.weight(.semibold))
@@ -244,7 +242,6 @@ private struct FirstModelCard: View {
         }
         let memory = Int((Double(ProcessInfo.processInfo.physicalMemory) / 1_073_741_824).rounded())
         VStack(spacing: 18) {
-            BrandMark(size: 56)
             VStack(spacing: 6) {
                 Text("Now a model").font(.uiTitle2.weight(.semibold))
                 Text(picks.tight

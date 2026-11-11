@@ -74,18 +74,13 @@ private struct ShareCardView: View {
 
     var body: some View {
         ZStack {
-            Color.black
-            if let picture = Art.window {
-                Image(nsImage: picture).resizable().scaledToFill()
-                    .frame(width: ShareCard.size.width, height: ShareCard.size.height)
-                    .clipped()
-                    .opacity(0.55)
-            }
-            LinearGradient(colors: [.black.opacity(0.78), .black.opacity(0.55)], startPoint: .top, endPoint: .bottom)
+            // The window's own look: the theme's ground, lit from where the flame stands beside the name.
+            Forge.black
+            RadialGradient(colors: [Palette.glow.opacity(0.2), .clear], center: UnitPoint(x: 0.06, y: 0), startRadius: 0, endRadius: 420)
 
             VStack(alignment: .leading, spacing: 14) {
                 HStack(spacing: 8) {
-                    if let flame = Art.flame {
+                    if let flame = Art.flame(for: ThemeStore.shared.theme) {
                         Image(nsImage: flame).resizable().scaledToFit().frame(height: 26)
                     }
                     Text("PROMETHEUS").font(text(13, .bold)).kerning(2.2).foregroundStyle(.white)

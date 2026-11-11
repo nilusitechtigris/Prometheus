@@ -64,7 +64,8 @@ cp build/AppIcon.icns "$APP/Contents/Resources/AppIcon.icns"
 mkdir -p "$APP/Contents/Resources/Fonts"
 cp assets/fonts/*.ttf assets/fonts/OFL.txt "$APP/Contents/Resources/Fonts/"
 mkdir -p "$APP/Contents/Resources/Art"
-cp assets/art/*.png "$APP/Contents/Resources/Art/"
+# Only the pictures the app shows: the two glass flames. The earlier look's pictures stay in the repo.
+cp assets/art/flame-ember.png assets/art/flame-rose.png "$APP/Contents/Resources/Art/"
 cp scripts/update-app.sh "$APP/Contents/Resources/"
 # The public questions the Harness Test can ask, with the notice their licences need.
 mkdir -p "$APP/Contents/Resources/Benchmarks"
