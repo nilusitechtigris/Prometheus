@@ -102,7 +102,7 @@ The harness runs JavaScript with Node, so install that too if you'll use it:
 brew install node
 ```
 
-**3. Download a model.** With no model yet, the chat page offers a starter picked for your Mac's memory, with one button. On 16 GB that's Qwen3 4B Instruct 2507. **Models** in the sidebar has the rest, and shows which ones fit your Mac.
+**3. Download a model.** With no model yet, the chat page offers a starter picked for your Mac's memory, with one button. On 16 GB that's Qwen3 4B Instruct 2507. **Models** in the dock at the foot of the window has the rest, and shows which ones fit your Mac.
 
 **4. Chat.** Open **Chat** and send a message, or press **See the harness at work** for the three-question demo. The **Harness** button under the message box turns the harness off and on.
 
