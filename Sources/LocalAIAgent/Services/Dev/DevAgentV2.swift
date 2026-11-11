@@ -26,6 +26,13 @@ enum DevHarnessVersion: String, CaseIterable, Identifiable, Sendable {
 
     /// What Dev mode uses unless someone picks another. v2 has no measured run yet, so v1 stays.
     static let recommended = DevHarnessVersion.v1
+
+    /// The versions this copy offers: both in the lab, the recommended one elsewhere.
+    static func offered(in edition: Edition = .current) -> [DevHarnessVersion] { edition.isLab ? allCases : [recommended] }
+
+    /// The version that works on a request when `chosen` is the one stored. Outside the lab that's the
+    /// recommended one, whatever a copy that had the choice left behind.
+    static func allowed(_ chosen: DevHarnessVersion, in edition: Edition = .current) -> DevHarnessVersion { edition.isLab ? chosen : recommended }
 }
 
 /// Dev harness v2. It is v1 with the gaps closed that showed in v1's own code and runs:

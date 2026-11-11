@@ -224,7 +224,7 @@ final class ChatController {
         let context = backends.effectiveContext
         // Side by side always has a harness reply to compare with, whatever the Harness button says.
         let compare = sideBySide && backend.kind.supportsTools
-        let harness = (settings.harnessEnabled || compare) && backend.kind.supportsTools ? settings.harnessVersion : nil
+        let harness = (settings.harnessEnabled || compare) && backend.kind.supportsTools ? settings.activeHarness : nil
 
         let messages = conversations[ci].messages
         let (turns, trimmed, estimatedPrompt) = buildTurns(messages, context: context)
@@ -287,7 +287,7 @@ final class ChatController {
                             messageID: UUID, convID: UUID) async {
         let canCall = version == .tools ? await backends.capabilities(of: model).supportsTools : false
         let setup = TestLab.TestSetup(model: model, backend: backends.backend, context: request.contextLength, think: request.think,
-                                      supportsTools: canCall, temperature: request.temperature, maxRounds: settings.harnessMaxRounds)
+                                      supportsTools: canCall, temperature: request.temperature, maxRounds: settings.activeRounds)
         var reply = TestLab.Reply()
         reply.onStage = { [weak self] stage, round in
             self?.live?.stage = stage

@@ -1,0 +1,37 @@
+python: 3.9.6
+=== Dev off: a page in one reply ===
+> request 1: temperature 0.2, max 8038, think off, context 8192, tools 
+[system] You are a helpful coding assistant. What you write runs on this computer, offline: web pages open in a browser with no internet, and Python has only its standard library and no display.
+[user] Make a hello page
+
+Reply with each file in full, in its own code block, with the file's name on the line just before the block.
+steps:
+- stage: Asking the model once
+report:
+One reply from the model, saved as it came. Created index.html (2 lines). Created style.css (2 lines). Created script.js (2 lines). Nothing was run or checked.
+worked unset, rounds 0, calls 1, page index.html, stopped false, failure none
+--- index.html (new) ---
+<!doctype html><html><head><link rel="stylesheet" href="style.css"></head><body><h1>Hi</h1><script src="script.js"></script></body></html>
+
+--- style.css (new) ---
+h1 { color: red; }
+
+--- script.js (new) ---
+console.log('hi');
+
+
+=== Dev off: a program in one reply ===
+> request 1: temperature 0.2, max 8040, think off, context 8192, tools 
+[system] You are a helpful coding assistant. What you write runs on this computer, offline: web pages open in a browser with no internet, and Python has only its standard library and no display.
+[user] print hello
+
+Reply with each file in full, in its own code block, with the file's name on the line just before the block.
+steps:
+- stage: Asking the model once
+report:
+One reply from the model, saved as it came. Created main.py (2 lines). Nothing was run or checked.
+worked unset, rounds 0, calls 1, page none, stopped false, failure none
+--- main.py (new) ---
+print('hello')
+
+

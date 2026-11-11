@@ -193,7 +193,7 @@ struct ModelTestDashboard: View {
                     // Alternate above / below so neighbouring labels don't collide.
                     .annotation(position: index.isMultiple(of: 2) ? .top : .bottom, spacing: 4) {
                         // Harness runs sit close to their model's own run, so they get a short label.
-                        Text(run.version.map { "\(run.quant) \($0.short)" } ?? "\(run.displayName) \(run.quant)\(run.setupLabel)")
+                        Text(run.version.map { "\(run.quant) \(Edition.current.isLab ? $0.short : $0.runTitle().lowercased())" } ?? "\(run.displayName) \(run.quant)\(run.setupLabel)")
                             .font(.uiCaption2).foregroundStyle(.secondary)
                     }
             }

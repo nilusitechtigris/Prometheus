@@ -1329,9 +1329,9 @@ enum DevChecks {
 
     // MARK: - Web apps
 
-    private static let todoPlan = "NAME: Todo List\nPARTS: header; form to add a task; task list; count\n**DATA:** tasks: text, done\nACTIONS: add a task; delete a task"
+    static let todoPlan = "NAME: Todo List\nPARTS: header; form to add a task; task list; count\n**DATA:** tasks: text, done\nACTIONS: add a task; delete a task"
 
-    private static let todoBody = """
+    static let todoBody = """
     <!doctype html><html><head><link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet"></head>
     <body>
     <nav class="navbar bg-white border-bottom px-4"><span class="navbar-brand">✅ Todo</span><span id="count" class="badge text-bg-primary"></span></nav>
@@ -1344,10 +1344,10 @@ enum DevChecks {
     </body></html>
     """
 
-    private static let todoStyles = "```css\nbody { display: flex; justify-content: center; height: 100vh; background: #fafafa; }\n.navbar-brand { color: #4f46e5; }\n@import url('https://fonts.googleapis.com/css?family=Inter');\n```"
+    static let todoStyles = "```css\nbody { display: flex; justify-content: center; height: 100vh; background: #fafafa; }\n.navbar-brand { color: #4f46e5; }\n@import url('https://fonts.googleapis.com/css?family=Inter');\n```"
 
     /// A todo script that looks up one id by a near miss, #taskInput, which code should mend.
-    private static let todoScript = """
+    static let todoScript = """
     const $ = (selector) => document.querySelector(selector);
     const STORAGE_KEY = "todo-list";
     let state = load({ tasks: [] });

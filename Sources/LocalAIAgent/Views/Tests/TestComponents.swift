@@ -260,7 +260,7 @@ struct ModelRunChips: View {
         Chip(text: run.thinking ? "Thinking on" : "Thinking off", symbol: "brain", tint: run.thinking ? Palette.accent : .secondary)
         Chip(text: "\(Format.tokens(run.contextLength)) context", symbol: "text.word.spacing", tint: .secondary)
         if let version = run.version {
-            Chip(text: run.harnessRounds.map { "\(version.short) · \($0) rounds" } ?? version.title, symbol: "shield.lefthalf.filled", tint: Palette.accent)
+            Chip(text: run.harnessRounds.map { "\(Edition.current.isLab ? version.short : version.runTitle()) · \($0) rounds" } ?? version.runTitle(), symbol: "shield.lefthalf.filled", tint: Palette.accent)
         }
     }
 }

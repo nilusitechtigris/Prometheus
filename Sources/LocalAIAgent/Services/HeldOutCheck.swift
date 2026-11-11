@@ -201,8 +201,10 @@ enum HeldOutCheck {
         expect("repeats come out plain model first, each score under its round: \(rows.map { row in "\(row.title) \(row.rounds.map { Int(row.scores[$0] ?? 0) })" })",
                rows.count == 2 && rows[0].version == nil && rows[0].scores == [1: 60, 2: 65, 3: 62.5] && rows[1].scores == [1: 75, 2: 70, 3: 72.5])
         expect("mean and range", rows.count == 2 && rows[0].mean == 62.5 && rows[0].low == 60 && rows[0].high == 65 && rows[1].mean == 72.5)
+        // The lab names the version. The standard edition only says "Harness".
+        let named = HarnessVersion.loop.runTitle()
         expect("higher in every round says so: \(rows.count == 2 ? rows[1].verdict(against: rows[0]) ?? "" : "")",
-               rows.count == 2 && rows[1].verdict(against: rows[0]) == "v3 Loop scored higher than the plain model in all 3 rounds, by 10.0 points on average.")
+               rows.count == 2 && rows[1].verdict(against: rows[0]) == "\(named) scored higher than the plain model in all 3 rounds, by 10.0 points on average.")
         let off = RepeatRow(version: nil, scores: [1: 60, 2: 65, 3: 62.5])
         let mixed = RepeatRow(version: .loop, scores: [1: 64, 2: 61, 3: 67]).verdict(against: off) ?? ""
         expect("rounds that go both ways aren't called a gain: \(mixed)", mixed.contains("higher than the plain model in 2 of 3 rounds and lower in 1") && mixed.hasSuffix("the rounds don't agree."))
@@ -213,7 +215,7 @@ enum HeldOutCheck {
         // The middle round's harness run deleted: round 3 must stay round 3.
         let gap = TestLab.repeatRows(runs.filter { !($0.usesHarness && $0.repeatIndex == 2) })
         expect("a deleted run leaves the later rounds where they were", gap.count == 2 && gap[1].scores == [1: 75, 3: 72.5]
-               && gap[1].verdict(against: gap[0]) == "v3 Loop scored higher than the plain model in all 2 rounds, by 12.5 points on average.")
+               && gap[1].verdict(against: gap[0]) == "\(named) scored higher than the plain model in all 2 rounds, by 12.5 points on average.")
         expect("one run alone is not a set of repeats", TestLab.repeatRows([made(.loop, right: 90, group: group, index: 1)]).isEmpty)
         func join(_ versions: [HarnessVersion], repeats: Int = 3, size: HarnessTestSize = .heldOut, context: Int = 8_192, from saved: [ModelTestResult]? = nil) -> UUID? {
             TestLab.repeatGroupToJoin(in: saved ?? runs, model: "m", size: size, thinking: false, context: context, repeats: repeats, versions: versions)

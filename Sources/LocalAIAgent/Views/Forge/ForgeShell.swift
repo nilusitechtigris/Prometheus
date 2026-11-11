@@ -184,7 +184,7 @@ private struct ForgeSidebar: View {
             Circle().fill(state.level.color).frame(width: 8, height: 8)
             VStack(alignment: .leading, spacing: 1) {
                 Text(state.title(backends.kind)).font(.uiCaption.weight(.medium))
-                Text(ready ? (harnessOn ? "\(settings.harnessVersion.label) on" : "Local · \(backends.kind.displayName)") : state.nextStep)
+                Text(ready ? (harnessOn ? "\(settings.activeHarness.label) on" : "Local · \(backends.kind.displayName)") : state.nextStep)
                     .font(.uiCaption2).foregroundStyle(Forge.dim)
             }
             Spacer(minLength: 0)

@@ -204,7 +204,9 @@ struct ModelTestResult: Codable, Identifiable, Equatable {
     var configurationKey: String { "\(backend)|\(model)|\(thinking)|\(version?.rawValue ?? "off")" }
 
     /// How the run was set up, for labels.
-    var setupLabel: String { (thinking ? " · thinking" : "") + (version.map { " · harness \($0.short)" } ?? "") }
+    var setupLabel: String {
+        (thinking ? " · thinking" : "") + (version.map { " · " + (Edition.current.isLab ? "harness \($0.short)" : $0.runTitle().lowercased()) } ?? "")
+    }
 }
 
 struct ModelTestItemResult: Codable, Equatable, Identifiable {
@@ -249,7 +251,7 @@ struct RepeatRow: Identifiable, Equatable {
     let scores: [Int: Double]
 
     var id: String { version?.rawValue ?? "off" }
-    var title: String { version?.title ?? "Harness off" }
+    var title: String { version?.runTitle() ?? "Harness off" }
     var rounds: [Int] { scores.keys.sorted() }
     var mean: Double { scores.values.reduce(0, +) / Double(max(scores.count, 1)) }
     var low: Double { scores.values.min() ?? 0 }
