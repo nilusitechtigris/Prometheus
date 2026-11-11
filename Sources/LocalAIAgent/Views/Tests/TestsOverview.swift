@@ -84,12 +84,12 @@ struct TestsOverview: View {
                     if let plain { ScoreBar(title: "Without the harness", score: plain.score, tint: Color.white.opacity(0.72)) }
                     // The label names the version in the lab and only says "Harness" everywhere else.
                     ScoreBar(title: run.version?.label ?? "With the harness", score: run.score, tint: Palette.accent)
-                    if let model {
-                        Text("\(model.displayName) · \(run.askedSet == nil ? "out of 100" : "per cent right")")
-                            .font(.uiCaption)
-                            .foregroundStyle(Forge.dim)
-                            .lineLimit(1)
-                    }
+                    // The run's own model. With no run on the chosen model yet, the card shows another model's,
+                    // and it used to put the chosen model's name under that score.
+                    Text("\(run.displayName) · \(run.askedSet == nil ? "out of 100" : "per cent right")")
+                        .font(.uiCaption)
+                        .foregroundStyle(Forge.dim)
+                        .lineLimit(1)
                 }
             } else {
                 ResultRow(title: model?.displayName ?? "No model chosen yet", value: nil)

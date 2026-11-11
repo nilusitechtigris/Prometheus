@@ -4,7 +4,7 @@
 
 On `main` since 10 November 2026. Not tagged as a release yet.
 
-Every number this project quotes comes from a run someone made in the app. Where there is one run, it says one run. No held-out results exist yet.
+Every number this project quotes comes from a run someone made in the app. Where there is one run, it says one run. No held-out results are published yet.
 
 ### New
 
@@ -22,7 +22,7 @@ Every number this project quotes comes from a run someone made in the app. Where
 ### Changed
 
 - **A new look.** The sidebar is gone: a header holds the name, and a dock at the foot of the window holds the pages. Home is one question and a box to answer it in, and asking there starts a chat. There are two dark themes, Ember and Rose, as two dots at the end of the title bar; they replace lime and the other themes, and a theme saved by an older copy becomes Ember. One glass flame is lit in the middle of Home each time you come to it.
-- **Harness on now means one thing:** v3, the loop, and the app offers no other. The earlier and newer versions stay in the code so results can be repeated. One Terminal line turns a copy into the lab edition, which shows them: see "The harness" in the README.
+- **Harness on now means one thing:** v3, the loop, and the app offers no other. The earlier and newer versions stay in the code so results can be repeated. One Terminal line turns a copy into the lab edition, which shows them: see [the harness](docs/harness.md).
 - **New installs start with the harness on.** Existing installs keep their setting.
 - **Web lookups ask first.** Before the harness searches or opens a page it shows what it will send and where. "Always" and "Never" are in Settings › Harness.
 - **Telemetry is a page of its own.** GPU load, memory and heat show at the foot of the window on every page, on one line with the dock. A click there, or ⌥⌘1, opens the Telemetry page, and Back, Esc or ⌥⌘1 returns to the page you were on. It used to be a strip under the chat.
@@ -33,6 +33,7 @@ Every number this project quotes comes from a run someone made in the app. Where
 - **Tabs you can see are buttons.** The tests on Tests and the sections of Settings are pills, like the kinds of model on Models.
 - **Settings sits in the middle of the page,** like the other pages.
 - **Dev's top bar is one line of pills of one height,** and the headers of Files, the editor, the agent and the Terminal line up across the window.
+- **A short README.** It says what the app is, shows it and gets you installed. The details moved to pages under `docs/`: install and update, Dev mode, the tests, the harness, privacy and safety, and the project layout. Every picture is from 2.0.
 - The Harness Test says before it starts that its knowledge tasks use the web.
 - Every custom button lights up under the pointer, dims while pressed and greys out when it can't be used.
 - Heat is shown in plain words ("Heat: normal", "hottest 43°C"), and meters use a plain mark.
@@ -42,6 +43,7 @@ Every number this project quotes comes from a run someone made in the app. Where
 
 ### Fixed
 
+- The Tests overview put the chosen model's name under a harness score that came from another model. It now names the run's own model.
 - In the smallest window, the Harness Test page grew wider than the window and the model pill under the message box was squeezed out of shape.
 - A model download that failed in the model picker stayed on its progress ring.
 - A model that couldn't be removed failed without a word.

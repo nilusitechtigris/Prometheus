@@ -433,8 +433,8 @@ private struct DevEditorPane: View {
                     } label: {
                         Label("Code", systemImage: "chevron.left")
                     }
-                    .buttonStyle(OutlineButtonStyle())
-                    .controlSize(.small)
+                    // The compact one fits inside the header. The full-size one stood taller than it.
+                    .buttonStyle(OutlineButtonStyle(compact: true))
                     .help("Back to the code")
                     Text(page).font(.geistMono(12)).foregroundStyle(Forge.dim).lineLimit(1).truncationMode(.middle)
                     Spacer(minLength: 4)
@@ -461,8 +461,7 @@ private struct DevEditorPane: View {
                     Spacer(minLength: 4)
                     if dev.isDirty {
                         Button("Save", action: dev.save)
-                            .buttonStyle(OutlineButtonStyle())
-                            .controlSize(.small)
+                            .buttonStyle(OutlineButtonStyle(compact: true))
                     }
                     if path.hasSuffix(".py") || DevWeb.isPage(path) {
                         Button {

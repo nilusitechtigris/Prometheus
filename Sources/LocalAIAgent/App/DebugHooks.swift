@@ -36,6 +36,7 @@ import WebKit
 ///   LOCALAI_DEV_CHECK=/path         check Dev mode's parsing, sandbox and agent with a scripted model
 ///   LOCALAI_DEV_SESSION_CHECK=/path  check the Dev workspace's controller, in a folder with an awkward name
 ///   LOCALAI_DEV_PROJECT=/path       open this folder in Dev mode; LOCALAI_DEV_OPEN=file shows a file,
+///                                   LOCALAI_DEV_PREVIEW=page.html opens a page in Preview,
 ///                                   LOCALAI_DEV_RUN=command runs one, LOCALAI_DEV_SEND=text asks the agent ("fix" fixes
 ///                                   the last run), and LOCALAI_DEV_STOP_AFTER=2 presses Stop that many seconds later
 ///   LOCALAI_DEV_SHOW_COMPARE=1      with LOCALAI_DEV_PROJECT, open the Compare view on the newest comparison;
@@ -387,6 +388,7 @@ enum DebugHooks {
             ui.destination = .home
             dev.open(URL(fileURLWithPath: folder))
             if let file = env["LOCALAI_DEV_OPEN"] { dev.openFile(file) }
+            if let page = env["LOCALAI_DEV_PREVIEW"] { dev.preview(page) }
             if env["LOCALAI_DEV_SHOW_COMPARE"] != nil {
                 // With no comparison saved yet, the Compare view opens on its empty page.
                 if let first = dev.comparisons.first { dev.showComparison(first.id) } else { dev.showsCompare = true }
