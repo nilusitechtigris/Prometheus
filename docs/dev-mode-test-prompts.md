@@ -1,6 +1,6 @@
 # Prompts for testing Dev mode
 
-One well-designed prompt for testing what Dev mode's harness adds when a small model builds a web UI, then shorter ones and traps that a model working alone tends to fall into. They're also in the app: on the Compare page, press **Prompts** next to **Compare**.
+One well-designed prompt for testing what Dev mode's harness adds when a small model builds a web UI, a calmer one, a harder one with four pages, then shorter ones and traps that a model working alone tends to fall into. They're also in the app: on the Compare page, press **Prompts** next to **Compare**.
 
 ## How to run a test
 
@@ -83,6 +83,46 @@ How it's written, and why (the smoothie bar builds on the same ideas):
 - **It asks for the parts that make a UI feel finished:** a default choice, checks on the form with a reason next to the field, colour that carries meaning, an empty state, and saving across a reload. These are where small models cut corners.
 - **The look is described in words a model turns into classes:** cards, soft shadows, one accent colour and a layout that stacks. No library or framework is named, so neither side is pushed toward the internet.
 - **Each part is something the scorecard can see:** fields to fill in, a form to send, a list that grows, totals that change, buttons to press.
+
+## The festival: four pages
+
+The hardest prompt here: four pages in one app, saved acts and tickets that show up on other pages, two themes and more motion. It's new, and no runs of it are recorded yet. Give it a **16K** context window or more, and expect it to take longer than the smoothie bar on each side.
+
+```text
+Build a web app for a two-day music festival called Aurora Nights, with a dark, glowing look, bold colour and smooth animation. It has four pages: Home, Lineup, My schedule and Tickets. The pages are parts of one page: only one shows at a time, and moving between them loads nothing.
+
+Navigation: a bar stays at the top with the festival's name, a link to each page, a count of saved acts on My schedule's link, a count of tickets on Tickets' link, and a button that switches between a dark and a light theme, dark to start with. A link shows its page, is marked as the current one, and puts the page's name at the end of the address: #home, #lineup, #schedule or #tickets. Opening or reloading the app with one of those in the address shows that page, and the browser's Back button returns to the page before.
+
+Home: a tall hero with the festival's name in big gradient text, the dates 12 to 13 July, one line about the festival, and a countdown to the next 12 July in days, hours, minutes and seconds that ticks every second. Two buttons, See the lineup and Get tickets, go to those pages. Under the hero, three cards with big numbers: 8 acts, 3 stages and 8 hours of music.
+
+Lineup: eight act cards, and each stage has its own colour: Sun stage is amber, Moon stage is violet and River stage is teal. Saturday: Neon Harbour (synth pop, Sun stage, 18:00), Velvet Static (dream rock, Moon stage, 18:30), Paper Comets (indie folk, River stage, 20:00) and The Night Kites (electro, Sun stage, 21:30). Sunday: Amber Echo (soul, River stage, 17:00), Silver Tide (ambient, Moon stage, 18:00), Midnight Arcade (disco, Sun stage, 19:30) and Low Sun Choir (folk, Moon stage, 20:00). Every set lasts one hour. Each card shows a big emoji, the name, the genre, the stage as a badge in its colour, the day and time, and a heart button that saves the act to My schedule or takes it out again, filled while it is saved. Above the cards, buttons show All, Saturday or Sunday, and a search box filters by name as I type. When nothing matches, say so.
+
+My schedule: the saved acts under a Saturday heading and a Sunday heading, earliest first. Each row shows its stage's colour, the time from start to end, the name, the stage and a remove button. When two saved acts on the same day overlap, both rows show a Clash badge. With nothing saved, show a friendly message and a button to the lineup.
+
+Tickets: three ticket cards: Day pass at $89, Weekend pass at $149 and VIP weekend at $289, each with one line about it and minus and plus buttons for a quantity from 0 to 6. Beside them, an order summary: a line for each kind of ticket chosen, the subtotal, a booking fee of $5 for each ticket, a promo code field with an Apply button, and the total. The code AURORA10 takes 10% off the subtotal, and any other code says it isn't valid. Under the summary, a name field, an email field and a Buy tickets button. Don't buy with no tickets, an empty name or an email without an @ sign, and say why next to the field. Buying sets the quantities back to zero, shows a confirmation with a booking number, and adds the booking to a Your bookings list on the page, newest first, with its tickets and total.
+
+Behaviour: the counts in the bar, the schedule and the totals update straight away. The saved acts, the ticket quantities, the bookings and the theme are still there after a reload.
+
+Motion: a page fades in and rises a little when it opens, in 300 milliseconds. The mark under the current link slides to the new one. The cards on a page rise and fade into place one after another, when the page opens and when the filter changes. A card lifts and glows in its stage's colour on hover. The heart pops when an act is saved, and a count in the bar pops when it changes. Home's three numbers count up from zero, and the total counts to its new value. The confirmation flips into view. The gradient in the hero's title drifts slowly and is the only motion that loops; everything else takes under a second. Nothing slides in from outside the window, and when the system asks for reduced motion, only fade and keep the gradient still.
+
+Look: a near-black background with large, soft glows of amber, violet and teal behind the content. Cards like frosted glass: a little see-through, with a thin light border and soft shadows. Rounded corners, big bold headings, white text on dark, one font, each stage's colour on its badge, its card's glow and its schedule row, and clear labels on every field. The light theme keeps the same colours on a pale background. In a narrow window everything stacks into one column and the bar's links stay in reach.
+```
+
+How it's written, and why:
+
+- **Four pages, one file.** The prompt says what a page is here: a part of one page, shown one at a time, with its name at the end of the address so that a reload and the Back button work. A model working alone tends to link to files it never writes, or to reach for a router from the internet.
+- **What you do on one page shows on another.** A heart on Lineup changes My schedule and a count in the bar, and a ticket changes another count. That shows whether the script keeps its data in one place and draws every page from it.
+- **The rules can be checked by using the app:** two pairs of acts that clash and one pair that only touches, a fee for each ticket, a promo code, and three reasons a purchase is refused.
+- **Colour carries meaning in three places.** A stage keeps its colour from the act's card to its glow and its schedule row.
+- **Every animation is named, with when it happens.** One of them loops and is called out as the only one, so a page that never stops moving is easy to spot. Nothing slides in from outside the window, which would fail **Fits the window** in the middle of a move.
+- **The look is described in words a model turns into CSS:** glows, frosted glass, gradient text, two themes. No library, font or icon set is named.
+
+What to check by hand, on each side:
+
+- Open Tickets, reload, and it's still Tickets. Back returns to the page before.
+- Save Neon Harbour and Velvet Static: both rows show Clash. Amber Echo and Silver Tide don't, because one ends as the other starts.
+- Two Weekend passes: subtotal $298, booking fee $10, and with AURORA10 $29.80 off, for a total of $278.20.
+- After a reload the saved acts, the quantities, the bookings and the theme are as they were.
 
 ## More to try
 

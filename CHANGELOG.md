@@ -17,6 +17,7 @@ Every number this project quotes comes from a run someone made in the app. Where
 - **Dev harness v2, the checked build.** After an app works it runs extra checks, tries one fix for each thing it finds, and keeps the fix only if it holds. It reports what it could not fix. Not the default and not scored yet, so it shows in the lab edition only.
 - **One harness, v7.** It sends each task down one route and switches on only the parts that route needs, and it starts from the plain model's reply where it can. A request for code has its reply's code run on the examples in the message, and a fact is only looked up when the model isn't sure of it. Lab edition only, and not scored yet.
 - **By route** on the Harness Test: for each kind of task, the questions that went right with the harness and without, and how many flipped each way. It works on runs already made.
+- **A harder prompt for testing Dev mode:** a festival app with four pages, saved acts and tickets that show up on other pages, two themes and named animations. It's in Compare's **Prompts** menu and in [docs/dev-mode-test-prompts.md](docs/dev-mode-test-prompts.md), with what to check by hand. No runs of it are recorded yet.
 - **A copy of your data before every new build touches it.** Chats, test history, Dev mode's chats and comparisons, and shared notes are copied once per build into `Backups`, and the newest five copies are kept.
 
 ### Changed
