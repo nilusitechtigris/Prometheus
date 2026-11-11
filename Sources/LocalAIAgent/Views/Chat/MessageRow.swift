@@ -241,8 +241,8 @@ private struct SideBySideReply: View {
         }
         .padding(12)
         .frame(maxWidth: .infinity, alignment: .topLeading)
-        .background(Forge.card, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
-        .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous).strokeBorder(tint.opacity(tint == Palette.accent ? 0.45 : 0.25), lineWidth: 1))
+        .background(Forge.card, in: RoundedRectangle(cornerRadius: Forge.radius, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: Forge.radius, style: .continuous).strokeBorder(tint.opacity(tint == Palette.accent ? 0.45 : 0.25), lineWidth: 1))
     }
 }
 

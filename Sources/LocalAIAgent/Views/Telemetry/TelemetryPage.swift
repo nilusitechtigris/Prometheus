@@ -42,8 +42,8 @@ struct TelemetryPage: View {
     /// The page Back leads to, by the name the menus give it.
     private var cameFrom: String {
         switch ui.beforeTelemetry {
-        case .home, .telemetry: return "Home"
-        case .chat: return dev.isOn ? "Dev" : "Chat"
+        case .home, .telemetry: return dev.isOn ? "Dev" : "Home"
+        case .chat: return "Chat"
         case .tests: return "Tests"
         case .library: return "Models"
         case .settings: return "Settings"

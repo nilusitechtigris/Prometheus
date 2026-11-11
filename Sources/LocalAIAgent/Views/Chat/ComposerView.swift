@@ -143,7 +143,6 @@ struct ComposerView: View {
         if backends.supportsThinking { ThinkPill(compact: compact) }
         HarnessPill(compact: compact)
         temperaturePill(compact: compact)
-        DevPill(compact: compact)
     }
 
     private func temperaturePill(compact: Bool) -> some View {
@@ -157,7 +156,7 @@ struct ComposerView: View {
             }
             .font(.uiCallout)
             .padding(.horizontal, 11)
-            .padding(.vertical, 5)
+            .frame(height: Forge.pillHeight)
             .contentShape(Capsule(style: .circular))
         }
         .buttonStyle(.soft)
@@ -225,7 +224,7 @@ private struct ThinkPill: View {
             .font(.uiCallout.weight(on ? .semibold : .regular))
             .foregroundStyle(on ? Palette.accent : .secondary)
             .padding(.horizontal, 11)
-            .padding(.vertical, 5)
+            .frame(height: Forge.pillHeight)
             .contentShape(Capsule(style: .circular))
         }
         .buttonStyle(.soft)

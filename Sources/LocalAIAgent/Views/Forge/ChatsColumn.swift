@@ -1,7 +1,7 @@
 import SwiftUI
 
 /// The chats, docked beside the conversation: pick, search, rename and delete, one or several. It belongs to the Chat
-/// page. The rail's Chat button, ⌥⌘2 and the button at its top open and collapse it.
+/// page. The dock's Chat button opens it, and ⌥⌘2 and the button at its top open and collapse it.
 struct ChatsColumn: View {
     @Environment(ChatController.self) private var chat
     @Environment(UIState.self) private var ui

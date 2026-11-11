@@ -237,7 +237,7 @@ struct ModelTestDashboard: View {
                             Text(category.name).font(.uiCallout.weight(.semibold))
                             Text(Format.percent(run.score(for: category))).font(.uiCaption.monospacedDigit()).foregroundStyle(.secondary)
                         }
-                        Card(padding: 0) {
+                        Card(padding: 0, inset: true) {
                             VStack(spacing: 0) {
                                 ForEach(Array(items.enumerated()), id: \.element.id) { index, item in
                                     if index > 0 { Divider() }
@@ -258,7 +258,7 @@ struct ModelTestDashboard: View {
     // MARK: Leaderboard and history
 
     private func leaderboard(selected: ModelTestResult) -> some View {
-        Card(padding: 0) {
+        Card(padding: 0, inset: true) {
             Grid(alignment: .leading, horizontalSpacing: 14, verticalSpacing: 0) {
                 GridRow {
                     Text("#")

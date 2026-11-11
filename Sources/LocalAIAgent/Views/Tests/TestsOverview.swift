@@ -60,7 +60,7 @@ struct TestsOverview: View {
         let run = lab.selectedHardwareRun
         return TestCard(tag: "Only you can run this", title: "This Mac",
                         text: "\(monitor.chipName) · \(memory) GB memory · about \(TestFormat.number(gpu, decimals: 1)) GB usable by the GPU.",
-                        button: run == nil ? "Test this Mac" : "Open the hardware test", primary: run == nil, lit: true) {
+                        button: run == nil ? "Test this Mac" : "Open the hardware test", primary: run == nil) {
             ui.testTab = .hardware
         } content: {
             ResultRow(title: "Memory bandwidth", value: run?.gpuBandwidth.map { "\(TestFormat.gbPerSecond($0)) GB/s" },
@@ -105,13 +105,10 @@ private struct TestCard<Content: View>: View {
     let text: String
     let button: String
     var primary = false
-    /// The middle card stands in the flame's light, like the question box on Home.
-    var lit = false
     let action: () -> Void
     @ViewBuilder var content: Content
 
     var body: some View {
-        let shape = RoundedRectangle(cornerRadius: 22, style: .continuous)
         VStack(alignment: .leading, spacing: 12) {
             Text(tag)
                 .font(.uiCaption.weight(.medium))
@@ -134,9 +131,8 @@ private struct TestCard<Content: View>: View {
         }
         .padding(20)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-        .background(Forge.card, in: shape)
-        .overlay(shape.strokeBorder(Color.white.opacity(0.12), lineWidth: 1))
-        .shadow(color: Palette.glow.opacity(lit ? 0.16 : 0), radius: 28, y: -10)
+        // The same light on all three. The middle one used to have more, and the others none.
+        .panelSurface()
     }
 }
 
@@ -165,7 +161,7 @@ private struct ResultRow: View {
         .padding(.horizontal, 13)
         .padding(.vertical, 11)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Color.white.opacity(0.05), in: RoundedRectangle(cornerRadius: 13, style: .continuous))
+        .insetSurface()
     }
 }
 

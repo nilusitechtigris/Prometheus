@@ -13,7 +13,7 @@ struct PickerPill<Label: View>: View {
         }
         .font(.uiCallout)
         .padding(.horizontal, 11)
-        .padding(.vertical, 5)
+        .frame(height: Forge.pillHeight)
         .contentShape(Capsule(style: .circular))
     }
 }
@@ -134,7 +134,7 @@ struct ContextPickerButton: View {
     }
 }
 
-private struct ContextPopover: View {
+struct ContextPopover: View {
     @Environment(BackendController.self) private var backends
     @Environment(AppSettings.self) private var settings
     @Environment(SystemMonitor.self) private var monitor

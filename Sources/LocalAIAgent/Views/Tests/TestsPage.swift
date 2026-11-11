@@ -16,6 +16,16 @@ enum TestTab: String, CaseIterable, Identifiable {
         }
     }
 
+    var symbol: String {
+        switch self {
+        case .overview: return "square.grid.2x2"
+        case .model: return "cube"
+        case .hardware: return "cpu"
+        case .harness: return "checkmark.shield"
+        case .publish: return "square.and.arrow.up"
+        }
+    }
+
     /// The tabs this copy shows. Publish sends results to the project's page, which is the lab's work:
     /// the public app has every test, and nothing to publish them with.
     static func shown(in edition: Edition = .current) -> [TestTab] {
@@ -49,16 +59,16 @@ private struct TestTabBar: View {
     @Environment(UIState.self) private var ui
     @Environment(TestLab.self) private var lab
     @Environment(BackendController.self) private var backends
-    @Namespace private var underline
 
     var body: some View {
         // Every test is here for everyone. There used to be a Lab switch that hid the Model Test, the
         // Harness Test and Publish; which harness versions a copy offers is the edition's business now.
-        HStack(spacing: 22) {
+        // Pills, like the kinds of model on Models: plain words with a line under one didn't look clickable.
+        HStack(spacing: 6) {
             ForEach(TestTab.shown()) { tab(for: $0) }
             Spacer()
         }
-        .animation(Motion.page, value: ui.testTab)
+        .animation(Motion.quick, value: ui.testTab)
         .padding(.horizontal, 24)
         .padding(.top, 18)
         .frame(maxWidth: 1180)
@@ -69,18 +79,11 @@ private struct TestTabBar: View {
         Button {
             ui.testTab = tab
         } label: {
-            HStack(alignment: .firstTextBaseline, spacing: 7) {
-                UnderlineTab(title: tab.title, selected: ui.testTab == tab, bar: underline)
-                if isRunning(tab) {
-                    ProgressView().controlSize(.mini)
-                } else if let status = status(of: tab) {
-                    Text(status).font(.uiCaption.monospacedDigit()).foregroundStyle(Forge.faint).lineLimit(1)
-                }
-            }
-            .contentShape(Rectangle())
+            ChoicePill(title: tab.title, symbol: tab.symbol, note: status(of: tab), busy: isRunning(tab), selected: ui.testTab == tab)
         }
         .buttonStyle(.soft)
         .help(tab == .publish ? "Share your results on GitHub" : tab == .overview ? "The three tests side by side" : "Show the \(tab.title.lowercased()) test results")
+        .accessibilityAddTraits(ui.testTab == tab ? .isSelected : [])
     }
 
     private func isRunning(_ tab: TestTab) -> Bool {

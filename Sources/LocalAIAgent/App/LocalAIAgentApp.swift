@@ -148,7 +148,7 @@ struct LocalAIAgentApp: App {
         }
     }
 
-    private var inDev: Bool { ui.destination == .chat && dev.isOn }
+    private var inDev: Bool { ui.showsDev(dev) }
 
     /// Opens the editor's find bar, which AppKit reads from the sender's tag.
     private func findInEditor() {
@@ -203,7 +203,6 @@ struct LocalAIAgentApp: App {
             }
             CommandGroup(replacing: .newItem) {
                 Button("New Chat") {
-                    dev.isOn = false
                     ui.destination = .chat
                     chat.newConversation()
                     ui.composerFocusRequest += 1
@@ -213,6 +212,12 @@ struct LocalAIAgentApp: App {
             CommandGroup(before: .sidebar) {
                 Button("Home") { ui.destination = .home }
                     .keyboardShortcut("1")
+                // Home's switch, from the keyboard and from any page.
+                Button(inDev ? "Leave Dev Mode" : "Dev Mode") {
+                    dev.isOn = !inDev
+                    ui.destination = .home
+                }
+                .keyboardShortcut("d", modifiers: [.command, .shift])
                 Button("Chat") { ui.destination = .chat }
                     .keyboardShortcut("2")
                 Button("Tests") { ui.destination = .tests }

@@ -9,8 +9,9 @@ struct ForgeShell: View {
     @Environment(BackendController.self) private var backends
 
     /// One side of a comparison has the whole window, so the name and the dock step aside too.
-    private var pageFills: Bool { ui.destination == .chat && dev.isOn && dev.compareFillsWindow }
-    private var isHome: Bool { ui.destination == .home }
+    private var pageFills: Bool { ui.showsDev(dev) && dev.compareFillsWindow }
+    /// Home's Ask face: the question, with no panel behind it. Its Dev face is a page like the others.
+    private var isHome: Bool { ui.destination == .home && !dev.isOn }
 
     var body: some View {
         let shape = RoundedRectangle(cornerRadius: 20, style: .continuous)
@@ -32,6 +33,7 @@ struct ForgeShell: View {
             }
         }
         .animation(Motion.quick, value: pageFills)
+        .animation(Motion.page, value: isHome)
         .overlay(alignment: .bottom) { ToastHost() }
         .background(WindowBackdrop(isHome: isHome))
         .ignoresSafeArea()
@@ -73,6 +75,14 @@ enum Forge {
     static let dim = Color.white.opacity(0.58)
     static let faint = Color.white.opacity(0.3)
     static let line = Color.white.opacity(0.09)
+    /// The edge of a panel.
+    static let edge = Color.white.opacity(0.11)
+    /// The corner of every panel and widget.
+    static let radius: CGFloat = 16
+    /// How much of the flame's light a panel gets. Small, because every panel on a page has it.
+    static let glowStrength = 0.09
+    /// The height of a pill in a row of controls, so a row's pills share one top and one bottom.
+    static let pillHeight: CGFloat = 28
 
     static func rule(vertical: Bool = false) -> some View {
         line.frame(width: vertical ? 1 : nil, height: vertical ? nil : 1)

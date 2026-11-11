@@ -46,7 +46,7 @@ struct DevWorkspaceView: View {
             if let failure = dev.failureText {
                 ErrorBanner(text: failure) { dev.failureText = nil }
                     .padding(.horizontal, 20)
-                    .padding(.top, 52)
+                    .padding(.top, HomeModeSwitch.barHeight + 8)
             }
         }
     }
@@ -92,34 +92,52 @@ private struct DevDivider: View {
 
 // MARK: - Top bar
 
-private struct DevTopBar: View {
-    @Environment(DevSession.self) private var dev
+/// Sizes the panes share, so their headers and the lines under them meet across the window.
+private enum DevLayout {
+    /// The header of every pane: Files, the editor, the agent and the Terminal.
+    static let header: CGFloat = 36
+    /// The line to type on at the foot of the Terminal and of the agent.
+    static let entry: CGFloat = 46
+}
+
+/// The title of a pane, the same on all of them.
+private struct DevPaneTitle: View {
+    let title: String
+    let symbol: String
 
     var body: some View {
-        HStack(spacing: 10) {
-            Label("Dev", systemImage: "chevron.left.forwardslash.chevron.right")
-                .font(.uiHeadline)
-                .foregroundStyle(Palette.accent)
+        Label(title, systemImage: symbol)
+            .font(.uiCaption.weight(.medium))
+            .foregroundStyle(Forge.dim)
+            .lineLimit(1)
+    }
+}
+
+/// One line: Home's switch and the project at the left, what answers at the right. Every control is a pill
+/// of one height, in the middle of the bar.
+private struct DevTopBar: View {
+    @Environment(DevSession.self) private var dev
+    @State private var showProject = false
+
+    var body: some View {
+        HStack(spacing: 8) {
+            // Home's switch between Ask and Dev is drawn over this corner (see `MainPage`), so it stays
+            // where it was when the page under it changes. The bar leaves its room free.
+            Color.clear.frame(width: HomeModeSwitch.width, height: Forge.pillHeight)
             if let project = dev.project {
-                Menu {
-                    Button("New Project…") { dev.newProject() }
-                    Button("Open Folder…") { dev.chooseFolder() }
-                    Button("Show in Finder") { dev.revealInFinder() }
-                    let others = dev.recents.filter { $0 != project.root.path }
-                    if !others.isEmpty {
-                        Divider()
-                        ForEach(others, id: \.self) { path in
-                            Button((path as NSString).lastPathComponent) { dev.open(URL(fileURLWithPath: path)) }
-                        }
+                Button { showProject.toggle() } label: {
+                    PickerPill {
+                        Image(systemName: "folder").foregroundStyle(.secondary)
+                        // A long name is cut in its middle, so the pill never pushes the pickers off the bar.
+                        Text(Self.short(project.name)).fontWeight(.medium).lineLimit(1)
                     }
-                    Divider()
-                    Button("Close Project") { dev.closeProject() }
-                } label: {
-                    Text(project.name).font(.uiCallout.weight(.medium))
                 }
-                .menuStyle(.borderlessButton)
-                .fixedSize()
+                .buttonStyle(.soft)
+                .glassCapsule(interactive: true)
                 .help(project.root.path)
+                .popover(isPresented: $showProject, arrowEdge: .bottom) {
+                    DevProjectMenu(project: project) { showProject = false }
+                }
             }
             Spacer(minLength: 8)
             if !dev.comparisons.isEmpty || dev.isComparing {
@@ -129,41 +147,79 @@ private struct DevTopBar: View {
                         dev.compareFills = nil
                     }
                 } label: {
-                    HStack(spacing: 5) {
+                    HStack(spacing: 6) {
                         if dev.isComparing { ProgressView().controlSize(.mini) } else { Image(systemName: "square.split.2x1") }
                         Text(dev.showsCompare ? "Close Compare" : "Compare")
                     }
                     .font(.uiCallout.weight(dev.showsCompare ? .semibold : .regular))
                     .foregroundStyle(dev.showsCompare ? Palette.accent : Forge.ink)
                     .padding(.horizontal, 11)
-                    .padding(.vertical, 5)
+                    .frame(height: Forge.pillHeight)
                     .contentShape(Capsule(style: .circular))
                 }
                 .buttonStyle(.soft)
                 .glassCapsule(interactive: true)
                 .help("The same request built with the harness off and on, side by side")
             }
-            GlassGroup(spacing: 6) {
-                FrameworkPickerButton(compact: true)
-                ModelPickerButton(narrow: true)
-                ContextPickerButton(compact: true)
-            }
-            .fixedSize()
-            Button {
-                withAnimation(Motion.quick) { dev.isOn = false }
-            } label: {
-                Label("Back to Chat", systemImage: "bubble.left")
-                    .font(.uiCallout)
-                    .padding(.horizontal, 11)
-                    .padding(.vertical, 5)
-                    .contentShape(Capsule(style: .circular))
-            }
-            .buttonStyle(.soft)
-            .glassCapsule(interactive: true)
-            .help("Leave Dev mode. Your project stays open here.")
+            FrameworkPickerButton(compact: true)
+            ModelPickerButton(narrow: true)
+            ContextPickerButton(compact: true)
         }
-        .padding(.horizontal, 16)
-        .padding(.bottom, 8)
+        .padding(.horizontal, HomeModeSwitch.barInset)
+        .frame(height: HomeModeSwitch.barHeight)
+    }
+
+    private static func short(_ name: String) -> String {
+        name.count <= 28 ? name : "\(name.prefix(13))…\(name.suffix(13))"
+    }
+}
+
+/// What can be done with the project: another one, its folder, or closing it.
+private struct DevProjectMenu: View {
+    @Environment(DevSession.self) private var dev
+    let project: DevProject
+    let dismiss: () -> Void
+
+    var body: some View {
+        let others = dev.recents.filter { $0 != project.root.path }
+        VStack(alignment: .leading, spacing: 2) {
+            Text(project.name).font(.uiHeadline).lineLimit(1).truncationMode(.middle)
+                .padding(.horizontal, 8).padding(.bottom, 4)
+            row("New Project…", "plus.rectangle.on.folder") { dev.newProject() }
+            row("Open Folder…", "folder") { dev.chooseFolder() }
+            row("Show in Finder", "arrow.up.forward.square") { dev.revealInFinder() }
+            if !others.isEmpty {
+                Divider().padding(.vertical, 4)
+                Forge.label("Recent").padding(.horizontal, 8).padding(.bottom, 2)
+                ForEach(others, id: \.self) { path in
+                    row((path as NSString).lastPathComponent, "clock") { dev.open(URL(fileURLWithPath: path)) }
+                        .help(path)
+                }
+            }
+            Divider().padding(.vertical, 4)
+            row("Close Project", "xmark") { dev.closeProject() }
+        }
+        .padding(12)
+        .frame(width: 280)
+    }
+
+    private func row(_ title: String, _ symbol: String, action: @escaping () -> Void) -> some View {
+        let shape = RoundedRectangle(cornerRadius: 8, style: .continuous)
+        return Button {
+            dismiss()
+            action()
+        } label: {
+            HStack(spacing: 9) {
+                Image(systemName: symbol).font(.system(size: 12)).foregroundStyle(Forge.dim).frame(width: 18)
+                Text(title).font(.uiCallout).lineLimit(1).truncationMode(.middle)
+                Spacer(minLength: 0)
+            }
+            .padding(.horizontal, 8)
+            .frame(height: 30)
+            .hoverFill(shape)
+            .contentShape(shape)
+        }
+        .buttonStyle(.soft)
     }
 }
 
@@ -234,8 +290,8 @@ private struct DevFilesColumn: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            HStack {
-                Forge.label("Files")
+            HStack(spacing: 10) {
+                DevPaneTitle(title: "Files", symbol: "folder")
                 Spacer()
                 if !dev.testFiles.isEmpty {
                     Button(action: dev.runTests) { Image(systemName: "checkmark.diamond") }
@@ -258,8 +314,9 @@ private struct DevFilesColumn: View {
                     .help("Reload the file list")
             }
             .font(.uiCaption)
+            .frame(height: DevLayout.header)
             .padding(.horizontal, 12)
-            .padding(.vertical, 8)
+            Forge.rule()
             if creating {
                 TextField("name.py", text: $newName)
                     .textFieldStyle(.plain)
@@ -418,11 +475,11 @@ private struct DevEditorPane: View {
                         .help(DevWeb.isPage(path) ? "Open this page in Preview (⌘R)" : dev.isWorking ? "The agent is working on this folder" : "Run this file in the Terminal (⌘R)")
                     }
                 } else {
-                    Forge.label("Editor", color: Forge.faint)
+                    DevPaneTitle(title: "Editor", symbol: "doc.text")
                     Spacer()
                 }
             }
-            .frame(height: 34)
+            .frame(height: DevLayout.header)
             .padding(.horizontal, 12)
             Forge.rule()
             if let page = dev.previewPath, let project = dev.project {
@@ -457,7 +514,7 @@ private struct DevTerminalPane: View {
     var body: some View {
         VStack(spacing: 0) {
             HStack(spacing: 10) {
-                Label("Terminal", systemImage: "terminal").font(.uiCaption.weight(.medium)).foregroundStyle(Forge.dim)
+                DevPaneTitle(title: "Terminal", symbol: "terminal")
                 if dev.isRunning {
                     ProgressView().controlSize(.mini)
                 }
@@ -476,7 +533,7 @@ private struct DevTerminalPane: View {
                         .foregroundStyle(Forge.dim)
                 }
             }
-            .frame(height: 30)
+            .frame(height: DevLayout.header)
             .padding(.horizontal, 12)
             Forge.rule()
             ScrollViewReader { proxy in
@@ -509,7 +566,8 @@ private struct DevTerminalPane: View {
                     .focused($inputFocused)
                     .onSubmit(submit)
             }
-            .frame(height: 30)
+            // As tall as the agent's line beside it, so the two lines above them meet.
+            .frame(height: DevLayout.entry)
             .padding(.horizontal, 12)
         }
         .background(Forge.black.opacity(0.55))
@@ -616,7 +674,7 @@ private struct DevAgentColumn: View {
     var body: some View {
         VStack(spacing: 0) {
             HStack(spacing: 8) {
-                Label("Agent", systemImage: "sparkles").font(.uiCaption.weight(.medium)).foregroundStyle(Forge.dim)
+                DevPaneTitle(title: "Agent", symbol: "sparkles")
                 Spacer()
                 DevHarnessSwitch()
                 if !dev.messages.isEmpty, !dev.isWorking {
@@ -626,7 +684,7 @@ private struct DevAgentColumn: View {
                         .foregroundStyle(Forge.dim)
                 }
             }
-            .frame(height: 34)
+            .frame(height: DevLayout.header)
             .padding(.horizontal, 12)
             Forge.rule()
             if dev.messages.isEmpty {
@@ -1005,34 +1063,10 @@ private struct DevComposer: View {
                 }
             }
         }
-        .padding(10)
+        .padding(.horizontal, 10)
+        .padding(.vertical, 10)
+        .frame(minHeight: DevLayout.entry)
         .onAppear { focused = true }
-    }
-}
-
-/// Turns Dev mode on, from the chat's row of controls.
-struct DevPill: View {
-    @Environment(DevSession.self) private var dev
-    var compact = false
-
-    var body: some View {
-        Button {
-            withAnimation(Motion.quick) { dev.isOn.toggle() }
-        } label: {
-            HStack(spacing: 5) {
-                Image(systemName: "chevron.left.forwardslash.chevron.right")
-                if !compact { Text("Dev") }
-            }
-            .font(.uiCallout.weight(dev.isOn ? .semibold : .regular))
-            .foregroundStyle(dev.isOn ? Palette.accent : .secondary)
-            .padding(.horizontal, 11)
-            .padding(.vertical, 5)
-            .contentShape(Capsule(style: .circular))
-        }
-        .buttonStyle(.soft)
-        .glassCapsule(interactive: true)
-        .help("Dev mode: open a project folder and build it with the agent")
-        .accessibilityLabel("Dev mode")
     }
 }
 

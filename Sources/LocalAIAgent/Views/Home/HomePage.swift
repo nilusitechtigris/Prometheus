@@ -1,8 +1,8 @@
 import SwiftUI
 
-/// The start page: the flame, one question and a box to answer it in. Asking here starts a chat, so there
-/// is no page to pass through before the work begins. The last task and this Mac's readout are on the
-/// line at the foot of the window (ForgeFoot.swift).
+/// Home's Ask face: the flame, one question and a box to answer it in. Asking here starts a chat, so there
+/// is no page to pass through before the work begins. The switch in the corner turns Home to its other
+/// face, Dev (HomeModeSwitch.swift).
 struct HomePage: View {
     var body: some View {
         GeometryReader { box in
@@ -48,6 +48,8 @@ private struct AskBox: View {
     @Environment(BackendController.self) private var backends
     @Environment(DevSession.self) private var dev
     @State private var showOptions = false
+    @State private var showHarness = false
+    @State private var showContext = false
     @FocusState private var focused: Bool
 
     private let starters: [(title: String, starter: String)] = [
@@ -73,37 +75,44 @@ private struct AskBox: View {
                     .onSubmit(send)
                     .accessibilityLabel("Your task")
                 HStack(spacing: 8) {
-                    // The model in use. With nothing able to answer yet, it says what is missing and leads
-                    // to the chat page, which has the next step.
+                    // Each of the three is chosen here, in a menu of its own. The model and the harness
+                    // used to lead away to Models and Settings, which lost the place.
                     let setup = SetupState(backends)
-                    Button { ui.destination = setup == .ready ? .library : .chat } label: {
+                    // With nothing able to answer yet, the first one says what is missing and leads to the
+                    // chat page, which has the next step.
+                    Button {
+                        if setup == .ready { ui.showModelPicker.toggle() } else { ui.destination = .chat }
+                    } label: {
                         chip(setup == .ready ? "cube" : "exclamationmark.circle",
                              setup == .ready ? (backends.selectedModel?.displayName ?? "Choose a model") : setup.title(backends.kind),
-                             outlined: true)
+                             menu: setup == .ready)
                     }
                     .buttonStyle(.soft)
-                    .help(setup == .ready ? "Change the model" : setup.nextStep)
-                    Button {
-                        ui.settingsTab = .harness
-                        ui.destination = .settings
-                    } label: {
+                    .help(setup == .ready ? "Choose the model and its quantization (⇧⌘M)" : setup.nextStep)
+                    .popover(isPresented: $ui.showModelPicker, arrowEdge: .top) {
+                        ModelPickerPopover { ui.showModelPicker = false }
+                    }
+                    Button { showHarness.toggle() } label: {
                         // The label is safe for either edition: "Harness" for everyone, the version's name in the lab.
                         chip(harnessOn ? "checkmark.shield" : "shield.slash",
                              harnessOn ? "\(settings.activeHarness.label) on" : "Harness off", tinted: harnessOn)
                     }
                     .buttonStyle(.soft)
-                    .help("The harness checks a small model's maths, code and rules before you see the reply")
-                    Menu {
-                        ForEach(AppSettings.contextOptions, id: \.self) { length in
-                            Button("\(length / 1024)K") { settings.contextLength = length }
-                        }
-                    } label: {
-                        chip("text.alignleft", "\(settings.contextLength / 1024)K context")
+                    .disabled(!backends.kind.supportsTools)
+                    .help(backends.kind.supportsTools
+                          ? "The harness checks a small model's maths, code and rules before you see the reply. Click to turn it on or off."
+                          : "The harness works with Ollama and MLX LM")
+                    .popover(isPresented: $showHarness, arrowEdge: .top) {
+                        HarnessPopover { showHarness = false }
                     }
-                    .menuStyle(.borderlessButton)
-                    .menuIndicator(.hidden)
-                    .fixedSize()
+                    Button { showContext.toggle() } label: {
+                        chip("text.alignleft", "\(Format.tokens(backends.effectiveContext)) context")
+                    }
+                    .buttonStyle(.soft)
                     .help("How much text the model keeps in view. More takes more memory.")
+                    .popover(isPresented: $showContext, arrowEdge: .top) {
+                        ContextPopover { showContext = false }
+                    }
                     Spacer(minLength: 8)
                     Button { showOptions.toggle() } label: {
                         Image(systemName: "slider.horizontal.3")
@@ -151,28 +160,32 @@ private struct AskBox: View {
                 }
                 Button {
                     dev.isOn = true
-                    ui.destination = .chat
                 } label: {
                     pill("Build an app")
                 }
                 .buttonStyle(.soft)
-                .help("Open Dev mode, where the agent writes the code and runs it")
+                .help("Turn Home to Dev, where the agent writes the code and runs it")
             }
         }
         // Ask first: the box is ready for typing as soon as the page shows.
         .onAppear { focused = true }
     }
 
-    private func chip(_ symbol: String, _ title: String, outlined: Bool = false, tinted: Bool = false) -> some View {
+    /// One of the choices under the question: what it is now, and the mark of a menu.
+    private func chip(_ symbol: String, _ title: String, tinted: Bool = false, menu: Bool = true) -> some View {
         let shape = RoundedRectangle(cornerRadius: 11, style: .continuous)
         return HStack(spacing: 6) {
             Image(systemName: symbol).font(.system(size: 11, weight: .medium)).foregroundStyle(tinted ? Palette.accent : Forge.dim)
-            Text(title).font(.uiCallout).foregroundStyle(outlined ? Forge.ink : Forge.dim).lineLimit(1)
+            Text(title).font(.uiCallout).foregroundStyle(Forge.ink).lineLimit(1)
+            if menu {
+                Image(systemName: "chevron.up.chevron.down").font(.system(size: 8.5, weight: .semibold)).foregroundStyle(Forge.faint)
+            }
         }
-        .padding(.horizontal, outlined ? 11 : 6)
+        .padding(.horizontal, 11)
         .frame(height: 32)
-        .background(outlined ? Color.white.opacity(0.07) : Color.clear, in: shape)
-        .overlay(shape.strokeBorder(outlined ? Color.white.opacity(0.12) : Color.clear, lineWidth: 1))
+        .background(Color.white.opacity(0.07), in: shape)
+        .overlay(shape.strokeBorder(Color.white.opacity(0.12), lineWidth: 1))
+        .hoverFill(shape)
         .contentShape(shape)
     }
 

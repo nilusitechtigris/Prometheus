@@ -547,7 +547,7 @@ struct HarnessTestDashboard: View {
         if !items.isEmpty {
             VStack(alignment: .leading, spacing: 5) {
                 Text(title).font(.uiCallout.weight(.semibold))
-                Card(padding: 0) {
+                Card(padding: 0, inset: true) {
                     VStack(spacing: 0) {
                         ForEach(Array(items.enumerated()), id: \.element.id) { index, item in
                             if index > 0 { Divider() }
@@ -574,7 +574,7 @@ struct HarnessTestDashboard: View {
             if run.size == .heldOut {
                 closedNote
             } else if !used.isEmpty {
-                Card(padding: 0) {
+                Card(padding: 0, inset: true) {
                     VStack(spacing: 0) {
                         ForEach(Array(used.enumerated()), id: \.element.id) { index, item in
                             if index > 0 { Divider() }

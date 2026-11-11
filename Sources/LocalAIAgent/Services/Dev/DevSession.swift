@@ -64,7 +64,9 @@ final class DevSession {
     /// Output the Terminal keeps on screen for one run.
     static let outputShown = 40_000
 
-    var isOn = UserDefaults.standard.bool(forKey: DevSession.onKey) {
+    /// Whether Home shows Dev instead of Ask. It starts off at every launch, so the app opens on the question;
+    /// what is saved is whether Dev was on last, which decides if the last project is opened again.
+    var isOn = false {
         didSet { UserDefaults.standard.set(isOn, forKey: Self.onKey) }
     }
     private(set) var project: DevProject?
@@ -143,7 +145,7 @@ final class DevSession {
     init(backends: BackendController, settings: AppSettings) {
         self.backends = backends
         self.settings = settings
-        if isOn, let last = recents.first, FileManager.default.fileExists(atPath: last) { open(URL(fileURLWithPath: last)) }
+        if UserDefaults.standard.bool(forKey: Self.onKey), let last = recents.first, FileManager.default.fileExists(atPath: last) { open(URL(fileURLWithPath: last)) }
     }
 
     var isDirty: Bool { openPath != nil && !unreadable && text != savedText }

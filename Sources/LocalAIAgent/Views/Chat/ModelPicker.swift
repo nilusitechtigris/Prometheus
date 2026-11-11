@@ -35,7 +35,7 @@ struct ModelPickerButton: View {
             }
             .font(.uiCallout)
             .padding(.horizontal, 11)
-            .padding(.vertical, 5)
+            .frame(height: Forge.pillHeight)
             .contentShape(Capsule(style: .circular))
         }
         .buttonStyle(.soft)
@@ -65,7 +65,7 @@ struct QuantBadge: View {
     }
 }
 
-private struct ModelPickerPopover: View {
+struct ModelPickerPopover: View {
     @Environment(BackendController.self) private var backends
     @Environment(AppSettings.self) private var settings
     @Environment(UIState.self) private var ui

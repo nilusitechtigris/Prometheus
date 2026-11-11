@@ -240,17 +240,85 @@ struct FlowLayout: Layout {
     }
 }
 
-/// Rounded card container used across the inspector and library.
+/// The one look of a panel or widget, on every page: the card colour, a hairline edge, and a little of the
+/// flame's light on it from above. A test's tile, a model's card, a Settings group and a Telemetry panel
+/// are all this, so no page has a shade or a corner of its own.
+private struct PanelSurface: ViewModifier {
+    var radius: CGFloat
+    var glow: Bool
+
+    func body(content: Content) -> some View {
+        let shape = RoundedRectangle(cornerRadius: radius, style: .continuous)
+        content
+            // The light is the shape's shadow, not the content's, so text and charts inside cost nothing extra.
+            .background(shape.fill(Forge.card).shadow(color: Palette.glow.opacity(glow ? Forge.glowStrength : 0), radius: 13, y: -4))
+            .overlay(shape.strokeBorder(Forge.edge, lineWidth: 1))
+    }
+}
+
+extension View {
+    /// Draws this view as a panel: see `PanelSurface`.
+    func panelSurface(radius: CGFloat = Forge.radius, glow: Bool = true) -> some View {
+        modifier(PanelSurface(radius: radius, glow: glow))
+    }
+
+    /// A block inside a panel: a little lighter than the panel, with no light of its own.
+    func insetSurface(radius: CGFloat = 11) -> some View {
+        let shape = RoundedRectangle(cornerRadius: radius, style: .continuous)
+        return background(Color.white.opacity(0.04), in: shape)
+            .overlay(shape.strokeBorder(Forge.line, lineWidth: 1))
+    }
+}
+
+/// A panel that holds whatever it's given. `inset` is for one that sits inside another panel.
 struct Card<Content: View>: View {
     var padding: CGFloat = 12
+    var inset = false
     @ViewBuilder var content: Content
 
     var body: some View {
-        content
+        let block = content
             .padding(padding)
             .frame(maxWidth: .infinity, alignment: .leading)
-            .background(Color.white.opacity(0.03), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
-            .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).strokeBorder(Forge.line, lineWidth: 1))
+        if inset {
+            block.insetSurface()
+        } else {
+            block.panelSurface()
+        }
+    }
+}
+
+/// One of a row of choices that swap what the page shows: the tests on Tests, the sections of Settings, the
+/// kinds of model on Models. Each is a pill, so it reads as something to click, and the chosen one is lit.
+struct ChoicePill: View {
+    let title: String
+    var symbol: String?
+    /// A number or a short state after the title, such as a test's last score.
+    var note: String?
+    var busy = false
+    let selected: Bool
+
+    static let height: CGFloat = 30
+
+    var body: some View {
+        let shape = Capsule(style: .circular)
+        HStack(spacing: 6) {
+            if let symbol { Image(systemName: symbol).font(.system(size: 11.5, weight: .medium)) }
+            Text(title).font(.uiCallout.weight(selected ? .semibold : .regular))
+            if busy {
+                ProgressView().controlSize(.mini)
+            } else if let note {
+                Text(note).font(.uiCaption.monospacedDigit()).foregroundStyle(selected ? Palette.accent.opacity(0.75) : Forge.dim)
+            }
+        }
+        .lineLimit(1)
+        .foregroundStyle(selected ? Palette.accent : Forge.ink)
+        .padding(.horizontal, 12)
+        .frame(height: Self.height)
+        .background(selected ? Palette.accent.opacity(0.18) : Color.white.opacity(0.06), in: shape)
+        .overlay(shape.strokeBorder(selected ? Palette.accent.opacity(0.45) : Forge.line, lineWidth: 1))
+        .hoverFill(shape, when: !selected)
+        .contentShape(shape)
     }
 }
 

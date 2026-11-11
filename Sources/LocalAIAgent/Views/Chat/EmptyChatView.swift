@@ -72,8 +72,8 @@ private struct WelcomeHero: View {
                     }
                     .padding(14)
                     .frame(maxWidth: .infinity, alignment: .leading)
-                    .background(.background.opacity(0.7), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
-                    .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).strokeBorder(Palette.accent.opacity(0.5), lineWidth: 1))
+                    .panelSurface()
+                    .overlay(RoundedRectangle(cornerRadius: Forge.radius, style: .continuous).strokeBorder(Palette.accent.opacity(0.5), lineWidth: 1))
                     .contentShape(Rectangle())
                 }
                 .buttonStyle(.soft)
@@ -97,8 +97,7 @@ private struct WelcomeHero: View {
                         }
                         .padding(12)
                         .frame(maxWidth: .infinity, alignment: .leading)
-                        .background(.background.opacity(0.7), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
-                        .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).strokeBorder(.separator, lineWidth: 0.5))
+                        .panelSurface()
                         .contentShape(Rectangle())
                     }
                     .buttonStyle(.soft)

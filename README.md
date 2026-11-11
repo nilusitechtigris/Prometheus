@@ -42,7 +42,7 @@ Small models are fast and private, but they get arithmetic wrong, misremember fa
 
 **Side by side** asks the plain model and the harness the same question and shows both replies next to each other, with a line from code about what it could check, and a picture of the result you can save and share. The empty chat page has a three-question demo of it.
 
-**Dev mode** turns the chat into a workspace for web apps and Python: open or start a project, and a coding agent writes, runs and fixes code in it, with a Terminal and a live Preview in the window. **Compare** builds the same request with the agent's harness off and on, side by side, to show what it adds.
+**Dev mode** turns Home into a workspace for web apps and Python: open or start a project, and a coding agent writes, runs and fixes code in it, with a Terminal and a live Preview in the window. **Compare** builds the same request with the agent's harness off and on, side by side, to show what it adds.
 
 The app also measures all of this for you: how capable a model is, how fast your Mac is, and how much each version of the harness really helps.
 
@@ -143,7 +143,7 @@ GPU load, memory and heat show at the foot of the window on every page. Click th
 
 ![Dev mode with a project open: files, editor, Terminal and the agent](docs/screenshots/dev.png)
 
-Press **Dev** (`</>`) under the message box, then start a **New Project** or open a folder. The window becomes a workspace, with a coding agent that runs on your own model:
+On **Home**, flip the switch in the top left corner from **Ask** to **Dev** (or press ⇧⌘D), then start a **New Project** or open a folder. The page becomes a workspace, with a coding agent that runs on your own model:
 
 - **Files:** hover over a Python file and press ▶ to run it.
 - **Editor:** line numbers, Python colours, find (⌘F), save (⌘S) and run (⌘R).

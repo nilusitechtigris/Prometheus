@@ -384,7 +384,7 @@ enum DebugHooks {
         }
         if let folder = env["LOCALAI_DEV_PROJECT"] {
             dev.isOn = true
-            ui.destination = .chat
+            ui.destination = .home
             dev.open(URL(fileURLWithPath: folder))
             if let file = env["LOCALAI_DEV_OPEN"] { dev.openFile(file) }
             if env["LOCALAI_DEV_SHOW_COMPARE"] != nil {

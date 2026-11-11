@@ -3,7 +3,7 @@ import SwiftUI
 // The live hardware readout on the Telemetry page (TelemetryPage.swift), ordered along the data path
 // of a reply: GPU (does the work) → memory (holds the model) → CPU.
 
-/// A titled panel with its own tinted background, so each group reads as a separate widget.
+/// A titled panel. It has the look every panel in the app has (`panelSurface`).
 struct PanelWidget<Trailing: View, Content: View>: View {
     let title: String
     let symbol: String
@@ -13,7 +13,6 @@ struct PanelWidget<Trailing: View, Content: View>: View {
     @ViewBuilder var content: Content
 
     var body: some View {
-        let shape = RoundedRectangle(cornerRadius: 16, style: .continuous)
         VStack(alignment: .leading, spacing: 12) {
             HStack(spacing: 9) {
                 Image(systemName: symbol)
@@ -27,8 +26,7 @@ struct PanelWidget<Trailing: View, Content: View>: View {
         }
         .padding(16)
         .frame(maxWidth: fill ? .infinity : nil, maxHeight: fill ? .infinity : nil, alignment: .topLeading)
-        .background(Forge.card, in: shape)
-        .overlay(shape.strokeBorder(Forge.line, lineWidth: 1))
+        .panelSurface()
     }
 }
 
@@ -139,7 +137,6 @@ private struct ComponentCard<Stats: View, Footer: View>: View {
     @ViewBuilder var footer: Footer
 
     var body: some View {
-        let shape = RoundedRectangle(cornerRadius: 22, style: .continuous)
         VStack(alignment: .leading, spacing: 16) {
             HStack(spacing: 8) {
                 Image(systemName: symbol).font(.system(size: 13, weight: .medium)).foregroundStyle(Palette.accent)
@@ -154,8 +151,7 @@ private struct ComponentCard<Stats: View, Footer: View>: View {
         }
         .padding(20)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-        .background(Forge.card, in: shape)
-        .overlay(shape.strokeBorder(Forge.line, lineWidth: 1))
+        .panelSurface()
     }
 }
 

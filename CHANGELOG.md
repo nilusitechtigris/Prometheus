@@ -27,6 +27,12 @@ Every number this project quotes comes from a run someone made in the app. Where
 - **Web lookups ask first.** Before the harness searches or opens a page it shows what it will send and where. "Always" and "Never" are in Settings › Harness.
 - **Telemetry is a page of its own.** GPU load, memory and heat show at the foot of the window on every page, on one line with the dock. A click there, or ⌥⌘1, opens the Telemetry page, and Back, Esc or ⌥⌘1 returns to the page you were on. It used to be a strip under the chat.
 - **Tests opens on an overview:** one card each for the Model test, this Mac and the Harness test, with the last result. Publish is in the lab edition only.
+- **Five pages in the dock: Home, Chat, Models, Tests, Settings.** Ask is now Home and History is now Chat. Dev is no longer a page of its own: it is the other face of Home, behind a switch in Home's top left corner (Ask, Dev) that stays in the same place on both, and ⇧⌘D flips it from anywhere. The app always opens on Ask. The Dev button under the message box and the last task at the foot of Home are gone.
+- **On Home, the model, the harness and the context window are chosen in place,** each in its own menu under the question. The model and the harness used to lead away to Models and Settings.
+- **One look for every panel.** Tiles on the test pages, cards on Models, Telemetry's panels and the groups in Settings share one colour, one corner, one edge and the same small glow. The glow used to be on one card of the Tests overview only, and stronger.
+- **Tabs you can see are buttons.** The tests on Tests and the sections of Settings are pills, like the kinds of model on Models.
+- **Settings sits in the middle of the page,** like the other pages.
+- **Dev's top bar is one line of pills of one height,** and the headers of Files, the editor, the agent and the Terminal line up across the window.
 - The Harness Test says before it starts that its knowledge tasks use the web.
 - Every custom button lights up under the pointer, dims while pressed and greys out when it can't be used.
 - Heat is shown in plain words ("Heat: normal", "hottest 43°C"), and meters use a plain mark.

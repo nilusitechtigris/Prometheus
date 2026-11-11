@@ -69,8 +69,8 @@ struct DevCompareStarter: View {
                     .background(Forge.card, in: RoundedRectangle(cornerRadius: compact ? 9 : 14, style: .continuous))
                     .overlay(RoundedRectangle(cornerRadius: compact ? 9 : 14, style: .continuous)
                         .strokeBorder(compact ? Forge.line : Color.white.opacity(0.14), lineWidth: 1))
-                    // On the empty page the box stands in the flame's light, like the question box on Home.
-                    .shadow(color: Palette.glow.opacity(compact ? 0 : 0.16), radius: 24, y: -8)
+                    // On the empty page the box has the same little light every panel has.
+                    .shadow(color: Palette.glow.opacity(compact ? 0 : Forge.glowStrength), radius: 13, y: -4)
                     .onSubmit(start)
                 Menu {
                     ForEach(["Demo", "Quick", "Traps"], id: \.self) { group in

@@ -64,18 +64,13 @@ struct ModelLibraryView: View {
     }
 
     private func filterButton(_ c: CatalogModel.Category?, title: String, symbol: String) -> some View {
-        let active = category == c
-        return Button {
+        Button {
             withAnimation(Motion.quick) { category = c }
         } label: {
-            Label(title, systemImage: symbol)
-                .font(.uiCallout)
-                .padding(.horizontal, 10)
-                .padding(.vertical, 5)
-                .background(active ? AnyShapeStyle(Palette.accent.opacity(0.18)) : AnyShapeStyle(.quaternary.opacity(0.5)), in: Capsule(style: .circular))
-                .foregroundStyle(active ? Palette.accent : .primary)
+            ChoicePill(title: title, symbol: symbol, selected: category == c)
         }
         .buttonStyle(.soft)
+        .accessibilityAddTraits(category == c ? .isSelected : [])
     }
 
     private var filtered: [CatalogModel] {
@@ -147,10 +142,10 @@ private struct SafetyCallout: View {
                     .fixedSize(horizontal: false, vertical: true)
             }
         }
-        .padding(14)
+        .padding(16)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Palette.good.opacity(0.08), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
-        .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).strokeBorder(Palette.good.opacity(0.25), lineWidth: 0.5))
+        .panelSurface()
+        .overlay(RoundedRectangle(cornerRadius: Forge.radius, style: .continuous).strokeBorder(Palette.good.opacity(0.28), lineWidth: 1))
     }
 }
 
