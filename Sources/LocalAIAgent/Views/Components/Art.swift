@@ -1,11 +1,10 @@
 import AppKit
 import SwiftUI
 
-/// The AI-generated background pictures, from assets/art. They're bundled with the app.
+/// The AI-generated pictures the app shows, from assets/art. They're bundled with the app.
+/// The lime pictures of the earlier look (window, home-hero, flame) are still in that folder, but
+/// nothing shows them any more, so they are no longer loaded or bundled.
 enum Art {
-    static let window = load("window")
-    static let homeHero = load("home-hero")
-    static let flame = load("flame")
     private static let flameEmber = load(AppTheme.ember.flameArt)
     private static let flameRose = load(AppTheme.rose.flameArt)
 
