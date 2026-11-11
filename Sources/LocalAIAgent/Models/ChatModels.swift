@@ -15,6 +15,10 @@ struct ChatMessage: Identifiable, Codable, Equatable {
     var harnessSteps: [String]?
     /// The version of the harness that worked on this reply. Nil when it was off.
     var harnessVersion: SavedHarnessVersion?
+    /// The route the one harness sent this message down, by name, and which revision of it that was. Nil for
+    /// every other version. A name and not the enum, so a route a later build adds can't fail the whole file.
+    var harnessRoute: String?
+    var harnessRevision: Int?
     /// The file v5's agents shared for this reply, as Markdown. Nil in every other version.
     var sharedNotes: String?
     /// The plain model's reply to the same message, when the two were asked for side by side.

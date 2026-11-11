@@ -3,7 +3,7 @@ import SwiftUI
 /// The same model with the harness off and through each version of it: tools from trusted sites plus
 /// prompt injection protection.
 struct HarnessTestDashboard: View {
-    enum Detail: Hashable { case howItWorks, versions, changes, repeats, tools, sites }
+    enum Detail: Hashable { case howItWorks, versions, changes, routes, repeats, tools, sites }
 
     @Environment(TestLab.self) private var lab
     @Environment(BackendController.self) private var backends
@@ -322,6 +322,7 @@ struct HarnessTestDashboard: View {
             switch (shown, run, baseline) {
             case (.versions, _, _): versions(run, baseline)
             case (.changes, let run?, let baseline?): changes(run, baseline)
+            case (.routes, let run?, _): routes(run, baseline)
             case (.repeats, let run?, _): repeatTable(lab.repeats(of: run), shown: run)
             case (.tools, let run?, _): toolActivity(run)
             case (.sites, _, _): TrustedSiteList()
@@ -335,11 +336,67 @@ struct HarnessTestDashboard: View {
         // Comparing versions is the lab's.
         if Edition.current.isLab { tabs.append((.versions, "Versions")) }
         if run != nil, baseline != nil { tabs.append((.changes, "What changed")) }
+        // Only for runs that say which route a question took, or logged enough to tell.
+        if let run, run.items.contains(where: { $0.routeTaken != nil }) { tabs.append((.routes, "By route")) }
         // Max keeps its poisoned pages in the panel, so its repeats go here.
         if let run, showsPages(run), !lab.repeats(of: run).isEmpty { tabs.append((.repeats, "Repeats")) }
         if run != nil { tabs.append((.tools, "Tool use")) }
         tabs.append((.sites, "Trusted sites"))
         return tabs
+    }
+
+    // MARK: Routes
+
+    /// Where the harness sent each question, and how the questions on each route did with it and without.
+    private func routes(_ run: ModelTestResult, _ baseline: ModelTestResult?) -> some View {
+        let rows = run.routeRows(against: baseline)
+        func time(_ seconds: Double?) -> String {
+            guard let seconds else { return "—" }
+            return seconds >= 90 ? "\(Int(seconds) / 60)m \(String(format: "%02d", Int(seconds) % 60))s" : "\(Int(seconds.rounded())) s"
+        }
+        return VStack(alignment: .leading, spacing: 12) {
+            Text("The harness sends each question down one route and switches on only that route's parts. A route earns its place when more of its own questions go from wrong to right than the other way, for the time it adds."
+                 + (baseline == nil ? " Run with Harness off too to see that." : ""))
+                .font(.uiCaption).foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+            Grid(alignment: .leading, horizontalSpacing: 18, verticalSpacing: 12) {
+                GridRow {
+                    Text("Route")
+                    Text("Questions").gridColumnAlignment(.trailing)
+                    Text("Right, off").gridColumnAlignment(.trailing)
+                    Text("Right, on").gridColumnAlignment(.trailing)
+                    Text("To right").gridColumnAlignment(.trailing)
+                    Text("To wrong").gridColumnAlignment(.trailing)
+                    Text("Time, off").gridColumnAlignment(.trailing)
+                    Text("Time, on").gridColumnAlignment(.trailing)
+                }
+                .font(.uiCaption.weight(.semibold))
+                .foregroundStyle(.secondary)
+                ForEach(rows) { row in
+                    GridRow {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(row.title).font(.uiCallout.weight(.medium))
+                            Text(row.route?.summary ?? "This version didn't log what it took these questions for.")
+                                .font(.uiCaption2).foregroundStyle(.secondary)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        Text("\(row.questions)")
+                        Text(row.rightPlain.map { "\($0)" } ?? "—").foregroundStyle(.secondary)
+                        Text("\(row.right)").foregroundStyle(Palette.accent)
+                        Text(row.rightPlain == nil ? "—" : "\(row.gained)")
+                        Text(row.rightPlain == nil ? "—" : "\(row.lost)")
+                        Text(time(row.secondsPlain)).foregroundStyle(.secondary)
+                        Text(time(row.seconds))
+                    }
+                    .font(.uiCallout)
+                    .monospacedDigit()
+                }
+            }
+            panelFootnote(run.size == .heldOut
+                ? "These totals are for confirming. What to change in the harness is decided on Practice runs, never on these."
+                : "On one run, a gap of a question or two on a route can be chance. What changed says how likely that is for the whole test.")
+        }
     }
 
     // MARK: Topics

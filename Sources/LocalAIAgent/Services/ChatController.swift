@@ -313,6 +313,9 @@ final class ChatController {
         await TestLab.work(version, prompt: messages.last?.content ?? "", earlier: earlier, setup: setup,
                            maxTokens: request.maxTokens ?? 2_048, total: &reply) { [weak self] plan in
             guard let self else { return TestLab.Reply() }
+            if plan.direct {
+                return await streamDirect(request, messages: messages, messageID: messageID, convID: convID)
+            }
             if let agent = plan.agent {
                 return await streamAgent(plan, agent, base: request, messageID: messageID, convID: convID)
             }
@@ -321,7 +324,34 @@ final class ChatController {
             }
             return await streamAttempt(plan, keepThoughts: version == .thinking, base: request, messages: messages, messageID: messageID, convID: convID)
         }
-        update(messageID, in: convID) { $0.harnessResult = reply.result }
+        update(messageID, in: convID) {
+            $0.harnessResult = reply.result
+            $0.harnessRoute = reply.route?.rawValue
+            $0.harnessRevision = version == .unified ? HarnessPolicy.revision : nil
+        }
+    }
+
+    /// The reply the plain model gives, for the one harness: the request the harness-off path sends, untouched.
+    /// Side by side has already asked for exactly that, so its reply is used again rather than asked for twice,
+    /// which would also compare two samples of one request and call the difference a result.
+    private func streamDirect(_ request: ChatRequest, messages: [ChatMessage], messageID: UUID, convID: UUID) async -> TestLab.Reply {
+        if let plain = message(messageID, in: convID)?.plain, plain.errorText == nil, !plain.content.isEmpty {
+            update(messageID, in: convID) {
+                $0.content = plain.content
+                $0.thinking = plain.thinking
+                $0.metrics = plain.metrics
+            }
+            return replySoFar(in: messageID, convID: convID)
+        }
+        var fresh = LiveGeneration()
+        fresh.stage = live?.stage
+        fresh.round = live?.round ?? 1
+        live = fresh
+        let built = buildTurns(messages, context: request.contextLength)
+        trimmedMessageCount = built.trimmed
+        await stream(request, backend: backends.backend, messageID: messageID, convID: convID, estimatedPrompt: built.estimated,
+                     keepIfStopped: (live?.round ?? 1) > 1)
+        return replySoFar(in: messageID, convID: convID)
     }
 
     /// One attempt at the reply. It streams like any reply, and hands back what the loop needs to check it.
