@@ -5,6 +5,11 @@ import SwiftUI
 /// With Reduce Motion on in System Settings, everything changes at once instead.
 enum Motion {
     private static var reduced: Bool { NSWorkspace.shared.accessibilityDisplayShouldReduceMotion }
+    /// Whether Reduce Motion is on, for views that move by themselves.
+    static var isReduced: Bool { reduced }
+
+    /// The flame flying between the middle of Home and its place beside the title.
+    static var flame: Animation? { reduced ? nil : .timingCurve(0.5, 0, 0.2, 1, duration: 0.85) }
 
     /// Pages and tabs changing.
     static var page: Animation? { reduced ? nil : .snappy(duration: 0.28) }

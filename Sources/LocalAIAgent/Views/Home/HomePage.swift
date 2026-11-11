@@ -1,193 +1,176 @@
 import SwiftUI
 
-/// The start page: what the app is for, a box to start a task, the model in use and recent work.
-/// Every number on it comes from this Mac: if there's nothing to show yet, it says so.
+/// The start page: the flame, one question and a box to answer it in. Asking here starts a chat, so there
+/// is no page to pass through before the work begins. Every number on it comes from this Mac.
 struct HomePage: View {
-    @Environment(UIState.self) private var ui
-    @Environment(ChatController.self) private var chat
-
     var body: some View {
-        ScrollView {
-            ZStack(alignment: .topTrailing) {
-                heroPicture
-                content
-            }
-            .frame(maxWidth: 1240)
-            .frame(maxWidth: .infinity)
-        }
-    }
-
-    /// The crystal, fading out to the left and at the foot so it melts into the page.
-    @ViewBuilder
-    private var heroPicture: some View {
-        if let picture = Art.homeHero {
-            Image(nsImage: picture)
-                .interpolation(.high)
-                .resizable()
-                .scaledToFit()
-                .frame(width: 800)
-                .mask(LinearGradient(stops: [.init(color: .clear, location: 0), .init(color: .black, location: 0.36)],
-                                     startPoint: .leading, endPoint: .trailing))
-                .mask(LinearGradient(stops: [.init(color: .black, location: 0.7), .init(color: .clear, location: 1)],
-                                     startPoint: .top, endPoint: .bottom))
-                .allowsHitTesting(false)
-                .accessibilityHidden(true)
-        }
-    }
-
-    private var content: some View {
-            VStack(alignment: .leading, spacing: 16) {
-                HomeHero()
-                HStack(alignment: .top, spacing: 16) {
-                    VStack(spacing: 16) {
-                        TaskBuilder()
-                        RecentTasks()
+        GeometryReader { box in
+            ScrollView {
+                VStack(spacing: 0) {
+                    Spacer(minLength: 4)
+                    flamePlace
+                    VStack(spacing: 10) {
+                        Text("What should we work on?")
+                            .font(.geist(44, weight: .medium))
+                            .foregroundStyle(Forge.ink)
+                        Text("Small models, serious work. Everything runs on this Mac.")
+                            .font(.geist(16))
+                            .foregroundStyle(Forge.dim)
                     }
-                    .frame(minWidth: 0, maxWidth: .infinity)
-                    VStack(spacing: 16) {
-                        ActiveModelCard()
-                        ProTip()
-                    }
-                    .frame(width: 270)
+                    .multilineTextAlignment(.center)
+                    .padding(.top, 2)
+                    AskBox()
+                        .frame(maxWidth: 760)
+                        .padding(.top, 22)
+                    Spacer(minLength: 16)
+                    HomeFooter()
                 }
+                .padding(.horizontal, 20)
+                .padding(.bottom, 4)
+                // Fills the page, so the question sits in the middle of a tall window and scrolls in a short one.
+                .frame(maxWidth: .infinity, minHeight: box.size.height)
             }
-            .padding(24)
+        }
+    }
+
+    /// Where the flame burns on this page. `ForgeShell` draws the flame itself and moves it here.
+    private var flamePlace: some View {
+        Color.clear
+            .frame(width: FlameSlot.home.size.width, height: FlameSlot.home.size.height)
+            .flamePlace(.home)
     }
 }
 
-// MARK: - Hero
+// MARK: - The question box
 
-private struct HomeHero: View {
-    @Environment(UIState.self) private var ui
-    @Environment(ChatController.self) private var chat
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            (Text("Small models.\n").foregroundStyle(Forge.ink) + Text("Serious work.").foregroundStyle(Palette.accent))
-                .font(.geist(46, weight: .semibold))
-                .lineSpacing(0)
-            Text("Turn lightweight LLMs into focused, reliable task executors.")
-                .font(.geist(16))
-                .foregroundStyle(Forge.dim)
-            HStack(spacing: 12) {
-                Button {
-                    ui.destination = .chat
-                    chat.newConversation()
-                    ui.composerFocusRequest += 1
-                } label: {
-                    Label("Start a new task", systemImage: "play.fill")
-                }
-                .buttonStyle(AccentButtonStyle())
-                Button {
-                    ui.destination = .library
-                } label: {
-                    HStack(spacing: 8) {
-                        Text("Browse models")
-                        Image(systemName: "arrow.right")
-                    }
-                }
-                .buttonStyle(OutlineButtonStyle())
-            }
-            .padding(.top, 14)
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(.top, 48)
-        .frame(height: 334, alignment: .top)
-    }
-}
-
-// MARK: - Task builder
-
-private struct TaskBuilder: View {
+private struct AskBox: View {
     @Environment(ChatController.self) private var chat
     @Environment(UIState.self) private var ui
     @Environment(AppSettings.self) private var settings
+    @Environment(BackendController.self) private var backends
+    @Environment(DevSession.self) private var dev
     @State private var task = ""
     @State private var showOptions = false
     @FocusState private var focused: Bool
 
-    private let templates: [(symbol: String, title: String, starter: String)] = [
-        ("doc.text", "Summarize", "Summarize this in 3 key points:\n\n"),
-        ("tablecells", "Extract data", "Extract the names, dates and amounts from this as a table:\n\n"),
-        ("chart.bar", "Analyze content", "Analyze this and tell me what matters most:\n\n"),
-        ("wand.and.stars", "Build an assistant", "Act as an assistant that helps me with "),
+    private let starters: [(title: String, starter: String)] = [
+        ("Summarize", "Summarize this in 3 key points:\n\n"),
+        ("Extract data", "Extract the names, dates and amounts from this as a table:\n\n"),
+        ("Analyze content", "Analyze this and tell me what matters most:\n\n"),
     ]
 
     private var canSend: Bool { chat.canSend && !task.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+    private var harnessOn: Bool { settings.harnessEnabled && backends.kind.supportsTools }
 
     var body: some View {
-        PanelWidget(title: "Task builder", symbol: "bolt.fill") {
-            Button { showOptions.toggle() } label: {
-                HStack(spacing: 5) {
-                    Image(systemName: "slider.horizontal.3")
-                    Text("Advanced")
-                    Image(systemName: "chevron.down").font(.system(size: 8, weight: .semibold))
-                }
-                .font(.uiCaption)
-                .foregroundStyle(Forge.dim)
-                .padding(.horizontal, 10)
-                .padding(.vertical, 5)
-                .overlay(Capsule(style: .circular).strokeBorder(Forge.line, lineWidth: 1))
-            }
-            .buttonStyle(.soft)
-            .help("Temperature, response length and system instructions")
-            .popover(isPresented: $showOptions, arrowEdge: .bottom) { GenerationOptionsView().environment(settings) }
-        } content: {
-            VStack(alignment: .leading, spacing: 4) {
-                Text("What do you want to accomplish?").font(.geist(19, weight: .medium))
-                Text("Describe your goal, or choose a template.").font(.uiCallout).foregroundStyle(Forge.dim)
-            }
-            HStack(spacing: 10) {
-                Image(systemName: "sparkles").foregroundStyle(Palette.accent)
-                TextField("e.g. Summarize this document in 3 key points…", text: $task, axis: .vertical)
+        let shape = RoundedRectangle(cornerRadius: 22, style: .continuous)
+        VStack(spacing: 16) {
+            VStack(alignment: .leading, spacing: 12) {
+                TextField("Summarize this document in 3 key points…", text: $task, axis: .vertical)
                     .textFieldStyle(.plain)
-                    .font(.uiBody)
-                    .lineLimit(1...5)
+                    .font(.geist(17))
+                    .lineLimit(2...6)
                     .focused($focused)
                     .onSubmit(send)
-                Button(action: send) {
-                    Image(systemName: "arrow.right")
-                        .font(.system(size: 13, weight: .bold))
-                        .foregroundStyle(Palette.onAccent)
-                        .frame(width: 32, height: 32)
-                        .background(Palette.gradient, in: RoundedRectangle(cornerRadius: 9, style: .continuous))
+                    .accessibilityLabel("Your task")
+                HStack(spacing: 8) {
+                    Button { ui.destination = .library } label: {
+                        chip("cube", backends.selectedModel?.displayName ?? "Choose a model", outlined: true)
+                    }
+                    .buttonStyle(.soft)
+                    .help("Change the model")
+                    Button {
+                        ui.settingsTab = .harness
+                        ui.destination = .settings
+                    } label: {
+                        chip(harnessOn ? "checkmark.shield" : "shield.slash", harnessOn ? "Harness on" : "Harness off", tinted: harnessOn)
+                    }
+                    .buttonStyle(.soft)
+                    .help("The harness checks a small model's maths, code and rules before you see the reply")
+                    chip("text.alignleft", "\(settings.contextLength / 1024)K context")
+                    Spacer(minLength: 8)
+                    Button { showOptions.toggle() } label: {
+                        Image(systemName: "slider.horizontal.3")
+                            .font(.system(size: 13, weight: .medium))
+                            .foregroundStyle(Forge.dim)
+                            .frame(width: 36, height: 36)
+                            .contentShape(Circle())
+                    }
+                    .buttonStyle(.soft)
+                    .help("Temperature, response length and system instructions")
+                    .accessibilityLabel("Options")
+                    .popover(isPresented: $showOptions, arrowEdge: .bottom) { GenerationOptionsView().environment(settings) }
+                    Button(action: send) {
+                        Image(systemName: "arrow.up")
+                            .font(.system(size: 15, weight: .bold))
+                            .foregroundStyle(Palette.onAccent)
+                            .frame(width: 40, height: 40)
+                            .background(Palette.gradient, in: Circle())
+                    }
+                    .buttonStyle(.soft)
+                    .disabled(!canSend)
+                    .opacity(canSend ? 1 : 0.55)
+                    .help("Start this task in a new chat")
+                    .accessibilityLabel("Send")
+                }
+            }
+            .padding(.horizontal, 18)
+            .padding(.top, 16)
+            .padding(.bottom, 12)
+            .background(Forge.card.opacity(0.9), in: shape)
+            .overlay(shape.strokeBorder(focused ? Palette.accent.opacity(0.55) : Color.white.opacity(0.14), lineWidth: 1))
+            // The flame's light falling on the box from above.
+            .shadow(color: Palette.glow.opacity(0.2), radius: 30, y: -12)
+
+            HStack(spacing: 8) {
+                ForEach(starters, id: \.title) { starter in
+                    Button {
+                        task = starter.starter
+                        focused = true
+                    } label: {
+                        pill(starter.title)
+                    }
+                    .buttonStyle(.soft)
+                    .help("Start from this template")
+                }
+                Button {
+                    dev.isOn = true
+                    ui.destination = .chat
+                } label: {
+                    pill("Build an app")
                 }
                 .buttonStyle(.soft)
-                .disabled(!canSend)
-                .help("Start this task in a new chat")
+                .help("Open Dev mode, where the agent writes the code and runs it")
             }
-            .padding(.leading, 14)
-            .padding(.trailing, 7)
-            .padding(.vertical, 7)
-            .background(Color.black.opacity(0.35), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
-            .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous)
-                .strokeBorder(focused ? Palette.accent.opacity(0.6) : Forge.line, lineWidth: 1))
-            // One line when they fit. In a narrow window they wrap, still starting at the left edge: a grid
-            // centred each one in its column, which lined up with nothing.
-            FlowLayout(spacing: 8, lineSpacing: 8) { chips }
-                .frame(maxWidth: .infinity, alignment: .leading)
         }
+        // Ask first: the box is ready for typing as soon as the page shows.
+        .onAppear { focused = true }
     }
 
-    private var chips: some View {
-        ForEach(templates, id: \.title) { template in
-            Button {
-                task = template.starter
-                focused = true
-            } label: {
-                HStack(spacing: 8) {
-                    Image(systemName: template.symbol).foregroundStyle(Forge.dim)
-                    Text(template.title).lineLimit(1).fixedSize()
-                }
-                .font(.uiCaption)
-                .padding(.horizontal, 13)
-                .padding(.vertical, 8)
-                .overlay(Capsule(style: .circular).strokeBorder(Forge.line, lineWidth: 1))
-                .contentShape(Capsule(style: .circular))
-            }
-            .buttonStyle(.soft)
-            .help("Start from this template")
+    private func chip(_ symbol: String, _ title: String, outlined: Bool = false, tinted: Bool = false) -> some View {
+        let shape = RoundedRectangle(cornerRadius: 11, style: .continuous)
+        return HStack(spacing: 6) {
+            Image(systemName: symbol).font(.system(size: 11, weight: .medium)).foregroundStyle(tinted ? Palette.accent : Forge.dim)
+            Text(title).font(.uiCallout).foregroundStyle(outlined ? Forge.ink : Forge.dim).lineLimit(1)
         }
+        .padding(.horizontal, outlined ? 11 : 6)
+        .frame(height: 32)
+        .background(outlined ? Color.white.opacity(0.07) : Color.clear, in: shape)
+        .overlay(shape.strokeBorder(outlined ? Color.white.opacity(0.12) : Color.clear, lineWidth: 1))
+        .contentShape(shape)
+    }
+
+    private func pill(_ title: String) -> some View {
+        Text(title)
+            .font(.uiCallout)
+            .foregroundStyle(Forge.ink)
+            .lineLimit(1)
+            .fixedSize()
+            .padding(.horizontal, 16)
+            .frame(height: 36)
+            .background(Forge.card.opacity(0.9), in: Capsule(style: .circular))
+            .overlay(Capsule(style: .circular).strokeBorder(Color.white.opacity(0.14), lineWidth: 1))
+            .contentShape(Capsule(style: .circular))
     }
 
     private func send() {
@@ -200,209 +183,91 @@ private struct TaskBuilder: View {
     }
 }
 
-// MARK: - Recent tasks
+// MARK: - Foot of the page
 
-private struct RecentTasks: View {
+/// The last task at the left and this Mac's state at the right, both from real data.
+private struct HomeFooter: View {
     @Environment(ChatController.self) private var chat
     @Environment(UIState.self) private var ui
-
-    private var recent: [Conversation] { Array(chat.conversations.filter { !$0.messages.isEmpty }.prefix(3)) }
+    @Environment(SystemMonitor.self) private var monitor
 
     var body: some View {
-        PanelWidget(title: "Your recent tasks", symbol: "clock.arrow.circlepath") {
-            Button {
-                ui.destination = .chat
-            } label: {
-                HStack(spacing: 5) {
-                    Text("View all")
-                    Image(systemName: "arrow.right")
-                }
-                .font(.uiCaption)
-                .foregroundStyle(Palette.accent)
+        HStack(alignment: .bottom, spacing: 16) {
+            if let conversation = chat.conversations.first(where: { !$0.messages.isEmpty }) {
+                recent(conversation)
             }
-            .buttonStyle(.soft)
-        } content: {
-            if recent.isEmpty {
-                Text("Tasks you start will show here.").font(.uiCallout).foregroundStyle(Forge.dim)
-            } else {
-                HStack(spacing: 10) {
-                    ForEach(Array(recent.enumerated()), id: \.element.id) { index, conversation in
-                        card(conversation, index: index)
-                    }
-                    ForEach(recent.count..<3, id: \.self) { _ in Color.clear.frame(maxWidth: .infinity, maxHeight: 1) }
-                }
-            }
+            Spacer(minLength: 0)
+            hardware
         }
     }
 
-    private func card(_ conversation: Conversation, index: Int) -> some View {
+    private func recent(_ conversation: Conversation) -> some View {
+        let shape = RoundedRectangle(cornerRadius: 16, style: .continuous)
         let running = conversation.messages.last?.id == chat.streamingMessageID && chat.streamingMessageID != nil
-        let bars = [Palette.accent, Color(red: 0.49, green: 0.3, blue: 0.95), Color(red: 0.2, green: 0.5, blue: 0.95)]
-        let shape = RoundedRectangle(cornerRadius: 12, style: .continuous)
         return Button {
             chat.selectedID = conversation.id
             ui.destination = .chat
         } label: {
-            HStack(spacing: 8) {
-                VStack(alignment: .leading, spacing: 4) {
-                    Text(conversation.title).font(.uiCallout.weight(.medium)).lineLimit(1)
-                    HStack(spacing: 5) {
+            HStack(spacing: 11) {
+                Image(systemName: "clock.arrow.circlepath").font(.system(size: 13, weight: .medium)).foregroundStyle(Forge.dim)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(conversation.title).font(.uiCallout.weight(.medium)).foregroundStyle(Forge.ink).lineLimit(1)
+                    Group {
                         if running {
-                            ProgressView().controlSize(.mini)
                             Text("Running…")
                         } else if conversation.messages.last?.errorText != nil {
                             // A chat whose last reply failed isn't a finished task.
-                            Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(Palette.critical)
-                            Text("Failed · \(TestFormat.relative(conversation.updatedAt))").lineLimit(1)
+                            Text("Failed · \(TestFormat.relative(conversation.updatedAt))")
                         } else if conversation.messages.last?.role == .user {
-                            Image(systemName: "minus.circle.fill").foregroundStyle(Forge.dim)
-                            Text("No reply · \(TestFormat.relative(conversation.updatedAt))").lineLimit(1)
+                            Text("No reply · \(TestFormat.relative(conversation.updatedAt))")
                         } else {
-                            Image(systemName: "checkmark.circle.fill").foregroundStyle(Palette.good)
-                            Text("Completed · \(TestFormat.relative(conversation.updatedAt))").lineLimit(1)
+                            Text("Completed · \(TestFormat.relative(conversation.updatedAt))")
                         }
                     }
-                    .font(.uiCaption2)
+                    .font(.uiCaption)
                     .foregroundStyle(Forge.dim)
+                    .lineLimit(1)
                 }
                 Spacer(minLength: 0)
-                Image(systemName: "chevron.right").font(.system(size: 10, weight: .semibold)).foregroundStyle(Forge.faint)
             }
-            .padding(.leading, 15)
-            .padding(.trailing, 10)
-            .padding(.vertical, 11)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .background(Color.white.opacity(0.03), in: shape)
-            .overlay(alignment: .leading) { bars[index % bars.count].frame(width: 3).padding(.vertical, 8) }
-            .overlay(shape.strokeBorder(Forge.line, lineWidth: 1))
+            .padding(.horizontal, 14)
+            .frame(width: 300, height: 52)
+            .background(Forge.card.opacity(0.9), in: shape)
+            .overlay(shape.strokeBorder(Color.white.opacity(0.12), lineWidth: 1))
             .contentShape(shape)
         }
         .buttonStyle(.soft)
+        .help("Open your last task")
     }
-}
 
-// MARK: - Active model
+    private var hardware: some View {
+        let shape = RoundedRectangle(cornerRadius: 16, style: .continuous)
+        return HStack(spacing: 22) {
+            stat("GPU", monitor.gpu.points.last.map { String(format: "%.0f%%", $0.value) } ?? "—")
+            stat("Memory", monitor.snapshot.memoryPercent.map { String(format: "%.0f%%", $0) } ?? "—")
+            stat("Thermal", thermal)
+        }
+        .padding(.horizontal, 16)
+        .frame(height: 52)
+        .background(Forge.card.opacity(0.9), in: shape)
+        .overlay(shape.strokeBorder(Color.white.opacity(0.12), lineWidth: 1))
+        .accessibilityElement(children: .combine)
+    }
 
-private struct ActiveModelCard: View {
-    @Environment(BackendController.self) private var backends
-    @Environment(SystemMonitor.self) private var monitor
-    @Environment(ChatController.self) private var chat
-    @Environment(TestLab.self) private var lab
-    @Environment(UIState.self) private var ui
-
-    var body: some View {
-        PanelWidget(title: "Active model", symbol: "cpu") {
-            EmptyView()
-        } content: {
-            if let model = backends.selectedModel {
-                HStack(spacing: 12) {
-                    Image(systemName: "cube.fill")
-                        .font(.system(size: 26))
-                        .foregroundStyle(Palette.accent)
-                        .frame(width: 66, height: 66)
-                        .background(Palette.accent.opacity(0.12), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
-                    VStack(alignment: .leading, spacing: 3) {
-                        Text(model.displayName).font(.geist(15, weight: .medium)).lineLimit(2)
-                        Text(subtitle(model)).font(.uiCaption).foregroundStyle(Forge.dim).lineLimit(1)
-                        fit(model)
-                    }
-                    Spacer(minLength: 0)
-                }
-            } else {
-                // Says what is missing, so the page never looks ready when nothing can answer.
-                let state = SetupState(backends)
-                HStack(spacing: 8) {
-                    Circle().fill(state.level.color).frame(width: 8, height: 8)
-                    Text(state == .ready ? "No model chosen yet" : state.title(backends.kind)).font(.uiCallout).foregroundStyle(Forge.dim)
-                }
-            }
-            Button {
-                // Without a model the chat page has the next step: get Ollama, start it, or download a model.
-                ui.destination = backends.selectedModel == nil ? .chat : .library
-            } label: {
-                HStack(spacing: 6) {
-                    Text(backends.selectedModel == nil ? "Set it up" : "Change model")
-                    Image(systemName: "arrow.right")
-                }
-                .frame(maxWidth: .infinity)
-            }
-            .buttonStyle(OutlineButtonStyle())
-            performance
+    private var thermal: String {
+        switch monitor.snapshot.thermalState {
+        case .nominal: return "Nominal"
+        case .fair: return "Fair"
+        case .serious: return "Serious"
+        case .critical: return "Critical"
+        @unknown default: return "—"
         }
     }
 
-    private func subtitle(_ model: LocalModel) -> String {
-        guard let catalog = model.catalog else { return model.quantLabel }
-        return "\(catalog.parameters) · \(catalog.publisher)"
-    }
-
-    @ViewBuilder
-    private func fit(_ model: LocalModel) -> some View {
-        if let bytes = backends.memoryEstimate(for: model, context: backends.estimatedContext(for: model)) {
-            let verdict = MemoryFit.verdict(requiredBytes: bytes, budget: monitor.gpuBudgetBytes)
-            HStack(spacing: 4) {
-                Image(systemName: "checkmark.circle.fill")
-                Text(verdict.label)
-            }
-            .font(.uiCaption2.weight(.medium))
-            .foregroundStyle(verdict.level.color)
-            .padding(.horizontal, 7)
-            .padding(.vertical, 3)
-            .background(verdict.level.color.opacity(0.13), in: Capsule(style: .circular))
-        }
-    }
-
-    private var performance: some View {
-        let average = chat.averages(for: backends.selectedModel?.id)
-        let test = lab.latestModelResult(for: backends.selectedModel?.id)
-        return VStack(alignment: .leading, spacing: 8) {
-            HStack(spacing: 7) {
-                Image(systemName: "chart.bar").foregroundStyle(Palette.accent)
-                Text("Performance").font(.uiCallout.weight(.medium))
-                Spacer()
-                Text("GPU load, live").font(.uiCaption2).foregroundStyle(Forge.dim)
-            }
-            Sparkline(points: monitor.gpu.points, color: Palette.accent, domain: 0...100, height: 36)
-            HStack(alignment: .top) {
-                stat(average.flatMap(\.timeToFirstToken).map(Format.seconds) ?? "—", "First token, this chat")
-                Spacer()
-                stat(test.map { "\(TestFormat.score($0.score))/100" } ?? "—", "Test score")
-            }
-        }
-    }
-
-    private func stat(_ value: String, _ title: String) -> some View {
+    private func stat(_ title: String, _ value: String) -> some View {
         VStack(alignment: .leading, spacing: 1) {
-            Text(value).font(.geist(18, weight: .medium)).monospacedDigit()
-            Text(title).font(.uiCaption2).foregroundStyle(Forge.dim)
-        }
-    }
-}
-
-private struct ProTip: View {
-    @Environment(UIState.self) private var ui
-
-    var body: some View {
-        PanelWidget(title: "Tip", symbol: "lightbulb") {
-            EmptyView()
-        } content: {
-            Text("The harness checks a small model's maths, code and rules before you see the reply.")
-                .font(.uiCaption)
-                .foregroundStyle(Forge.dim)
-                .fixedSize(horizontal: false, vertical: true)
-            Button {
-                ui.settingsTab = .harness
-                ui.destination = .settings
-            } label: {
-                HStack(spacing: 5) {
-                    Text("Learn more")
-                    Image(systemName: "arrow.right")
-                }
-                .font(.uiCaption)
-                .foregroundStyle(Palette.accent)
-                .frame(maxWidth: .infinity, alignment: .trailing)
-            }
-            .buttonStyle(.soft)
+            Text(title).font(.uiCaption).foregroundStyle(Forge.dim)
+            Text(value).font(.uiCallout.weight(.semibold)).foregroundStyle(Forge.ink).monospacedDigit()
         }
     }
 }

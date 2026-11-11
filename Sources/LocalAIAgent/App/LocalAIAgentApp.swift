@@ -166,6 +166,9 @@ struct LocalAIAgentApp: App {
                 }
         }
         .defaultSize(width: 1380, height: 880)
+        // The header shows the name. Without this the window's own title came back above it whenever a
+        // page other than Home was opened.
+        .windowStyle(.hiddenTitleBar)
         .commands {
             CommandGroup(replacing: .appInfo) {
                 Button("About \(Brand.name)") {

@@ -71,6 +71,7 @@ import WebKit
 ///   LOCALAI_WEB=allowed|off|ask     how the harness may use the web in this run, without saving it;
 ///                                   LOCALAI_WEB_ANSWER=once|always|no answers its question 2 s after it shows
 ///   LOCALAI_CONSENT_CHECK=/path.txt check the question the harness asks before a web lookup
+///   LOCALAI_FLAME_TRACE=/path.txt   write where the flame is each time it is drawn, to check its flight (FlameView.swift)
 @MainActor
 enum DebugHooks {
     static func install(chat: ChatController, ui: UIState, lab: TestLab, backends: BackendController,

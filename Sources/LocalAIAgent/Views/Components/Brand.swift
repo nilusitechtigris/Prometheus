@@ -7,29 +7,18 @@ enum Brand {
 
     /// Display type, used for the wordmark and page titles.
     static func display(_ size: CGFloat) -> Font { .geist(size, weight: .semibold) }
-
-    /// The brand's lime, the same in every theme.
-    static let lime = LinearGradient(colors: [Color(hex: 0xDDFF57), Color(hex: 0xA8E22A)], startPoint: .top, endPoint: .bottom)
 }
 
-private extension Color {
-    init(hex: UInt32) {
-        self.init(red: Double((hex >> 16) & 0xFF) / 255, green: Double((hex >> 8) & 0xFF) / 255, blue: Double(hex & 0xFF) / 255)
-    }
-}
-
-/// The Prometheus mark: the AI-generated flame from the app icon (scripts/make-icon.swift), in the brand's lime.
+/// The Prometheus mark: the glass flame of the current theme, standing still.
 struct BrandMark: View {
     var size: CGFloat = 28
 
     var body: some View {
-        if let flame = Art.flame {
+        if let flame = Art.flame(for: ThemeStore.shared.theme) {
             Image(nsImage: flame)
-                .renderingMode(.template)
                 .interpolation(.high)
                 .resizable()
                 .scaledToFit()
-                .foregroundStyle(Brand.lime)
                 .frame(width: size, height: size)
                 .accessibilityHidden(true)
         }

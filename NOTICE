@@ -19,6 +19,11 @@ AI-generated pictures (assets/art/, assets/icon.png, assets/icon-source.png)
   Canva's C2PA provenance record. The other files are edited copies. Editing
   invalidates a signed record, so they carry a plain AI-generated label instead.
 
+  The two glass flames, assets/art/flame-ember.png and assets/art/flame-rose.png,
+  were made with Figma's AI image tool instead. Their unedited exports are in
+  assets/art/originals/ as well. The copies in assets/art/ are cropped and have
+  the black background turned into transparency.
+
 Models
   Prometheus doesn't include any model. You download models yourself, and each one
   comes with its own license, which is shown in the app's Model Library.

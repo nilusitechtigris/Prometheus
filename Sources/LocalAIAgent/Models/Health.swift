@@ -40,23 +40,20 @@ enum Palette {
         LinearGradient(colors: [accent, accent2], startPoint: .top, endPoint: .bottom)
     }
     /// Text and icons on the accent colour.
-    @MainActor static var onAccent: Color { ThemeStore.shared.theme == .prometheus ? .black : .white }
+    @MainActor static var onAccent: Color { ThemeStore.shared.theme.onAccent }
 }
 
+/// The two looks of the app. Both are dark: Ember is amber on blue-black, Rose is pink on plum-black.
+/// Each has its own flame picture (see `Art.flame(for:)`).
 enum AppTheme: String, CaseIterable, Identifiable {
-    case prometheus, aurora, ocean, ember, orchid, mint, graphite
+    case ember, rose
 
     var id: String { rawValue }
 
     var name: String {
         switch self {
-        case .prometheus: return "Prometheus"
-        case .aurora: return "Aurora"
-        case .ocean: return "Ocean"
         case .ember: return "Ember"
-        case .orchid: return "Orchid"
-        case .mint: return "Mint"
-        case .graphite: return "Graphite"
+        case .rose: return "Rose"
         }
     }
 
@@ -64,42 +61,21 @@ enum AppTheme: String, CaseIterable, Identifiable {
         Color(red: Double((v >> 16) & 0xFF) / 255, green: Double((v >> 8) & 0xFF) / 255, blue: Double(v & 0xFF) / 255)
     }
 
-    var accent: Color {
-        switch self {
-        case .prometheus: return Self.hex(0xC6F135)
-        case .aurora: return Self.hex(0x6366F1)
-        case .ocean: return Self.hex(0x0A84FF)
-        case .ember: return Self.hex(0xFF6B3D)
-        case .orchid: return Self.hex(0xBF5AF2)
-        case .mint: return Self.hex(0x00C7A3)
-        case .graphite: return Self.hex(0x8E8E93)
-        }
-    }
-
-    var accent2: Color {
-        switch self {
-        case .prometheus: return Self.hex(0xA8E22A)
-        case .aurora: return Self.hex(0x22D3EE)
-        case .ocean: return Self.hex(0x5AC8FA)
-        case .ember: return Self.hex(0xFF2D78)
-        case .orchid: return Self.hex(0xFF6FB5)
-        case .mint: return Self.hex(0x30B0FF)
-        case .graphite: return Self.hex(0x5E5CE6)
-        }
-    }
-
-    /// Third colour used only in the ambient background.
-    var glow: Color {
-        switch self {
-        case .prometheus: return Self.hex(0x3F6212)
-        case .aurora: return Self.hex(0xA855F7)
-        case .ocean: return Self.hex(0x30D5C8)
-        case .ember: return Self.hex(0xFFB340)
-        case .orchid: return Self.hex(0x6E5BFF)
-        case .mint: return Self.hex(0x7ED957)
-        case .graphite: return Self.hex(0x636366)
-        }
-    }
+    var accent: Color { Self.hex(self == .ember ? 0xF5A25A : 0xFF8FBE) }
+    var accent2: Color { Self.hex(self == .ember ? 0xE9873A : 0xF56FAA) }
+    /// The flame's light on the window behind everything.
+    var glow: Color { accent }
+    /// Text and icons on the accent colour.
+    var onAccent: Color { Self.hex(self == .ember ? 0x1D1003 : 0x2B0A18) }
+    /// Behind the whole window.
+    var canvas: Color { Self.hex(canvasHex) }
+    var canvasHex: UInt32 { self == .ember ? 0x080B11 : 0x130A12 }
+    /// Behind each page.
+    var panel: Color { Self.hex(self == .ember ? 0x0D111A : 0x1A0E18) }
+    /// Cards on a page.
+    var card: Color { Self.hex(self == .ember ? 0x161B27 : 0x261522) }
+    /// The file name of this theme's flame in assets/art.
+    var flameArt: String { self == .ember ? "flame-ember" : "flame-rose" }
 }
 
 @MainActor
@@ -113,12 +89,10 @@ final class ThemeStore {
 
     private init() {
         let defaults = UserDefaults.standard
-        // Aurora was the default before this brand, so it moves over once. Any other pick is kept.
-        if defaults.string(forKey: "theme") == AppTheme.aurora.rawValue, !defaults.bool(forKey: "movedToPrometheusTheme") {
-            defaults.set(AppTheme.prometheus.rawValue, forKey: "theme")
-        }
+        // `AppSettings` reads this key to tell a copy that has run before from a new install.
         defaults.set(true, forKey: "movedToPrometheusTheme")
-        theme = AppTheme(rawValue: defaults.string(forKey: "theme") ?? "") ?? .prometheus
+        // A theme saved by an older copy (lime, Aurora and the rest) no longer exists, so it becomes Ember.
+        theme = AppTheme(rawValue: defaults.string(forKey: "theme") ?? "") ?? .ember
     }
 }
 
