@@ -155,7 +155,7 @@ final class TestLab {
         }
         return TestSetup(model: model, backend: backend, context: context,
                          think: backend.kind.supportsThinkingControl && supportsThinking ? settings.thinkingEnabled : nil,
-                         supportsTools: backend.kind.supportsTools && supportsTools, maxRounds: settings.harnessMaxRounds)
+                         supportsTools: backend.kind.supportsTools && supportsTools, maxRounds: settings.activeRounds)
     }
 
     private static func finish(_ model: LocalModel, backends: BackendController, settings: AppSettings) {
@@ -229,7 +229,8 @@ final class TestLab {
     func show(harnessRun run: ModelTestResult) {
         selectedHarnessRunID = run.id
         testModelID = run.model
-        harnessChoice = run.version
+        // Outside the lab the harness in use is the only one to test, whichever version an old run was made with.
+        if Edition.current.isLab { harnessChoice = run.version }
         harnessSize = run.size
     }
 
@@ -284,7 +285,8 @@ final class TestLab {
     /// `ModelTestSuite.quickIDs` and leaves the pages out.
     func runHarnessTest(backends: BackendController, settings: AppSettings) {
         guard !isRunning, backends.activeTest == nil, let model = testModel(in: backends) else { return }
-        let versions = harnessChoice.map { [$0] } ?? HarnessVersion.allCases
+        // Outside the lab only the harness in use runs, whatever a copy that had the choice left behind.
+        let versions = Edition.current.isLab ? harnessChoice.map { [$0] } ?? HarnessVersion.allCases : [HarnessVersion.recommended]
         let size = harnessSize
         let repeats = max(harnessRepeats, 1)
         let start = Date()

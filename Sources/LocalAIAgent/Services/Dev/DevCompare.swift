@@ -30,7 +30,12 @@ struct DevCompareSide: Codable, Equatable, Sendable {
     var stopped = false
 
     /// "Harness v2", or what older records and the plain side were called.
-    var title: String { harness ? version.map { "Harness \($0)" } ?? "Harness on" : "Harness off" }
+    var title: String { title(in: .current) }
+
+    /// Outside the lab a side is only on or off, whichever version built it.
+    func title(in edition: Edition) -> String {
+        harness ? (edition.isLab ? version.map { "Harness \($0)" } : nil) ?? "Harness on" : "Harness off"
+    }
     /// One line on how this side was built.
     var summary: String { harness ? (version.flatMap(DevHarnessVersion.init(rawValue:)) ?? .v1).summary : "one reply, saved as it came" }
 

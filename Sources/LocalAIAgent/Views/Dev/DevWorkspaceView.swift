@@ -1036,7 +1036,7 @@ struct DevPill: View {
     }
 }
 
-/// Picks how the agent's requests are handled: off, or one of the harness's versions. Off, the model gets one
+/// Picks how the agent's requests are handled: off or on, and in the lab which of the harness's versions. Off, the model gets one
 /// go at a request and its reply is saved as it came, which is what the harness is measured against.
 private struct DevHarnessSwitch: View {
     @Environment(DevSession.self) private var dev
@@ -1046,24 +1046,29 @@ private struct DevHarnessSwitch: View {
             Text("Harness").font(.uiCaption2).foregroundStyle(Forge.faint)
             HStack(spacing: 0) {
                 segment("Off", version: nil)
-                ForEach(DevHarnessVersion.allCases) { segment($0.short, version: $0) }
+                if Edition.current.isLab {
+                    ForEach(DevHarnessVersion.allCases) { segment($0.short, version: $0) }
+                } else {
+                    segment("On", version: dev.activeVersion)
+                }
             }
             .padding(2)
             .background(Color.white.opacity(0.05), in: Capsule(style: .circular))
             .overlay(Capsule(style: .circular).strokeBorder(Forge.line, lineWidth: 1))
         }
         .disabled(dev.isWorking || dev.isComparing)
-        .help(dev.harnessOn ? "Harness \(dev.harnessVersion.title): the agent \(dev.harnessVersion.summary). Click Off to see what the model does alone."
+        .help(dev.harnessOn ? "Harness \(Edition.current.isLab ? dev.activeVersion.title : "on"): the agent \(dev.activeVersion.summary). Click Off to see what the model does alone."
                             : "Harness off: one reply from the model, saved as it came, with nothing run or checked.")
     }
 
     private func segment(_ title: String, version: DevHarnessVersion?) -> some View {
-        let selected = version == nil ? !dev.harnessOn : dev.harnessOn && dev.harnessVersion == version
+        let selected = version == nil ? !dev.harnessOn : dev.harnessOn && dev.activeVersion == version
         let on = version != nil
         return Button {
             withAnimation(Motion.quick) {
                 dev.harnessOn = on
-                if let version { dev.harnessVersion = version }
+                // Outside the lab there is one agent, so a version a copy with more choices stored is left alone.
+                if let version, Edition.current.isLab { dev.harnessVersion = version }
             }
         } label: {
             Text(title)
@@ -1075,8 +1080,8 @@ private struct DevHarnessSwitch: View {
                 .contentShape(Capsule(style: .circular))
         }
         .buttonStyle(.soft)
-        .help(version.map { "\($0.title): \($0.summary)" } ?? "One reply from the model, with nothing run or checked")
-        .accessibilityLabel("Harness \(version?.title ?? "off")")
+        .help(version.map { Edition.current.isLab ? "\($0.title): \($0.summary)" : "The agent \($0.summary)" } ?? "One reply from the model, with nothing run or checked")
+        .accessibilityLabel("Harness \(version.map { Edition.current.isLab ? $0.title : "on" } ?? "off")")
     }
 }
 

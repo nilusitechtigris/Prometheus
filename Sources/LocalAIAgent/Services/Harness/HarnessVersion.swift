@@ -37,8 +37,30 @@ enum HarnessVersion: String, Codable, CaseIterable, Identifiable {
 
     var title: String { "\(short) \(name)" }
 
-    /// How a reply or a status line names it: plain "Harness" unless someone picked another version.
-    var label: String { self == .recommended ? "Harness" : "Harness \(short)" }
+    /// How a reply or a status line names it: plain "Harness" unless someone picked another version. Outside the
+    /// lab nobody picks one, so a reply another version made, in a copy that once had the choice, only says so.
+    var label: String { label(in: .current) }
+
+    func label(in edition: Edition) -> String {
+        self == .recommended ? "Harness" : edition.isLab ? "Harness \(short)" : "Harness (earlier version)"
+    }
+
+    /// The versions this copy offers to use and to test: every one in the lab, the recommended one elsewhere.
+    static func offered(in edition: Edition = .current) -> [HarnessVersion] { edition.isLab ? allCases : [recommended] }
+
+    /// The version that runs when `chosen` is the one stored. Outside the lab that's the recommended one, whatever
+    /// was chosen in a copy that had the choice. The stored choice is left as it is.
+    static func allowed(_ chosen: HarnessVersion, in edition: Edition = .current) -> HarnessVersion { edition.isLab ? chosen : recommended }
+
+    /// What a saved run calls it: its number and name in the lab, and elsewhere only whether it's the harness in
+    /// use or an earlier one.
+    func runTitle(in edition: Edition = .current) -> String { edition.isLab ? title : self == .recommended ? "Harness" : "Earlier harness" }
+
+    /// The same for a column heading.
+    func runShort(in edition: Edition = .current) -> String { edition.isLab ? short : self == .recommended ? "On" : "Earlier" }
+
+    /// The same inside a sentence, as in "No change with the harness".
+    func runPhrase(in edition: Edition = .current) -> String { edition.isLab ? title : self == .recommended ? "the harness" : "an earlier harness" }
 
     var summary: String {
         switch self {

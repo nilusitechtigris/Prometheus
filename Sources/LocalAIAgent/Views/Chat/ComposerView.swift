@@ -172,7 +172,7 @@ struct ComposerView: View {
     private var harnessOn: Bool { settings.harnessEnabled && backends.kind.supportsTools }
 
     private var harnessNote: String {
-        let version = settings.harnessVersion
+        let version = settings.activeHarness
         let name = "\(version.label) on"
         let thinking = version.alwaysThinks ? " Thinking stays on for its agents." : ""
         switch WebConsent.shared.policy {
@@ -240,7 +240,7 @@ private struct ThinkPill: View {
     }
 }
 
-/// Picks the version of the harness for the next reply, or turns it off, at any point in a chat.
+/// Turns the harness on or off for the next reply, at any point in a chat. In the lab it also picks the version.
 private struct HarnessPill: View {
     @Environment(AppSettings.self) private var settings
     @Environment(BackendController.self) private var backends
@@ -249,7 +249,7 @@ private struct HarnessPill: View {
 
     var body: some View {
         let on = settings.harnessEnabled && backends.kind.supportsTools
-        let version = settings.harnessVersion
+        let version = settings.activeHarness
         Button {
             show.toggle()
         } label: {
@@ -273,7 +273,7 @@ private struct HarnessPill: View {
               ? (on ? "Harness on: code runs the math, checks each reply and can look facts up. Click to change it or turn it off."
                     : "Harness off: the plain model, with nothing checked. Click to turn it on.")
               : "The harness works with Ollama and MLX LM. Pick one of those under the message box to use it.")
-        .accessibilityLabel(on ? "Harness, \(version.title)" : "Harness, off")
+        .accessibilityLabel(on ? (Edition.current.isLab ? "Harness, \(version.title)" : "Harness, on") : "Harness, off")
         .popover(isPresented: $show, arrowEdge: .top) {
             HarnessPopover { show = false }
         }
@@ -288,7 +288,7 @@ struct HarnessPopover: View {
 
     var body: some View {
         let on = settings.harnessEnabled
-        let usual = settings.harnessVersion == .recommended
+        let usual = settings.activeHarness == .recommended
         VStack(alignment: .leading, spacing: 4) {
             Text("Harness").font(.uiHeadline).padding(.horizontal, 8).padding(.bottom, 4)
             PopoverRow(selected: !on) {
@@ -302,7 +302,8 @@ struct HarnessPopover: View {
                 Spacer(minLength: 0)
             }
             PopoverRow(selected: on && usual) {
-                settings.harnessVersion = .recommended
+                // Outside the lab "On" is the only choice, so a version a copy with more choices stored is left alone.
+                if Edition.current.isLab { settings.harnessVersion = .recommended }
                 settings.harnessEnabled = true
                 dismiss()
             } content: {
@@ -318,34 +319,36 @@ struct HarnessPopover: View {
                 .padding(.horizontal, 8)
                 .padding(.top, 8)
 
-            Button {
-                withAnimation(Motion.quick) { showVersions.toggle() }
-            } label: {
-                HStack(spacing: 6) {
-                    Image(systemName: "chevron.right")
-                        .font(.system(size: 9, weight: .bold))
-                        .rotationEffect(.degrees(showVersions ? 90 : 0))
-                    Text("Other versions").font(.uiCallout)
-                    if on, !usual { Text("· using \(settings.harnessVersion.title)").font(.uiCaption).foregroundStyle(Palette.accent) }
-                    Spacer(minLength: 0)
+            if Edition.current.isLab {
+                Button {
+                    withAnimation(Motion.quick) { showVersions.toggle() }
+                } label: {
+                    HStack(spacing: 6) {
+                        Image(systemName: "chevron.right")
+                            .font(.system(size: 9, weight: .bold))
+                            .rotationEffect(.degrees(showVersions ? 90 : 0))
+                        Text("Other versions").font(.uiCallout)
+                        if on, !usual { Text("· using \(settings.harnessVersion.title)").font(.uiCaption).foregroundStyle(Palette.accent) }
+                        Spacer(minLength: 0)
+                    }
+                    .foregroundStyle(.secondary)
+                    .padding(.horizontal, 8)
+                    .padding(.top, 10)
+                    .padding(.bottom, 2)
+                    .contentShape(Rectangle())
                 }
-                .foregroundStyle(.secondary)
-                .padding(.horizontal, 8)
-                .padding(.top, 10)
-                .padding(.bottom, 2)
-                .contentShape(Rectangle())
-            }
-            .buttonStyle(.soft)
-            .help("Earlier and newer designs of the harness, kept so you can compare them")
+                .buttonStyle(.soft)
+                .help("Earlier and newer designs of the harness, kept so you can compare them")
 
-            if showVersions {
-                ForEach(HarnessVersion.allCases) { version in
-                    PopoverRow(selected: on && settings.harnessVersion == version) {
-                        settings.harnessVersion = version
-                        settings.harnessEnabled = true
-                        dismiss()
-                    } content: {
-                        HarnessVersionLabel(version: version)
+                if showVersions {
+                    ForEach(HarnessVersion.allCases) { version in
+                        PopoverRow(selected: on && settings.harnessVersion == version) {
+                            settings.harnessVersion = version
+                            settings.harnessEnabled = true
+                            dismiss()
+                        } content: {
+                            HarnessVersionLabel(version: version)
+                        }
                     }
                 }
             }

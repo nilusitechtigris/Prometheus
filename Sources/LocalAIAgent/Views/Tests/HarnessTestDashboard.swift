@@ -26,7 +26,7 @@ struct HarnessTestDashboard: View {
             TestFrameworkPicker()
             TestModelPicker()
             HarnessSizePicker()
-            HarnessVersionPicker()
+            if Edition.current.isLab { HarnessVersionPicker() }
             HarnessRepeatsPicker()
             HarnessOffToggle()
             RunTestButton(title: lab.harnessChoice == nil ? "Run all \(HarnessVersion.allCases.count)" : "Run test",
@@ -77,7 +77,7 @@ struct HarnessTestDashboard: View {
     private var subtitle: String {
         switch lab.harnessSize {
         case .normal: "\(ModelTestSuite.quickIDs.count) quick tasks: Coding, Knowledge and Instructions."
-        case .max: "The same \(ModelTestSuite.questionCount) questions with each version, then \(InjectionSuite.cases.count) poisoned pages."
+        case .max: "The same \(ModelTestSuite.questionCount) questions \(Edition.current.isLab ? "with each version" : "with the harness off and on"), then \(InjectionSuite.cases.count) poisoned pages."
         case .heldOut: "\(HeldOut.size()) public questions the harness was never tuned on: maths, writing to rules, and code."
         case .practice: "\(HeldOut.size(HeldOut.practice)) more of the same kinds, for finding what fails. The harness may be tuned on these, so they prove nothing."
         }
@@ -96,7 +96,8 @@ struct HarnessTestDashboard: View {
         if run.size != lab.harnessSize { return "No \(lab.harnessSize.title) run yet. Showing \(run.size.title)." }
         if model.id != run.model { return "Not tested yet. Showing \(run.displayName) \(run.quant)." }
         if let choice = lab.harnessChoice, let shown = run.version, choice != shown {
-            return "\(choice.title) not tested on this model yet. Showing \(shown.title)."
+            return Edition.current.isLab ? "\(choice.title) not tested on this model yet. Showing \(shown.title)."
+                                         : "The harness isn't tested on this model yet. Showing a run of an earlier harness."
         }
         return nil
     }
@@ -110,7 +111,7 @@ struct HarnessTestDashboard: View {
         case .normal: time = thinking ? "Thinking on, can take \(versions * 15)+ minutes" : "Takes up to \(versions * 10) minutes"
         case .max: time = thinking ? "Thinking on, can take \(versions * 2)+ hours" : "Takes up to \(versions == 1 ? "an hour" : "\(versions) hours")"
         // Nobody has timed these yet, so it says how much there is to ask instead of guessing.
-        case .heldOut, .practice: time = "\(lab.harnessSize.questionSet.map { HeldOut.size($0) } ?? 0) questions for each version"
+        case .heldOut, .practice: time = "\(lab.harnessSize.questionSet.map { HeldOut.size($0) } ?? 0) questions\(Edition.current.isLab ? " for each version" : "")"
         }
         if lab.harnessRepeats > 1 { time += ", \(lab.harnessRepeats) times over" }
         let sameAsLoop = !thinking && lab.harnessChoice == .thinking ? " · Without thinking, \(HarnessVersion.thinking.short) runs like \(HarnessVersion.loop.short)" : ""
@@ -148,7 +149,7 @@ struct HarnessTestDashboard: View {
 
     private func hero(_ run: ModelTestResult, _ baseline: ModelTestResult?) -> some View {
         let on = TestFormat.score(run.score)
-        let version = run.version?.title ?? "the harness"
+        let version = run.version?.runPhrase() ?? "the harness"
         let cantCallTools = "This model can't call tools itself, so only the harness used them."
         let publicSet = run.askedSet != nil
         let headline, note: String
@@ -275,7 +276,7 @@ struct HarnessTestDashboard: View {
                 GridRow {
                     Text("")
                     Text("Off").gridColumnAlignment(.trailing)
-                    Text(run.version?.short ?? "On").gridColumnAlignment(.trailing).foregroundStyle(Palette.accent)
+                    Text(run.version?.runShort() ?? "On").gridColumnAlignment(.trailing).foregroundStyle(Palette.accent)
                 }
                 .font(.uiCaption.weight(.semibold))
                 .foregroundStyle(.secondary)
@@ -330,7 +331,9 @@ struct HarnessTestDashboard: View {
     }
 
     private func detailTabs(_ run: ModelTestResult?, _ baseline: ModelTestResult?) -> [(id: Detail, title: String)] {
-        var tabs: [(id: Detail, title: String)] = [(.howItWorks, "How it works"), (.versions, "Versions")]
+        var tabs: [(id: Detail, title: String)] = [(.howItWorks, "How it works")]
+        // Comparing versions is the lab's.
+        if Edition.current.isLab { tabs.append((.versions, "Versions")) }
         if run != nil, baseline != nil { tabs.append((.changes, "What changed")) }
         // Max keeps its poisoned pages in the panel, so its repeats go here.
         if let run, showsPages(run), !lab.repeats(of: run).isEmpty { tabs.append((.repeats, "Repeats")) }
@@ -344,13 +347,15 @@ struct HarnessTestDashboard: View {
     /// Every version beside the run with the harness off, so the results sit side by side.
     private func topics(_ run: ModelTestResult, _ baseline: ModelTestResult?) -> some View {
         let runs = lab.comparableRuns(to: run)
+        // Outside the lab: the harness in use, and the shown run's own version when that's an earlier one.
+        let columns = HarnessVersion.offered() + [run.version].compactMap { $0 }.filter { !HarnessVersion.offered().contains($0) }
         return TestPanel(title: "By topic", symbol: "square.grid.3x2.fill", note: "score, on this model and setup") {
             Grid(alignment: .leading, horizontalSpacing: 12, verticalSpacing: 16) {
                 GridRow {
                     Text("")
                     Text("Off").gridColumnAlignment(.trailing)
-                    ForEach(HarnessVersion.allCases) { version in
-                        Text(version.short)
+                    ForEach(columns) { version in
+                        Text(version.runShort())
                             .foregroundStyle(version == run.version ? AnyShapeStyle(Palette.accent) : AnyShapeStyle(.secondary))
                             .gridColumnAlignment(.trailing)
                     }
@@ -364,7 +369,7 @@ struct HarnessTestDashboard: View {
                             Text(category.name).frame(maxWidth: .infinity, alignment: .leading)
                         }
                         Text(baseline?.score(for: category).map(Format.percent) ?? "—").monospacedDigit().foregroundStyle(.secondary)
-                        ForEach(HarnessVersion.allCases) { version in
+                        ForEach(columns) { version in
                             topicCell(runs[version]?.score(for: category).map(Format.percent), chosen: version == run.version)
                         }
                     }
@@ -373,7 +378,7 @@ struct HarnessTestDashboard: View {
                 GridRow {
                     Text("All topics").frame(maxWidth: .infinity, alignment: .leading)
                     Text(baseline.map { TestFormat.score($0.score) } ?? "—").monospacedDigit().foregroundStyle(.secondary)
-                    ForEach(HarnessVersion.allCases) { version in
+                    ForEach(columns) { version in
                         topicCell(runs[version].map { TestFormat.score($0.score) }, chosen: version == run.version)
                     }
                 }
@@ -530,7 +535,7 @@ struct HarnessTestDashboard: View {
         TestRunList(runs: lab.harnessRuns) { run in
             TestRunRow(level: TestScoring.modelScore.level(run.score), date: run.date,
                        title: "\(run.displayName) · \(run.quant)\(run.thinking ? " · thinking" : "")",
-                       tag: [run.version?.title, run.size.title, run.repeatIndex.map { "round \($0)" }, run.isCurrentSuite ? nil : "old test"]
+                       tag: [run.version?.runTitle(), run.size.title, run.repeatIndex.map { "round \($0)" }, run.isCurrentSuite ? nil : "old test"]
                            .compactMap { $0 }.joined(separator: " · "),
                        result: "\(lab.baseline(of: run).map { TestFormat.score($0.score) } ?? "—") → \(TestFormat.score(run.score))",
                        selected: run.id == selected.id,

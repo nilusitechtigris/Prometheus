@@ -35,9 +35,9 @@ struct HarnessFlowDiagram: View {
                 stacked
             }
             loopNote
-            thinkingNote
+            if Edition.current.isLab { thinkingNote }
             guardrails
-            Text("This is the loop behind \(HarnessVersion.loop.short) and \(HarnessVersion.thinking.short), and \(HarnessVersion.council.title) prepares its shared notes the same way. In chat you turn the harness on or off with the Harness button under the message box. It asks before each search unless you've told it otherwise. Then search terms go to Wikipedia, Stack Overflow, arXiv and MDN, pages come from the trusted sites, and every search and page is listed above the reply. Test questions are fixed, so a test sends nothing of yours. In a test the model can also call the web search, page reader, calculator and code runner itself. In chat, v2 to v5 keep those tools with the harness, so a web page can't steer one while your chat is in view. In v1 the model holds them, so once it has read the web it can't search again and can only open links it was given. The guard is basic protection: it blocks common attacks like the ones in this test, not every possible one. Code runs on this Mac only.")
+            Text(caption)
                 .font(.uiCaption)
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
@@ -129,9 +129,19 @@ struct HarnessFlowDiagram: View {
     }
 
     /// The way back from Check to Act.
+    /// The words under the diagram. Outside the lab there is one harness, so they name no versions.
+    private var caption: String {
+        let inChat = "In chat you turn the harness on or off with the Harness button under the message box. It asks before each search unless you've told it otherwise. Then search terms go to Wikipedia, Stack Overflow, arXiv and MDN, pages come from the trusted sites, and every search and page is listed above the reply. Test questions are fixed, so a test sends nothing of yours."
+        let ending = "The guard is basic protection: it blocks common attacks like the ones in this test, not every possible one. Code runs on this Mac only."
+        guard Edition.current.isLab else {
+            return "\(inChat) The harness keeps the web search, page reader, calculator and code runner to itself, so a web page can't steer one while your chat is in view. \(ending)"
+        }
+        return "This is the loop behind \(HarnessVersion.loop.short) and \(HarnessVersion.thinking.short), and \(HarnessVersion.council.title) prepares its shared notes the same way. \(inChat) In a test the model can also call the web search, page reader, calculator and code runner itself. In chat, v2 to v5 keep those tools with the harness, so a web page can't steer one while your chat is in view. In v1 the model holds them, so once it has read the web it can't search again and can only open links it was given. \(ending)"
+    }
+
     private var loopNote: some View {
         note(symbol: "arrow.counterclockwise", title: "Check fails? Back to step 2",
-             text: "Code checks every reply: was it cut off, does it state the tool's result, is the answer in the sources, does it break a rule such as a word count or a banned letter. If it fails, the harness goes round again with what it learned, up to the rounds set in Settings › Safety. Each round can read the next page, search again, fix the program or rewrite one sentence. It stops when a round changes nothing, and it always keeps the best attempt so far.")
+             text: "Code checks every reply: was it cut off, does it state the tool's result, is the answer in the sources, does it break a rule such as a word count or a banned letter. If it fails, the harness goes round again with what it learned, \(Edition.current.isLab ? "up to the rounds set in Settings › Safety" : "for up to \(AppSettings.usualHarnessRounds) rounds"). Each round can read the next page, search again, fix the program or rewrite one sentence. It stops when a round changes nothing, and it always keeps the best attempt so far.")
     }
 
     /// What v4 adds to the loop.

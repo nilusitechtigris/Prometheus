@@ -83,7 +83,9 @@ private struct AskBox: View {
                         ui.settingsTab = .harness
                         ui.destination = .settings
                     } label: {
-                        chip(harnessOn ? "checkmark.shield" : "shield.slash", harnessOn ? "Harness on" : "Harness off", tinted: harnessOn)
+                        // The label is safe for either edition: "Harness" for everyone, the version's name in the lab.
+                        chip(harnessOn ? "checkmark.shield" : "shield.slash",
+                             harnessOn ? "\(settings.activeHarness.label) on" : "Harness off", tinted: harnessOn)
                     }
                     .buttonStyle(.soft)
                     .help("The harness checks a small model's maths, code and rules before you see the reply")

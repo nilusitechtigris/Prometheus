@@ -108,6 +108,9 @@ final class DevSession {
         didSet { UserDefaults.standard.set(harnessVersion.rawValue, forKey: Self.versionKey) }
     }
 
+    /// The version that works on a request. Outside the lab that's the recommended one, whatever is stored.
+    var activeVersion: DevHarnessVersion { DevHarnessVersion.allowed(harnessVersion) }
+
     /// Every comparison made, newest first.
     private(set) var comparisons: [DevComparison] = DevCompare.load()
     /// The comparison on screen, while the Compare view is showing.
@@ -535,7 +538,7 @@ final class DevSession {
         let backends = backends
         let started = Date()
         let harness = harnessOn
-        let version = harnessVersion
+        let version = activeVersion
         if let index = messages.firstIndex(where: { $0.id == id }) {
             messages[index].harness = harness
             messages[index].version = harness ? version.rawValue : nil
@@ -704,7 +707,7 @@ final class DevSession {
             return
         }
         if message == nil { draft = "" }
-        let version = harnessVersion
+        let version = activeVersion
         var record = DevComparison(request: request, date: date, model: model.id, framework: backends.kind.displayName, context: 0, folder: parent.path,
                                    off: DevCompareSide(folder: off.path, harness: false),
                                    on: DevCompareSide(folder: on.path, harness: true, version: version.rawValue))

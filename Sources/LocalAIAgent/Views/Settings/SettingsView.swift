@@ -239,23 +239,25 @@ private struct HarnessSettings: View {
                     .multilineTextAlignment(.leading)
                     .frame(maxWidth: .infinity, alignment: .leading)
             }
-            Section {
-                Picker("Version", selection: $settings.harnessVersion) {
-                    ForEach(HarnessVersion.allCases) { version in
-                        Text(version == .recommended ? "\(version.title) (recommended)" : version.title).tag(version)
+            if Edition.current.isLab {
+                Section {
+                    Picker("Version", selection: $settings.harnessVersion) {
+                        ForEach(HarnessVersion.allCases) { version in
+                            Text(version == .recommended ? "\(version.title) (recommended)" : version.title).tag(version)
+                        }
                     }
+                    Picker("Rounds per task", selection: $settings.harnessMaxRounds) {
+                        ForEach(AppSettings.harnessRoundOptions, id: \.self) { Text("\($0)").tag($0) }
+                    }
+                } header: {
+                    Text("For comparing")
+                } footer: {
+                    Text("Every design of the harness stays in the app, so you can compare them on your own models in Tests. In \(HarnessVersion.loop.short) and \(HarnessVersion.thinking.short), rounds are how many times it may go back and try again when a reply fails its checks. In \(HarnessVersion.council.short), they're how many times the three agents may go round the shared notes. More rounds can fix more replies, and take longer.")
+                        .font(.uiCaption)
+                        .foregroundStyle(.secondary)
+                        .multilineTextAlignment(.leading)
+                        .frame(maxWidth: .infinity, alignment: .leading)
                 }
-                Picker("Rounds per task", selection: $settings.harnessMaxRounds) {
-                    ForEach(AppSettings.harnessRoundOptions, id: \.self) { Text("\($0)").tag($0) }
-                }
-            } header: {
-                Text("For comparing")
-            } footer: {
-                Text("Every design of the harness stays in the app, so you can compare them on your own models in Tests. In \(HarnessVersion.loop.short) and \(HarnessVersion.thinking.short), rounds are how many times it may go back and try again when a reply fails its checks. In \(HarnessVersion.council.short), they're how many times the three agents may go round the shared notes. More rounds can fix more replies, and take longer.")
-                    .font(.uiCaption)
-                    .foregroundStyle(.secondary)
-                    .multilineTextAlignment(.leading)
-                    .frame(maxWidth: .infinity, alignment: .leading)
             }
         }
         .formStyle(.grouped)

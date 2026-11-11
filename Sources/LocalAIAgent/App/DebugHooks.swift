@@ -9,6 +9,11 @@ import WebKit
 ///                                   LOCALAI_SIDE_BY_SIDE=1 asks the plain model and the harness each one
 ///   LOCALAI_VERDICT_CHECK=/path.txt check what code says about a plain reply and a harness reply
 ///   LOCALAI_V6_CHECK=/path.txt      check v6's routing, sentences and loop with a scripted model and canned pages
+///   LOCALAI_ROUTER_CHECK=/path.txt  check where the one harness's router sends a task, with a scripted model
+///   LOCALAI_EDITION=lab|standard    which edition this run is; LOCALAI_EDITION_CHECK=/path.txt checks what each one offers,
+///                                   runs and calls a version
+///   LOCALAI_TRACE_CHECK=/path.txt   run every finished harness version, chat and Dev, against a scripted model and compare
+///                                   each request, step and reply with checks/traces; LOCALAI_TRACE_RECORD=1 writes those files
 ///   LOCALAI_IFEVAL_CROSS=/in.json   run the ported IFEval checks on cases made by the reference logic, writing /in.json.out.txt;
 ///                                   LOCALAI_HELDOUT_CHECK=/path.txt checks the held-out loader and graders;
 ///                                   LOCALAI_HELDOUT_GRADE=/replies.json grades {"id": "reply"} made outside the app for
@@ -298,6 +303,21 @@ enum DebugHooks {
         if let path = env["LOCALAI_V6_CHECK"] {
             Task {
                 let lines = await TestLab.evidenceCheck()
+                try? lines.joined(separator: "\n").write(toFile: path, atomically: true, encoding: .utf8)
+            }
+        }
+        if let path = env["LOCALAI_ROUTER_CHECK"] {
+            Task {
+                let lines = await HarnessRouter.selfCheck()
+                try? lines.joined(separator: "\n").write(toFile: path, atomically: true, encoding: .utf8)
+            }
+        }
+        if let path = env["LOCALAI_EDITION_CHECK"] {
+            try? Edition.selfCheck().joined(separator: "\n").write(toFile: path, atomically: true, encoding: .utf8)
+        }
+        if let path = env["LOCALAI_TRACE_CHECK"] {
+            Task {
+                let lines = await HarnessTraces.run(record: env["LOCALAI_TRACE_RECORD"] != nil)
                 try? lines.joined(separator: "\n").write(toFile: path, atomically: true, encoding: .utf8)
             }
         }

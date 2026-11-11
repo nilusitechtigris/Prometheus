@@ -184,7 +184,8 @@ private struct ForgeHeader: View {
             Text(ready ? (backends.selectedModel?.displayName ?? state.title(backends.kind)) : state.title(backends.kind))
                 .font(.uiCallout.weight(.medium))
                 .lineLimit(1)
-            Text(ready ? (harnessOn ? "Harness on" : "Ready") : state.nextStep)
+            // The label is safe for either edition: "Harness" for everyone, the version's name in the lab.
+            Text(ready ? (harnessOn ? "\(settings.activeHarness.label) on" : "Ready") : state.nextStep)
                 .font(.uiCallout)
                 .foregroundStyle(Forge.dim)
                 .lineLimit(1)

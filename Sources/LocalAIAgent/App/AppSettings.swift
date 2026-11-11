@@ -62,12 +62,18 @@ final class AppSettings {
     /// on this Mac and it asks before it looks anything up (see `WebConsent`). A copy that was already in use
     /// keeps what it had.
     var harnessEnabled: Bool { didSet { defaults.set(harnessEnabled, forKey: "harnessEnabled") } }
-    /// The version chat uses when the harness is on.
+    /// The version picked for chat, which only the lab can change. `activeHarness` is the one that runs.
     var harnessVersion: HarnessVersion { didSet { defaults.set(harnessVersion.rawValue, forKey: "harnessVersion") } }
     /// Whether the Tests page shows the Model Test, the Harness Test and Publish beside the Hardware Test.
     var showLab: Bool { didSet { defaults.set(showLab, forKey: "showLab") } }
     /// Times the harness's loop may go round on a task, in chat and in the Harness Test.
     var harnessMaxRounds: Int { didSet { defaults.set(harnessMaxRounds, forKey: "harnessMaxRounds") } }
+    /// The rounds a copy outside the lab gets, where there's no control for them.
+    static let usualHarnessRounds = 3
+    /// The version chat runs with the harness on. Outside the lab that's the recommended one, whatever is stored.
+    var activeHarness: HarnessVersion { HarnessVersion.allowed(harnessVersion) }
+    /// The rounds the loop gets, in chat and in the Harness Test.
+    var activeRounds: Int { Edition.current.isLab ? harnessMaxRounds : Self.usualHarnessRounds }
     /// Whether the Harness Test also covers the harness off, or only the harness on.
     var harnessTestRunsOff: Bool { didSet { defaults.set(harnessTestRunsOff, forKey: "harnessTestRunsOff") } }
     /// Whether the telemetry panel is open along the bottom of the window, and how tall it is.
@@ -97,7 +103,7 @@ final class AppSettings {
         harnessVersion = HarnessVersion(rawValue: defaults.string(forKey: "harnessVersion") ?? "") ?? .recommended
         showLab = defaults.object(forKey: "showLab") as? Bool ?? usedBefore
         let rounds = defaults.integer(forKey: "harnessMaxRounds")
-        harnessMaxRounds = rounds > 0 ? rounds : 3
+        harnessMaxRounds = rounds > 0 ? rounds : Self.usualHarnessRounds
         harnessTestRunsOff = defaults.object(forKey: "harnessTestRunsOff") as? Bool ?? true
         telemetryOpen = defaults.object(forKey: "telemetryOpen") as? Bool ?? true
         let panelHeight = defaults.double(forKey: "telemetryHeight")
