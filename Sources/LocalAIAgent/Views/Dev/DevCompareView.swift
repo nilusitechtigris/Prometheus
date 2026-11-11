@@ -30,14 +30,12 @@ struct DevCompareView: View {
                         .padding(.vertical, 10)
                 }
             } else {
-                VStack(spacing: 14) {
-                    Image(systemName: "square.split.2x1")
-                        .font(.system(size: 38, weight: .light))
-                        .foregroundStyle(Palette.accent)
-                    Text("Compare the harness").font(Brand.display(24))
+                VStack(alignment: .leading, spacing: 12) {
+                    Text("Compare the harness").font(Brand.display(28)).foregroundStyle(Forge.ink)
                     DevCompareStarter(request: $request)
-                        .frame(width: 480)
                 }
+                .frame(maxWidth: 720, alignment: .leading)
+                .padding(24)
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
         }
@@ -55,21 +53,24 @@ struct DevCompareStarter: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             if !compact {
-                Forge.label("Compare the harness")
                 Text("Builds the same request twice on this model, in two new folders: once with the harness off, as one reply saved as it came, and once with it on. Both get the same checks.")
-                    .font(.uiCaption)
+                    .font(.uiCallout)
                     .foregroundStyle(Forge.dim)
                     .fixedSize(horizontal: false, vertical: true)
+                    .padding(.bottom, 6)
             }
             HStack(alignment: .center, spacing: 8) {
                 TextField(compact ? "Compare another request, or pick one from Prompts" : "A web app to build, or pick one from Prompts", text: $request, axis: .vertical)
                     .textFieldStyle(.plain)
-                    .font(.uiCallout)
+                    .font(compact ? .uiCallout : .uiBody)
                     .lineLimit(1...5)
-                    .padding(.horizontal, 10)
-                    .padding(.vertical, 7)
-                    .background(Forge.card, in: RoundedRectangle(cornerRadius: 9, style: .continuous))
-                    .overlay(RoundedRectangle(cornerRadius: 9, style: .continuous).strokeBorder(Forge.line, lineWidth: 1))
+                    .padding(.horizontal, compact ? 10 : 14)
+                    .padding(.vertical, compact ? 7 : 11)
+                    .background(Forge.card, in: RoundedRectangle(cornerRadius: compact ? 9 : 14, style: .continuous))
+                    .overlay(RoundedRectangle(cornerRadius: compact ? 9 : 14, style: .continuous)
+                        .strokeBorder(compact ? Forge.line : Color.white.opacity(0.14), lineWidth: 1))
+                    // On the empty page the box stands in the flame's light, like the question box on Home.
+                    .shadow(color: Palette.glow.opacity(compact ? 0 : 0.16), radius: 24, y: -8)
                     .onSubmit(start)
                 Menu {
                     ForEach(["Demo", "Quick", "Traps"], id: \.self) { group in
@@ -88,12 +89,18 @@ struct DevCompareStarter: View {
                 Button(action: start) {
                     Label("Compare", systemImage: "square.split.2x1")
                 }
-                .buttonStyle(AccentButtonStyle(compact: true))
+                .buttonStyle(AccentButtonStyle(compact: compact))
                 .disabled(!ready)
                 .help(dev.blockedReason ?? "Build it with the harness off, then on")
             }
             if let reason = dev.isComparing ? "A comparison is running." : (dev.canCompare ? nil : dev.blockedReason) {
                 Text(reason).font(.uiCaption2).foregroundStyle(Palette.warning)
+            }
+            if !compact {
+                Text("One run proves little. Try a few prompts before you trust the gap.")
+                    .font(.uiCaption)
+                    .foregroundStyle(Forge.dim)
+                    .padding(.top, 4)
             }
             if !compact, !dev.comparisons.isEmpty {
                 Button("Earlier comparisons (\(dev.comparisons.count))") { dev.showComparison(dev.comparisons[0].id) }

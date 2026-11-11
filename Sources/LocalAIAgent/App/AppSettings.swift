@@ -64,7 +64,8 @@ final class AppSettings {
     var harnessEnabled: Bool { didSet { defaults.set(harnessEnabled, forKey: "harnessEnabled") } }
     /// The version picked for chat, which only the lab can change. `activeHarness` is the one that runs.
     var harnessVersion: HarnessVersion { didSet { defaults.set(harnessVersion.rawValue, forKey: "harnessVersion") } }
-    /// Whether the Tests page shows the Model Test, the Harness Test and Publish beside the Hardware Test.
+    /// Once chose whether the Tests page showed the Model Test, the Harness Test and Publish. The page shows
+    /// every test now. Kept because the menu and saved settings still write it, and nothing reads it.
     var showLab: Bool { didSet { defaults.set(showLab, forKey: "showLab") } }
     /// Times the harness's loop may go round on a task, in chat and in the Harness Test.
     var harnessMaxRounds: Int { didSet { defaults.set(harnessMaxRounds, forKey: "harnessMaxRounds") } }

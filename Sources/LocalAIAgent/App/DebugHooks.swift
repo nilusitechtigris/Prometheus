@@ -30,7 +30,7 @@ import WebKit
 ///   LOCALAI_SHOW_MODEL_PICKER=1     open the model + quant picker after launch
 ///   LOCALAI_NO_ACTIVATE=1           don't bring the app to the front on launch
 ///   LOCALAI_DATA_DIR=/path          keep chats in this folder instead of the user's
-///   LOCALAI_DESTINATION=model|hardware|harness|publish|library   open that page after launch
+///   LOCALAI_DESTINATION=tests|model|hardware|harness|publish|library   open that page after launch
 ///   LOCALAI_PUBLISH_ALL=1           write the file Publish makes, with every saved run
 ///   LOCALAI_DEV_CHECK=/path         check Dev mode's parsing, sandbox and agent with a scripted model
 ///   LOCALAI_DEV_SESSION_CHECK=/path  check the Dev workspace's controller, in a folder with an awkward name
@@ -178,6 +178,7 @@ enum DebugHooks {
             case "hardware": ui.openTests(.hardware)
             case "harness": settings.showLab = true; ui.openTests(.harness)
             case "publish": settings.showLab = true; ui.openTests(.publish)
+            case "tests": ui.openTests(.overview)
             case "library": ui.destination = .library
             case "chat": ui.destination = .chat
             case "settings": ui.destination = .settings
@@ -389,7 +390,10 @@ enum DebugHooks {
             ui.destination = .chat
             dev.open(URL(fileURLWithPath: folder))
             if let file = env["LOCALAI_DEV_OPEN"] { dev.openFile(file) }
-            if env["LOCALAI_DEV_SHOW_COMPARE"] != nil, let first = dev.comparisons.first { dev.showComparison(first.id) }
+            if env["LOCALAI_DEV_SHOW_COMPARE"] != nil {
+                // With no comparison saved yet, the Compare view opens on its empty page.
+                if let first = dev.comparisons.first { dev.showComparison(first.id) } else { dev.showsCompare = true }
+            }
             if let delay = Double(env["LOCALAI_DEV_COMPARE_SHOT"] ?? "") {
                 Task {
                     try? await Task.sleep(for: .seconds(delay))

@@ -10,7 +10,7 @@ final class UIState {
 
     var destination: Destination = .home
     /// Which results the Tests page shows.
-    var testTab: TestTab = .hardware
+    var testTab: TestTab = .overview
     /// Which section the Settings page shows.
     var settingsTab: SettingsTab = .general
     var showModelPicker = false
