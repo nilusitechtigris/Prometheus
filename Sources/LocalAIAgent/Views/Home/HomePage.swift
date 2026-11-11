@@ -100,12 +100,12 @@ private struct AskBox: View {
                     .focused($focused)
                     .onSubmit(send)
                     .accessibilityLabel("Your task")
-                // One line. Only the model keeps its name: the rest are icons that light up when they're on,
-                // each explained by a card under the pointer.
+                // One line, the model first. Only the model keeps its name: the rest are icons that light up
+                // when they're on, each explained by a card under the pointer.
                 HStack(spacing: 8) {
-                    kindChips
-                    Forge.line.frame(width: 1, height: 18).padding(.horizontal, 2)
                     answerChips
+                    Forge.line.frame(width: 1, height: 18).padding(.horizontal, 2)
+                    kindChips
                     Spacer(minLength: 8)
                     Button { showOptions.toggle() } label: {
                         Image(systemName: "slider.horizontal.3")
