@@ -33,11 +33,9 @@ struct HomePage: View {
         }
     }
 
-    /// Where the flame burns on this page. `ForgeShell` draws the flame itself and moves it here.
+    /// The flame. It is lit each time this page is shown, and goes out with the page.
     private var flamePlace: some View {
-        Color.clear
-            .frame(width: FlameSlot.home.size.width, height: FlameSlot.home.size.height)
-            .flamePlace(.home)
+        FlameView().frame(width: FlameView.size.width, height: FlameView.size.height)
     }
 }
 
@@ -74,11 +72,16 @@ private struct AskBox: View {
                     .onSubmit(send)
                     .accessibilityLabel("Your task")
                 HStack(spacing: 8) {
-                    Button { ui.destination = .library } label: {
-                        chip("cube", backends.selectedModel?.displayName ?? "Choose a model", outlined: true)
+                    // The model in use. With nothing able to answer yet, it says what is missing and leads
+                    // to the chat page, which has the next step.
+                    let setup = SetupState(backends)
+                    Button { ui.destination = setup == .ready ? .library : .chat } label: {
+                        chip(setup == .ready ? "cube" : "exclamationmark.circle",
+                             setup == .ready ? (backends.selectedModel?.displayName ?? "Choose a model") : setup.title(backends.kind),
+                             outlined: true)
                     }
                     .buttonStyle(.soft)
-                    .help("Change the model")
+                    .help(setup == .ready ? "Change the model" : setup.nextStep)
                     Button {
                         ui.settingsTab = .harness
                         ui.destination = .settings
@@ -89,7 +92,17 @@ private struct AskBox: View {
                     }
                     .buttonStyle(.soft)
                     .help("The harness checks a small model's maths, code and rules before you see the reply")
-                    chip("text.alignleft", "\(settings.contextLength / 1024)K context")
+                    Menu {
+                        ForEach(AppSettings.contextOptions, id: \.self) { length in
+                            Button("\(length / 1024)K") { settings.contextLength = length }
+                        }
+                    } label: {
+                        chip("text.alignleft", "\(settings.contextLength / 1024)K context")
+                    }
+                    .menuStyle(.borderlessButton)
+                    .menuIndicator(.hidden)
+                    .fixedSize()
+                    .help("How much text the model keeps in view. More takes more memory.")
                     Spacer(minLength: 8)
                     Button { showOptions.toggle() } label: {
                         Image(systemName: "slider.horizontal.3")

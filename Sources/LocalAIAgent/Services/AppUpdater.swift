@@ -50,6 +50,9 @@ final class AppUpdater {
     }
 
     var canUpdate: Bool {
+        // Update builds the public app from the public code. Run from Prometheus Lab it would put that in
+        // the lab's place, so the lab is updated by building it again from the private code.
+        guard !Edition.isLabBuild else { return false }
         switch phase {
         case .working, .waitingForWork: return false
         default: return Self.script != nil

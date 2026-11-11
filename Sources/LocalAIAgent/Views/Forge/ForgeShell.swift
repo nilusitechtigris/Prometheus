@@ -1,15 +1,13 @@
 import AppKit
 import SwiftUI
 
-/// The app's layout: a header with the title, each page below it, and a dock of pages at the foot.
-/// The flame is drawn here once, over everything, and moves between Home and the header.
+/// The app's layout: the name in the title bar's row, each page below it, and a dock of pages at the foot.
 struct ForgeShell: View {
     @Environment(UIState.self) private var ui
     @Environment(DevSession.self) private var dev
-    /// Where the flame can be right now, measured by the pages (see `flamePlace`).
-    @State private var flamePlaces: [FlameSlot: CGRect] = [:]
+    @Environment(BackendController.self) private var backends
 
-    /// One side of a comparison has the whole window, so the header and the dock step aside too.
+    /// One side of a comparison has the whole window, so the name and the dock step aside too.
     private var pageFills: Bool { ui.destination == .chat && dev.isOn && dev.compareFillsWindow }
     private var isHome: Bool { ui.destination == .home }
 
@@ -17,7 +15,7 @@ struct ForgeShell: View {
         let shape = RoundedRectangle(cornerRadius: 20, style: .continuous)
         VStack(spacing: 0) {
             if !pageFills {
-                ForgeHeader().transition(.move(edge: .top).combined(with: .opacity))
+                titleRow.transition(.opacity)
             }
             MainPage()
                 // Home has no panel: the question stands on the window itself, in the flame's light.
@@ -25,26 +23,13 @@ struct ForgeShell: View {
                 .clipShape(shape)
                 .overlay(shape.strokeBorder(isHome ? Color.clear : Forge.line, lineWidth: 1))
                 .padding(.horizontal, 10)
-                // Without the header, stay clear of the window's title bar, where clicks would drag the window.
+                // Without the title row, stay clear of the window's title bar, where clicks would drag the window.
                 .padding(.top, pageFills ? 30 : 0)
                 .padding(.bottom, pageFills ? 10 : 0)
             if !pageFills {
                 ForgeDock().transition(.move(edge: .bottom).combined(with: .opacity))
             }
         }
-        .onPreferenceChange(FlamePlaces.self) { places in
-            // Home's place goes when Home does. Keeping the last one would send the flame back to a page
-            // that isn't there, so the whole set is replaced.
-            flamePlaces = places
-        }
-        .overlay(alignment: .topLeading) {
-            // Home's place while Home is the page; the header's on the way out and everywhere else.
-            if !pageFills, let frame = flamePlaces[isHome ? .home : .docked] ?? flamePlaces[.docked] {
-                FlameView(target: frame).allowsHitTesting(false)
-            }
-        }
-        .coordinateSpace(name: FlamePlaces.space)
-        .animation(Motion.flame, value: isHome)
         .animation(Motion.quick, value: pageFills)
         .overlay(alignment: .bottom) { ToastHost() }
         .background(WindowBackdrop(isHome: isHome))
@@ -52,6 +37,26 @@ struct ForgeShell: View {
         .preferredColorScheme(.dark)
         .toolbar(.hidden, for: .windowToolbar)
         .background(ForgeWindowStyle(canvas: ThemeStore.shared.theme.canvasHex))
+        .onChange(of: backends.lastError) { _, problem in
+            // A model that couldn't be removed used to fail without a word.
+            if let problem {
+                ui.showToast(problem, symbol: "exclamationmark.triangle.fill")
+                backends.lastError = nil
+            }
+        }
+    }
+
+    /// The name, on the same line as the window buttons and to their right. It takes no clicks, so the
+    /// window can be dragged by it. The theme dots at the far end of this line are part of the title bar
+    /// itself (see `ForgeWindowStyle`), because a control drawn here would lose its clicks to the bar.
+    private var titleRow: some View {
+        Text(Brand.name)
+            .font(.geist(13, weight: .semibold))
+            .foregroundStyle(Forge.ink)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.leading, 78)
+            .frame(height: 30)
+            .allowsHitTesting(false)
     }
 }
 
@@ -78,12 +83,14 @@ enum Forge {
     }
 }
 
-/// Runs the background up behind the window buttons, in the theme's colour.
+/// Runs the background up behind the window buttons, in the theme's colour, and puts the theme dots in
+/// the title bar.
 private struct ForgeWindowStyle: NSViewRepresentable {
     let canvas: UInt32
 
     final class StyledView: NSView {
         var canvas: UInt32 = 0 { didSet { apply() } }
+        private var hasDots = false
 
         override func viewDidMoveToWindow() {
             super.viewDidMoveToWindow()
@@ -91,6 +98,17 @@ private struct ForgeWindowStyle: NSViewRepresentable {
             window.titlebarAppearsTransparent = true
             window.titleVisibility = .hidden
             window.styleMask.insert(.fullSizeContentView)
+            if !hasDots {
+                // An accessory is the title bar's own way to hold a control: its clicks arrive, where a
+                // control drawn under the bar by the page would start dragging the window instead.
+                let dots = NSTitlebarAccessoryViewController()
+                dots.layoutAttribute = .trailing
+                let host = NSHostingView(rootView: ThemeDots())
+                host.frame.size = host.fittingSize
+                dots.view = host
+                window.addTitlebarAccessoryViewController(dots)
+                hasDots = true
+            }
             apply()
         }
 
@@ -113,108 +131,9 @@ private struct ForgeWindowStyle: NSViewRepresentable {
     func updateNSView(_ view: StyledView, context: Context) { view.canvas = canvas }
 }
 
-/// The theme's ground, lit by the flame: from the middle on Home, from beside the title anywhere else.
-private struct WindowBackdrop: View {
-    let isHome: Bool
-
-    var body: some View {
-        ZStack {
-            Forge.black
-            RadialGradient(colors: [Palette.glow.opacity(0.17), .clear], center: UnitPoint(x: 0.5, y: 0.27), startRadius: 0, endRadius: 540)
-                .opacity(isHome ? 1 : 0)
-            RadialGradient(colors: [Palette.glow.opacity(0.13), .clear], center: UnitPoint(x: 0.08, y: 0), startRadius: 0, endRadius: 440)
-                .opacity(isHome ? 0 : 1)
-        }
-        .accessibilityHidden(true)
-    }
-}
-
-// MARK: - Header
-
-/// The title with the flame's place beside it, and the things that stay within reach on every page.
-private struct ForgeHeader: View {
-    @Environment(AppSettings.self) private var settings
-    @Environment(UIState.self) private var ui
-    @Environment(BackendController.self) private var backends
-    @Environment(ChatController.self) private var chat
-
-    private var isHome: Bool { ui.destination == .home }
-
-    var body: some View {
-        HStack(alignment: .firstTextBaseline, spacing: 10) {
-            // The flame's place. It is always here, so the title never moves up or down: on Home it has
-            // no width, and the flame is in the middle of the page instead.
-            Color.clear
-                .frame(width: isHome ? 0 : FlameSlot.docked.size.width, height: FlameSlot.docked.size.height)
-                .flamePlace(.docked)
-                // The foot of the glass stands on the line the title is written on.
-                .alignmentGuide(.firstTextBaseline) { $0.height * FlameSlot.foot }
-                .padding(.trailing, isHome ? -10 : -2)
-            Text(Brand.name).font(.geist(15, weight: .semibold)).foregroundStyle(Forge.ink)
-            Spacer(minLength: 12)
-            if !isHome {
-                Button {
-                    chat.newConversation()
-                    ui.destination = .home
-                } label: {
-                    Label("New task", systemImage: "plus")
-                }
-                .buttonStyle(HeaderPillStyle())
-                .help("Back to the start, for a new task")
-                .transition(.opacity)
-            }
-            ThemeSwitch()
-            status
-        }
-        // Clear of the window buttons at the left, and low enough that a click lands on a control and
-        // doesn't drag the window by its title bar.
-        .padding(.leading, 84)
-        .padding(.trailing, 14)
-        .padding(.top, 8)
-        .padding(.bottom, 8)
-    }
-
-    private var harnessOn: Bool { settings.harnessEnabled && backends.kind.supportsTools }
-
-    private var status: some View {
-        let state = SetupState(backends)
-        let ready = state == .ready
-        return HStack(spacing: 8) {
-            Circle().fill(state.level.color).frame(width: 7, height: 7)
-            Text(ready ? (backends.selectedModel?.displayName ?? state.title(backends.kind)) : state.title(backends.kind))
-                .font(.uiCallout.weight(.medium))
-                .lineLimit(1)
-            // The label is safe for either edition: "Harness" for everyone, the version's name in the lab.
-            Text(ready ? (harnessOn ? "\(settings.activeHarness.label) on" : "Ready") : state.nextStep)
-                .font(.uiCallout)
-                .foregroundStyle(Forge.dim)
-                .lineLimit(1)
-        }
-        .padding(.horizontal, 13)
-        .frame(height: 34)
-        .background(Forge.card, in: Capsule(style: .circular))
-        .overlay(Capsule(style: .circular).strokeBorder(Forge.line, lineWidth: 1))
-        .contentShape(Capsule(style: .circular))
-        // Not ready: the chat page is where the next step is. Ready: the models are a click away.
-        .onTapGesture { ui.destination = ready ? .library : .chat }
-        .onChange(of: backends.lastError) { _, problem in
-            // A model that couldn't be removed used to fail without a word.
-            if let problem {
-                ui.showToast(problem, symbol: "exclamationmark.triangle.fill")
-                backends.lastError = nil
-            }
-        }
-        .help(harnessOn ? (WebConsent.shared.policy == .allowed
-                               ? "Harness on: search terms go to \(WebConsent.destinations)"
-                               : "Harness on: nothing leaves this Mac unless you allow a lookup")
-                        : "100% local — prompts and responses never leave this Mac")
-    }
-}
-
-/// Ember or Rose, one click apart.
-private struct ThemeSwitch: View {
+/// Ember or Rose, as two dots of their colour at the end of the title bar. The one in use has a ring.
+private struct ThemeDots: View {
     private var store = ThemeStore.shared
-    @Namespace private var highlight
 
     var body: some View {
         HStack(spacing: 2) {
@@ -223,44 +142,37 @@ private struct ThemeSwitch: View {
                 Button {
                     withAnimation(Motion.quick) { store.theme = theme }
                 } label: {
-                    HStack(spacing: 7) {
-                        Circle().fill(theme.accent).frame(width: 10, height: 10)
-                        Text(theme.name).font(.uiCallout.weight(.medium)).foregroundStyle(selected ? Forge.ink : Forge.dim)
-                    }
-                    .padding(.horizontal, 12)
-                    .frame(height: 28)
-                    .background {
-                        if selected {
-                            Capsule(style: .circular).fill(Color.white.opacity(0.16)).matchedGeometryEffect(id: "pick", in: highlight)
-                        }
-                    }
-                    .contentShape(Capsule(style: .circular))
+                    Circle()
+                        .fill(theme.accent)
+                        .frame(width: 12, height: 12)
+                        .padding(3)
+                        .overlay(Circle().strokeBorder(Color.white.opacity(selected ? 0.9 : 0), lineWidth: 1.5))
+                        .frame(width: 24, height: 24)
+                        .contentShape(Rectangle())
                 }
-                .buttonStyle(.soft)
+                .buttonStyle(.plain)
+                .help("\(theme.name) theme")
                 .accessibilityLabel("\(theme.name) theme")
                 .accessibilityAddTraits(selected ? .isSelected : [])
             }
         }
-        .padding(3)
-        .background(Forge.card, in: Capsule(style: .circular))
-        .overlay(Capsule(style: .circular).strokeBorder(Forge.line, lineWidth: 1))
-        .help("Switch between the Ember and Rose looks")
+        .padding(.trailing, 10)
+        .frame(height: 28)
     }
 }
 
-/// A quiet pill button for the header.
-private struct HeaderPillStyle: ButtonStyle {
-    func makeBody(configuration: Configuration) -> some View {
-        configuration.label
-            .font(.uiCallout.weight(.medium))
-            .foregroundStyle(Forge.ink)
-            .padding(.horizontal, 13)
-            .frame(height: 34)
-            .background(Forge.card, in: Capsule(style: .circular))
-            .overlay(Capsule(style: .circular).strokeBorder(Forge.line, lineWidth: 1))
-            .opacity(configuration.isPressed ? 0.7 : 1)
-            .contentShape(Capsule(style: .circular))
-            .animation(Motion.press, value: configuration.isPressed)
+/// The theme's ground. On Home the flame lights it from the middle; every other page is unlit.
+private struct WindowBackdrop: View {
+    let isHome: Bool
+
+    var body: some View {
+        ZStack {
+            Forge.black
+            RadialGradient(colors: [Palette.glow.opacity(0.17), .clear], center: UnitPoint(x: 0.5, y: 0.27), startRadius: 0, endRadius: 540)
+                .opacity(isHome ? 1 : 0)
+                .animation(Motion.page, value: isHome)
+        }
+        .accessibilityHidden(true)
     }
 }
 
@@ -271,17 +183,29 @@ private struct ForgeDock: View {
     @Environment(AppSettings.self) private var settings
     @Environment(UIState.self) private var ui
     @Environment(TestLab.self) private var lab
+    @Environment(DevSession.self) private var dev
     /// So the highlight slides from one item to the next.
     @Namespace private var highlight
+
+    private var inChat: Bool { ui.destination == .chat }
 
     var body: some View {
         HStack(spacing: 4) {
             item("sparkle", "Ask", selected: ui.destination == .home) { ui.destination = .home }
                 .help("Start a task")
-            item("clock.arrow.circlepath", "History", selected: ui.destination == .chat) {
-                withAnimation(Motion.quick) { ui.toggleChats(in: settings) }
+            // Always the chats, with the list showing. It used to fold the list away on a second click,
+            // and to show Dev mode when that had been left on.
+            item("clock.arrow.circlepath", "History", selected: inChat && !dev.isOn) {
+                dev.isOn = false
+                settings.chatsOpen = true
+                ui.destination = .chat
             }
-            .help("Show your chats, or collapse them if they're showing (⌥⌘2)")
+            .help("Your chats (⌥⌘2 folds the list away)")
+            item("chevron.left.forwardslash.chevron.right", "Dev", selected: inChat && dev.isOn) {
+                dev.isOn = true
+                ui.destination = .chat
+            }
+            .help("Dev mode: the agent writes code in a project folder and runs it")
             item("cube", "Models", selected: ui.destination == .library) { ui.destination = .library }
             item("checklist", "Tests", selected: ui.destination == .tests, busy: lab.isRunning) { ui.destination = .tests }
             item("gearshape.fill", "Settings", selected: ui.destination == .settings) { ui.destination = .settings }
@@ -291,6 +215,7 @@ private struct ForgeDock: View {
         .overlay(Capsule(style: .circular).strokeBorder(Forge.line, lineWidth: 1))
         .padding(.vertical, 10)
         .animation(Motion.page, value: ui.destination)
+        .animation(Motion.page, value: dev.isOn)
     }
 
     private func item(_ symbol: String, _ title: String, selected: Bool, busy: Bool = false, action: @escaping () -> Void) -> some View {

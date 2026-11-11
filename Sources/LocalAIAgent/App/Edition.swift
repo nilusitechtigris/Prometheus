@@ -3,17 +3,27 @@ import Foundation
 /// Which edition this copy is. Everyone gets the standard one: one harness, on or off, with no versions to
 /// choose. The lab keeps every version of the harness to use in chat and to test, for comparing them.
 ///
-/// There's no control for it in the app. It's read once at launch from a setting that only someone running the
-/// lab writes, `defaults write com.localaiagent.app edition lab`, or from `-edition lab` when the app is
-/// started. Every copy is built the same way, by Update, from the same source, so a switch at build time would
-/// be lost at the next update. This hides the versions. It doesn't lock them: the setting is here to read.
+/// There's no control for it in the app. There are two ways to be the lab:
+///
+/// - The private app, "Prometheus Lab", is the lab by the way it is built: `EDITION=lab scripts/build-app.sh`
+///   gives it its own name, its own icon and the `PrometheusEdition` key this reads. It isn't updated by the
+///   Update button, which builds the public app (see `isLabBuild`).
+/// - A copy of the public app becomes the lab at launch from a setting that only someone who knows of it
+///   writes, `defaults write com.localaiagent.app edition lab`, or from `-edition lab` when the app is started.
+///   That survives Update, which builds every public copy the same way from the same source.
+///
+/// This hides the versions. It doesn't lock them: the setting is here to read.
 enum Edition: String {
     case standard, lab
+
+    /// Whether this copy was built as the private app. True only for "Prometheus Lab".
+    static let isLabBuild = (Bundle.main.object(forInfoDictionaryKey: "PrometheusEdition") as? String) == Edition.lab.rawValue
 
     static let current: Edition = {
         #if DEBUG
         if let forced = ProcessInfo.processInfo.environment["LOCALAI_EDITION"].flatMap(Edition.init(rawValue:)) { return forced }
         #endif
+        if isLabBuild { return .lab }
         return Edition(rawValue: UserDefaults.standard.string(forKey: "edition") ?? "") ?? .standard
     }()
 

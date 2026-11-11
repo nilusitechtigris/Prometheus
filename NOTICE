@@ -23,6 +23,9 @@ AI-generated pictures (assets/art/, assets/icon.png, assets/icon-source.png)
   were made with Figma's AI image tool instead. Their unedited exports are in
   assets/art/originals/ as well. The copies in assets/art/ are cropped and have
   the black background turned into transparency.
+  assets/icon.png and both app icons are made from these two by
+  scripts/make-icon.swift. assets/icon-source.png, the earlier lime flame, is no
+  longer used by the build.
 
 Models
   Prometheus doesn't include any model. You download models yourself, and each one

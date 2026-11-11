@@ -317,6 +317,12 @@ private struct UpdateSettings: View {
                     Button("Update") { updater.update() }
                         .disabled(!updater.canUpdate)
                 }
+                if Edition.isLabBuild {
+                    Text("This is Prometheus Lab, the private app. Update builds the public app, so it is off here: build the lab again from the private code with `make install-lab`.")
+                        .font(.uiCaption)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
             } footer: {
                 Text("Downloads the newest code from GitHub, builds it on this Mac and restarts the app. It also updates Ollama, MLX LM and llama.cpp when Homebrew installed them. It goes online only when you press Update, and waits for a running test, reply or download before it restarts anything. Your chats and settings stay as they are, and if anything goes wrong this copy keeps working.")
                     .font(.uiCaption)
