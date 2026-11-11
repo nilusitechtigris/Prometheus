@@ -217,7 +217,7 @@ The Tests page opens on the **Hardware Test**. Turn on **Lab** there for the res
   - **Held-out** asks 120 public questions, from GSM8K, GSM-Plus, IFEval and MBPP, that the harness is never tuned on. Code grades every one, and the app shows totals without showing the questions or replies.
   - **Practice** asks 60 more of the same kinds. That's where failures get studied, so a gain there proves nothing.
 
-  Choose **3 runs** to repeat a test and see every round's score, the mean and the spread. For any two runs on the same questions, the page counts the answers that flipped each way and says how often chance alone would split them that unevenly. Turn off **Harness off too** to run with the harness on only. How the public questions were picked, their licences and what a score on them can't show are in [benchmarks/heldout](benchmarks/heldout/README.md).
+  Choose **3 runs** to repeat a test and see every round's score, the mean and the spread. For any two runs on the same questions, the page counts the answers that flipped each way and says how often chance alone would split them that unevenly. **By route** shows, for each kind of task, how many questions went right with the harness and without, and how many flipped each way. Turn off **Harness off too** to run with the harness on only. How the public questions were picked, their licences and what a score on them can't show are in [benchmarks/heldout](benchmarks/heldout/README.md).
 
 **Publish** (⌥⌘6) shares your results. Tick the runs you want and press **Publish**. The app saves a JSON file and a readable report named after your Mac and the date, then opens GitHub, where you drag them in to make a pull request. Each task shows its reply, the end of the model's thinking, its token counts, time and points. People's results are in [results](results/README.md), which also describes the files.
 
@@ -241,6 +241,7 @@ Quit and open the app again after it. `defaults delete com.localaiagent.app edit
 | **v4 Thinking loop** | The loop, with the model thinking through every step it takes part in. Needs Think on: with it off, it works like v3. |
 | **v5 Council** | Code prepares a shared notes file, then three agents with their own personality and temperature discuss the task in it, thinking on. |
 | **v6 Evidence loop** | New in 2.0, and not scored yet. The loop with stricter evidence: code works out dates, letter counts and sums itself, a looked-up answer only counts when one sentence on the page holds it, and its steps end by saying what was checked. Two rounds at most. |
+| **v7 One harness** | New, lab edition only, and not scored yet. It sends each task down one route and switches on only what that route needs: nothing at all, exact code, a program beside the model's own answer, the reply's own code run on the examples in the message, a lookup only when the model isn't sure, a long text's passages, or rule checks. Every route starts from the plain model's reply where it can. |
 
 ![The Harness Test results](docs/screenshots/harness.png)
 

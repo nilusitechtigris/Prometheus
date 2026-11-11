@@ -178,6 +178,8 @@ extension TestLab {
                    && tidied.reply.toolLog.contains("Tidied the reply so it keeps the rules"))
         let never = await run(words) { _ in "the sky is very blue today" }
         expect("writing that never fits stops after two more tries and says so (\(never.requests.count)): \(checked(never.reply))", never.requests.count <= 3 && checked(never.reply).hasPrefix("Not checked:"))
+        let starred = await run(words) { _ in "**the sky** is very blue today" }
+        expect("and it is left as the model wrote it, stars and all, when nothing did better: \(starred.reply.answer)", starred.reply.answer == "**the sky** is very blue today")
 
         // MARK: Look up
 
@@ -209,6 +211,7 @@ extension TestLab {
             if isMemory(request) { return "I don't know." }
             return text(request).contains("Write a web search") ? "Mordell conjecture proof" : "Gerd Faltings proved it in 1983."
         }
+        expect("a model that isn't sure is asked once, not again by the lookup", unsure.requests.filter(isMemory).count == 1)
         expect("a model that isn't sure is given a lookup (\(fetched) fetches): \(checked(unsure.reply))", fetched > 0 && unsure.reply.toolLog.contains("Not sure from memory, so it's looked up")
                    && unsure.reply.toolLog.contains { $0.hasPrefix("Opened:") } && checked(unsure.reply) == "Checked: a sentence from the page holds this answer")
         fetched = 0
@@ -218,10 +221,11 @@ extension TestLab {
             turn += 1
             return turn == 2 ? "Louis Mordell" : "Gerd Faltings"
         }
-        expect("answers that differ are a guess, so it's looked up", fetched > 0 && wavering.reply.toolLog.contains("Memory gave different answers, so it's looked up"))
+        expect("answers that differ are a guess, so it's looked up, after two questions and no third", fetched > 0 && wavering.requests.filter(isMemory).count == 2
+                   && wavering.reply.toolLog.contains("Memory gave different answers, so it's looked up") && wavering.reply.answer.contains("Faltings"))
         fetched = 0
         let now = await run("Who is the current president of France?") { isMemory($0) ? "Someone" : "I can't be sure." }
-        expect("a question about what is true now skips memory and goes to the lookup", fetched > 0 && !now.reply.toolLog.contains { $0.contains("three times") })
+        expect("a question about what is true now skips memory and goes to the lookup", fetched > 0 && now.requests.filter(isMemory).isEmpty)
         let task = HarnessTask(prompt: mordell)
         expect("two short answers agree when one holds the other's names", sameAnswer("Gerd Faltings, in 1983", "Faltings", task: task) && sameAnswer("Canberra", "canberra.", task: task)
                    && !sameAnswer("In 1983", "In 1986", task: task) && !sameAnswer("Gerd Faltings", "Louis Mordell", task: task))

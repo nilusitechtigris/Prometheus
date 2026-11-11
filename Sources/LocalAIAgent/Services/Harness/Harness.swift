@@ -50,7 +50,7 @@ extension TestLab {
         case .rules:
             await rulesRoute(task, setup: setup, total: &total, answer: answer)
         case .lookup:
-            await lookupRoute(task, prompt: prompt, earlier: earlier, setup: setup, total: &total, answer: answer)
+            await lookupRoute(task, setup: setup, total: &total, answer: answer)
         }
     }
 
@@ -216,6 +216,7 @@ extension TestLab {
         }
         var last = best
         var round = 1
+        var mended = false
         while !best.problems.isEmpty, round < 3, !Task.isCancelled {
             round += 1
             if let problem = last.problems.first { total.toolLog.append("Round \(round): \(problem.text)") }
@@ -239,11 +240,16 @@ extension TestLab {
             total.onStage?(.check, round)
             let stuck = attempt.problems == last.problems && attempt.text == last.text
             last = attempt
-            if attempt.rank < best.rank { best = attempt }
+            if attempt.rank < best.rank {
+                best = attempt
+                mended = true
+            }
             if stuck { break }
         }
-        total.answer = best.text
-        total.onDraft?(best.text)
+        // When nothing did better and a rule is still broken, tidying bought nothing, so the reply stays as written.
+        let text = best.problems.isEmpty || mended ? best.text : own.answer
+        total.answer = text
+        total.onDraft?(text)
         total.toolLog.append(best.problems.first.map { "Not checked: \($0.text)" } ?? "Checked: the rules in the message, by code")
     }
 
@@ -258,8 +264,8 @@ extension TestLab {
     /// with the harness off and nothing is searched. Anything else, or a question about what is true now, goes
     /// to the lookup: the page that covers what the question names, a few sentences from it, and a reply that
     /// only counts as backed when one sentence holds it.
-    private static func lookupRoute(_ task: HarnessTask, prompt: String, earlier: String, setup: TestSetup,
-                                    total: inout Reply, answer: (AnswerPlan) async -> Reply) async {
+    private static func lookupRoute(_ task: HarnessTask, setup: TestSetup, total: inout Reply, answer: (AnswerPlan) async -> Reply) async {
+        var remembered: String?
         let asksForNow = task.body.range(of: fresh, options: [.regularExpression, .caseInsensitive]) != nil
         if !asksForNow {
             total.onStage?(.act, 1)
@@ -279,8 +285,65 @@ extension TestLab {
                 return
             }
             total.toolLog.append(said.isEmpty ? "Not sure from memory, so it's looked up" : "Memory gave different answers, so it's looked up")
+            remembered = said.first
         }
-        await runLoop(prompt: prompt, earlier: earlier, setup: setup, strict: true, total: &total, answer: answer)
+        await lookedUp(task, remembered: remembered, setup: setup, total: &total, answer: answer)
+    }
+
+    /// The lookup itself, in the steps v6 takes for a fact, written out here so that what the model already said
+    /// from memory is handed on and not asked for again. Two rounds at most. If the person says no to the
+    /// search, the reply is the plain model's.
+    private static func lookedUp(_ task: HarnessTask, remembered: String?, setup: TestSetup, total: inout Reply, answer: (AnswerPlan) async -> Reply) async {
+        var state = LoopState(kind: .fact, rules: task.rules.onlyFinalLine.countingTheOnlyUnit)
+        state.strict = true
+        state.memoryAnswer = remembered
+        var best: Attempt?, last: Attempt?
+        var rounds = 0
+        for round in 1...2 {
+            if Task.isCancelled { break }
+            rounds = round
+            if round > 1, let problem = last?.problems.first { total.toolLog.append("Round \(round): \(problem.text)") }
+            total.onStage?(.act, round)
+            if !state.webDeclined, round == 1 || state.wantsEvidence { await researchQuoted(task, state: &state, setup: setup, total: &total) }
+            if Task.isCancelled { break }
+            if state.webDeclined, state.evidence.isEmpty {
+                await ownReply(to: task, total: &total, answer: answer)
+                total.toolLog.append("Not checked: answered from memory, with no lookup")
+                return
+            }
+
+            total.onStage?(.answer, round)
+            var plan = AnswerPlan(task: task.ask)
+            plan.addendum = state.quotes.isEmpty ? evidenceNote(state.evidence) : quotedNote(state.evidence)
+            if round > 1 || !state.evidence.isEmpty {
+                plan.think = setup.think == nil ? nil : false
+                plan.maxTokens = tightTokens
+            }
+            if round > 1, let last {
+                plan.addendum += "\n\nYour last reply had these problems:\n" + last.problems.map { "- \($0.text)" }.joined(separator: "\n")
+                    + "\n\nGive your final reply now, in a few lines."
+            }
+            let reply = await answer(plan)
+            absorb(reply, into: &total)
+            if let error = reply.error {
+                total.error = error
+                break
+            }
+            var attempt = judge(reply.answer, cut: reply.stats?.stopReason == "length", task: task, state: state)
+            attempt = reconciled(attempt, task: task, state: &state, total: &total, mayGoAgain: round < 2)
+
+            total.onStage?(.check, round)
+            if attempt.rank < best?.rank ?? Int.max || best == nil {
+                best = attempt
+                total.onDraft?(attempt.text)
+            }
+            if attempt.problems.isEmpty { break }
+            state.wantsEvidence = attempt.problems.contains(.unsupported) || state.evidence.isEmpty
+            let stuck = last.map { $0.problems == attempt.problems && $0.text == attempt.text } ?? false
+            last = attempt
+            if stuck { break }
+        }
+        finish(best, rounds: rounds, task: task, state: state, total: &total)
     }
 
     /// Whether two short answers name the same thing: the same names and numbers, or one holding all of the

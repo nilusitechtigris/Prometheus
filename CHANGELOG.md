@@ -15,6 +15,8 @@ Every number this project quotes comes from a run someone made in the app. Where
 - **Repeat runs.** Run a Harness Test three times and see every round's score, the mean and the spread. For any two runs on the same questions, the app says how often chance alone would flip that many answers that unevenly.
 - **Harness v6, the evidence loop.** It answers from memory first, looks things up only where that helps, reads a page as a few quoted sentences, and settles letter counts, word counts, weekdays and day spans with plain code. Not the default and not scored yet, so it shows in the lab edition only.
 - **Dev harness v2, the checked build.** After an app works it runs extra checks, tries one fix for each thing it finds, and keeps the fix only if it holds. It reports what it could not fix. Not the default and not scored yet, so it shows in the lab edition only.
+- **One harness, v7.** It sends each task down one route and switches on only the parts that route needs, and it starts from the plain model's reply where it can. A request for code has its reply's code run on the examples in the message, and a fact is only looked up when the model isn't sure of it. Lab edition only, and not scored yet.
+- **By route** on the Harness Test: for each kind of task, the questions that went right with the harness and without, and how many flipped each way. It works on runs already made.
 - **A copy of your data before every new build touches it.** Chats, test history, Dev mode's chats and comparisons, and shared notes are copied once per build into `Backups`, and the newest five copies are kept.
 
 ### Changed
