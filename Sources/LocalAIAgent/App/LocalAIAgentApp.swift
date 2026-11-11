@@ -6,9 +6,17 @@ import SwiftUI
 @Observable
 final class UIState {
     /// What the main area shows.
-    enum Destination: Hashable { case home, chat, tests, library, settings }
+    enum Destination: Hashable { case home, chat, tests, library, settings, telemetry }
 
-    var destination: Destination = .home
+    var destination: Destination = .home {
+        didSet {
+            if destination == .telemetry, oldValue != .telemetry { beforeTelemetry = oldValue }
+        }
+    }
+    /// The page Telemetry was opened from, which closing it goes back to.
+    private(set) var beforeTelemetry: Destination = .home
+    /// What is typed on Home and not sent yet. It is kept here, so a look at another page doesn't lose it.
+    var homeDraft = ""
     /// Which results the Tests page shows.
     var testTab: TestTab = .overview
     /// Which section the Settings page shows.
@@ -40,6 +48,11 @@ final class UIState {
     func openTests(_ tab: TestTab) {
         testTab = tab
         destination = .tests
+    }
+
+    /// Opens Telemetry from whatever page is showing, or goes back to that page when Telemetry is open.
+    func toggleTelemetry() {
+        destination = destination == .telemetry ? beforeTelemetry : .telemetry
     }
 
     /// Goes to the Chat page with the chats showing, or collapses them if they already are.
@@ -155,8 +168,7 @@ struct LocalAIAgentApp: App {
                 .environment(lab)
                 .environment(updater)
                 .environment(dev)
-                // With the telemetry panel open the window stays tall enough for the page above it.
-                .frame(minWidth: 1100, minHeight: settings.telemetryOpen ? max(640, 400 + settings.telemetryHeight) : 640)
+                .frame(minWidth: 1100, minHeight: 640)
                 .task {
                     backends.start()
                     monitor.start()
@@ -207,6 +219,9 @@ struct LocalAIAgentApp: App {
                     .keyboardShortcut("3")
                 Button("Models") { ui.destination = .library }
                     .keyboardShortcut("4")
+                // From any page, and back to it with the same keys.
+                Button(ui.destination == .telemetry ? "Close Telemetry" : "Telemetry") { ui.toggleTelemetry() }
+                    .keyboardShortcut("1", modifiers: [.command, .option])
                 Divider()
             }
             CommandGroup(replacing: .saveItem) {
@@ -242,9 +257,6 @@ struct LocalAIAgentApp: App {
                 Button("Model Library") { ui.destination = .library }
                     .keyboardShortcut("l", modifiers: [.command, .shift])
                 Divider()
-                Button(settings.telemetryOpen ? "Hide Telemetry" : "Show Telemetry") { settings.telemetryOpen.toggle() }
-                    .keyboardShortcut("1", modifiers: [.command, .option])
-                    .disabled(ui.destination != .chat)
                 Button(ui.destination == .chat && settings.chatsOpen ? "Hide Chats" : "Show Chats") { ui.toggleChats(in: settings) }
                     .keyboardShortcut("2", modifiers: [.command, .option])
                 Button("Search Chats") {

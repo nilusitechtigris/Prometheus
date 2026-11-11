@@ -1,6 +1,6 @@
 import SwiftUI
 
-// The live hardware readout in the telemetry panel (TelemetryPanel.swift), ordered along the data path
+// The live hardware readout on the Telemetry page (TelemetryPage.swift), ordered along the data path
 // of a reply: GPU (does the work) → memory (holds the model) → CPU.
 
 /// A titled panel with its own tinted background, so each group reads as a separate widget.
@@ -40,12 +40,19 @@ struct HardwareWidget: View {
 
     var body: some View {
         let s = monitor.snapshot
-        PanelWidget(title: "Hardware", symbol: "cpu.fill") {
-            LevelPill(level: thermalLevel(s.thermalState), text: "Heat: \(thermalText(s.thermalState))")
-                .help(thermalHelp(s.thermalState))
-            TelemetryPanelToggle()
-        } content: {
-            HStack(alignment: .top, spacing: 8) {
+        VStack(alignment: .leading, spacing: 20) {
+            HStack(alignment: .bottom, spacing: 16) {
+                VStack(alignment: .leading, spacing: 6) {
+                    Text("Telemetry").font(Brand.display(28)).foregroundStyle(Forge.ink)
+                    Text("What this Mac is doing right now. The GPU runs the model, memory holds it, and the CPU does the rest.")
+                        .font(.uiBody)
+                        .foregroundStyle(Forge.dim)
+                }
+                Spacer(minLength: 0)
+                LevelPill(level: thermalLevel(s.thermalState), text: "Heat: \(thermalText(s.thermalState))")
+                    .help(thermalHelp(s.thermalState))
+            }
+            HStack(alignment: .top, spacing: 16) {
             // GPU — runs the model.
             ComponentCard(title: "GPU", symbol: "square.stack.3d.up.fill",
                           subtitle: monitor.gpuCoreCount.map { "\($0) cores" }) {
@@ -132,21 +139,23 @@ private struct ComponentCard<Stats: View, Footer: View>: View {
     @ViewBuilder var footer: Footer
 
     var body: some View {
-        Card(padding: 10) {
-            VStack(alignment: .leading, spacing: 8) {
-                HStack(spacing: 6) {
-                    Image(systemName: symbol).font(.uiCaption).foregroundStyle(Palette.accent)
-                    Text(title).font(.uiCallout.weight(.semibold))
-                    if let subtitle { Text(subtitle).font(.uiCaption).foregroundStyle(.secondary).monospacedDigit().lineLimit(1).minimumScaleFactor(0.8) }
-                    Spacer()
-                }
-                HStack(alignment: .top, spacing: 10) {
-                    stats
-                }
-                footer
+        let shape = RoundedRectangle(cornerRadius: 22, style: .continuous)
+        VStack(alignment: .leading, spacing: 16) {
+            HStack(spacing: 8) {
+                Image(systemName: symbol).font(.system(size: 13, weight: .medium)).foregroundStyle(Palette.accent)
+                Text(title).font(.uiHeadline).foregroundStyle(Forge.ink)
+                if let subtitle { Text(subtitle).font(.uiCaption).foregroundStyle(Forge.dim).monospacedDigit().lineLimit(1).minimumScaleFactor(0.8) }
+                Spacer()
             }
-            .frame(maxHeight: .infinity, alignment: .topLeading)
+            HStack(alignment: .top, spacing: 18) {
+                stats
+            }
+            footer
         }
+        .padding(20)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        .background(Forge.card, in: shape)
+        .overlay(shape.strokeBorder(Forge.line, lineWidth: 1))
     }
 }
 
@@ -162,23 +171,22 @@ private struct MiniStat: View {
 
     var body: some View {
         let level = levelOverride ?? threshold.level(raw)
-        VStack(alignment: .leading, spacing: 4) {
-            HStack(spacing: 4) {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 5) {
                 StatusDot(level: level, size: 6)
-                Text(label).font(.uiCaption2).foregroundStyle(.secondary)
+                Text(label).font(.uiCaption).foregroundStyle(Forge.dim)
                 Spacer(minLength: 0)
                 if let detail { Text(detail).font(.uiCaption2.monospacedDigit()).foregroundStyle(.tertiary).lineLimit(1).fixedSize() }
             }
-            HStack(alignment: .bottom, spacing: 6) {
-                Text(value)
-                    .font(.uiDisplay(size: 17, weight: .semibold))
-                    .monospacedDigit()
-                    .contentTransition(.numericText())
-                    .fixedSize()
-                Sparkline(points: series, color: level == .unknown ? Palette.accent : level.color,
-                          domain: domain, height: 20)
-            }
-            RangeBar(value: raw, threshold: threshold, height: 4)
+            Text(value)
+                .font(.uiDisplay(size: 28, weight: .semibold))
+                .foregroundStyle(Forge.ink)
+                .monospacedDigit()
+                .contentTransition(.numericText())
+                .fixedSize()
+            Sparkline(points: series, color: level == .unknown ? Palette.accent : level.color,
+                      domain: domain, height: 64)
+            RangeBar(value: raw, threshold: threshold, height: 5)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .help("\(label): \(value), \(level.label.lowercased()). \(threshold.scaleNote(unit: value.hasSuffix("%") ? "%" : "°C"))")
@@ -199,7 +207,7 @@ private struct FooterRow: View {
             }
             Spacer(minLength: 0)
         }
-        .font(.uiCaption2)
+        .font(.uiCaption)
         .lineLimit(1)
     }
 }
@@ -208,15 +216,15 @@ private struct CoreBars: View {
     let values: [Double]
 
     var body: some View {
-        HStack(alignment: .bottom, spacing: 2.5) {
+        HStack(alignment: .bottom, spacing: 3) {
             ForEach(Array(values.enumerated()), id: \.offset) { _, v in
                 let level = Thresholds.cpuUsage.level(v)
                 ZStack(alignment: .bottom) {
-                    RoundedRectangle(cornerRadius: 1.5).fill(.quaternary.opacity(0.6))
-                    RoundedRectangle(cornerRadius: 1.5).fill(level.color.opacity(0.85))
-                        .frame(height: max(1.5, CGFloat(v / 100) * 14))
+                    RoundedRectangle(cornerRadius: 2).fill(.quaternary.opacity(0.6))
+                    RoundedRectangle(cornerRadius: 2).fill(level.color.opacity(0.85))
+                        .frame(height: max(2, CGFloat(v / 100) * 22))
                 }
-                .frame(height: 14)
+                .frame(height: 22)
             }
         }
         .help("Per-core utilisation")

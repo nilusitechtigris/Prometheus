@@ -1,7 +1,8 @@
 import AppKit
 import SwiftUI
 
-/// The app's layout: the name in the title bar's row, each page below it, and a dock of pages at the foot.
+/// The app's layout: the name in the title bar's row, each page below it, and one line at the foot with
+/// the dock of pages and this Mac's readout (ForgeFoot.swift).
 struct ForgeShell: View {
     @Environment(UIState.self) private var ui
     @Environment(DevSession.self) private var dev
@@ -27,7 +28,7 @@ struct ForgeShell: View {
                 .padding(.top, pageFills ? 30 : 0)
                 .padding(.bottom, pageFills ? 10 : 0)
             if !pageFills {
-                ForgeDock().transition(.move(edge: .bottom).combined(with: .opacity))
+                ForgeFoot().transition(.move(edge: .bottom).combined(with: .opacity))
             }
         }
         .animation(Motion.quick, value: pageFills)
@@ -176,71 +177,6 @@ private struct WindowBackdrop: View {
     }
 }
 
-// MARK: - Dock
-
-/// The pages, in a row at the foot of the window.
-private struct ForgeDock: View {
-    @Environment(AppSettings.self) private var settings
-    @Environment(UIState.self) private var ui
-    @Environment(TestLab.self) private var lab
-    @Environment(DevSession.self) private var dev
-    /// So the highlight slides from one item to the next.
-    @Namespace private var highlight
-
-    private var inChat: Bool { ui.destination == .chat }
-
-    var body: some View {
-        HStack(spacing: 4) {
-            item("sparkle", "Ask", selected: ui.destination == .home) { ui.destination = .home }
-                .help("Start a task")
-            // Always the chats, with the list showing. It used to fold the list away on a second click,
-            // and to show Dev mode when that had been left on.
-            item("clock.arrow.circlepath", "History", selected: inChat && !dev.isOn) {
-                dev.isOn = false
-                settings.chatsOpen = true
-                ui.destination = .chat
-            }
-            .help("Your chats (⌥⌘2 folds the list away)")
-            item("chevron.left.forwardslash.chevron.right", "Dev", selected: inChat && dev.isOn) {
-                dev.isOn = true
-                ui.destination = .chat
-            }
-            .help("Dev mode: the agent writes code in a project folder and runs it")
-            item("cube", "Models", selected: ui.destination == .library) { ui.destination = .library }
-            item("checklist", "Tests", selected: ui.destination == .tests, busy: lab.isRunning) { ui.destination = .tests }
-            item("gearshape.fill", "Settings", selected: ui.destination == .settings) { ui.destination = .settings }
-        }
-        .padding(5)
-        .background(Forge.card, in: Capsule(style: .circular))
-        .overlay(Capsule(style: .circular).strokeBorder(Forge.line, lineWidth: 1))
-        .padding(.vertical, 10)
-        .animation(Motion.page, value: ui.destination)
-        .animation(Motion.page, value: dev.isOn)
-    }
-
-    private func item(_ symbol: String, _ title: String, selected: Bool, busy: Bool = false, action: @escaping () -> Void) -> some View {
-        let shape = Capsule(style: .circular)
-        return Button(action: action) {
-            HStack(spacing: 7) {
-                Image(systemName: symbol).font(.system(size: 12, weight: .medium))
-                Text(title).font(.uiCallout.weight(selected ? .semibold : .regular))
-                if busy { ProgressView().controlSize(.mini) }
-            }
-            .foregroundStyle(selected ? Palette.onAccent : Forge.ink)
-            .padding(.horizontal, 15)
-            .frame(height: 36)
-            .background {
-                if selected { shape.fill(Palette.gradient).matchedGeometryEffect(id: "page", in: highlight) }
-            }
-            // A page that isn't open shows where a click would land.
-            .hoverFill(shape, when: !selected)
-            .contentShape(shape)
-        }
-        .buttonStyle(.soft)
-        .accessibilityAddTraits(selected ? .isSelected : [])
-    }
-}
-
 // MARK: - Toasts
 
 /// A short message at the foot of the window, which goes away by itself.
@@ -263,8 +199,8 @@ private struct ToastHost: View {
                     .background(Forge.card, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
                     .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous).strokeBorder(Forge.line, lineWidth: 1))
                     .shadow(color: .black.opacity(0.3), radius: 10, y: 3)
-                    // Above the dock.
-                    .padding(.bottom, 72)
+                    // Above the foot of the window.
+                    .padding(.bottom, 82)
                     .transition(.move(edge: .bottom).combined(with: .opacity))
                     .id(toast.id)
             }

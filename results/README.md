@@ -4,7 +4,7 @@ Test results from people's own Macs. Each publish adds two files: a `.md` report
 
 ## Add yours
 
-1. In Prometheus, open **Tests › Publish**, tick the runs you want to share and press **Publish**. It saves both files, copies the `.json` one and opens a new file on GitHub with its name filled in.
+1. Publish is in the lab edition. Quit Prometheus, run `defaults write com.localaiagent.app edition lab` in Terminal once, and open it again. Then open **Tests › Publish**, tick the runs you want to share and press **Publish**. It saves both files, copies the `.json` one and opens a new file on GitHub with its name filled in.
 2. Sign in if GitHub asks, click in the empty file and press **⌘V**.
 3. Press **Commit changes…**, then **Propose changes** and **Create pull request**.
 4. Add the `.md` report the same way: press **Copy and Open** on its row in Prometheus.

@@ -1,7 +1,8 @@
 import SwiftUI
 
 /// The start page: the flame, one question and a box to answer it in. Asking here starts a chat, so there
-/// is no page to pass through before the work begins. Every number on it comes from this Mac.
+/// is no page to pass through before the work begins. The last task and this Mac's readout are on the
+/// line at the foot of the window (ForgeFoot.swift).
 struct HomePage: View {
     var body: some View {
         GeometryReader { box in
@@ -23,7 +24,6 @@ struct HomePage: View {
                         .frame(maxWidth: 760)
                         .padding(.top, 22)
                     Spacer(minLength: 16)
-                    HomeFooter()
                 }
                 .padding(.horizontal, 20)
                 .padding(.bottom, 4)
@@ -47,7 +47,6 @@ private struct AskBox: View {
     @Environment(AppSettings.self) private var settings
     @Environment(BackendController.self) private var backends
     @Environment(DevSession.self) private var dev
-    @State private var task = ""
     @State private var showOptions = false
     @FocusState private var focused: Bool
 
@@ -57,14 +56,16 @@ private struct AskBox: View {
         ("Analyze content", "Analyze this and tell me what matters most:\n\n"),
     ]
 
-    private var canSend: Bool { chat.canSend && !task.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+    private var canSend: Bool { chat.canSend && !ui.homeDraft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
     private var harnessOn: Bool { settings.harnessEnabled && backends.kind.supportsTools }
 
     var body: some View {
+        // What is typed lives in UIState, so it is still here after a look at Telemetry or another page.
+        @Bindable var ui = ui
         let shape = RoundedRectangle(cornerRadius: 22, style: .continuous)
         VStack(spacing: 16) {
             VStack(alignment: .leading, spacing: 12) {
-                TextField("Summarize this document in 3 key points…", text: $task, axis: .vertical)
+                TextField("Summarize this document in 3 key points…", text: $ui.homeDraft, axis: .vertical)
                     .textFieldStyle(.plain)
                     .font(.geist(17))
                     .lineLimit(2...6)
@@ -140,7 +141,7 @@ private struct AskBox: View {
             HStack(spacing: 8) {
                 ForEach(starters, id: \.title) { starter in
                     Button {
-                        task = starter.starter
+                        ui.homeDraft = starter.starter
                         focused = true
                     } label: {
                         pill(starter.title)
@@ -190,99 +191,10 @@ private struct AskBox: View {
 
     private func send() {
         guard canSend else { return }
-        let text = task
-        task = ""
+        let text = ui.homeDraft
+        ui.homeDraft = ""
         ui.destination = .chat
         chat.newConversation()
         chat.send(text)
-    }
-}
-
-// MARK: - Foot of the page
-
-/// The last task at the left and this Mac's state at the right, both from real data.
-private struct HomeFooter: View {
-    @Environment(ChatController.self) private var chat
-    @Environment(UIState.self) private var ui
-    @Environment(SystemMonitor.self) private var monitor
-
-    var body: some View {
-        HStack(alignment: .bottom, spacing: 16) {
-            if let conversation = chat.conversations.first(where: { !$0.messages.isEmpty }) {
-                recent(conversation)
-            }
-            Spacer(minLength: 0)
-            hardware
-        }
-    }
-
-    private func recent(_ conversation: Conversation) -> some View {
-        let shape = RoundedRectangle(cornerRadius: 16, style: .continuous)
-        let running = conversation.messages.last?.id == chat.streamingMessageID && chat.streamingMessageID != nil
-        return Button {
-            chat.selectedID = conversation.id
-            ui.destination = .chat
-        } label: {
-            HStack(spacing: 11) {
-                Image(systemName: "clock.arrow.circlepath").font(.system(size: 13, weight: .medium)).foregroundStyle(Forge.dim)
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(conversation.title).font(.uiCallout.weight(.medium)).foregroundStyle(Forge.ink).lineLimit(1)
-                    Group {
-                        if running {
-                            Text("Running…")
-                        } else if conversation.messages.last?.errorText != nil {
-                            // A chat whose last reply failed isn't a finished task.
-                            Text("Failed · \(TestFormat.relative(conversation.updatedAt))")
-                        } else if conversation.messages.last?.role == .user {
-                            Text("No reply · \(TestFormat.relative(conversation.updatedAt))")
-                        } else {
-                            Text("Completed · \(TestFormat.relative(conversation.updatedAt))")
-                        }
-                    }
-                    .font(.uiCaption)
-                    .foregroundStyle(Forge.dim)
-                    .lineLimit(1)
-                }
-                Spacer(minLength: 0)
-            }
-            .padding(.horizontal, 14)
-            .frame(width: 300, height: 52)
-            .background(Forge.card.opacity(0.9), in: shape)
-            .overlay(shape.strokeBorder(Color.white.opacity(0.12), lineWidth: 1))
-            .contentShape(shape)
-        }
-        .buttonStyle(.soft)
-        .help("Open your last task")
-    }
-
-    private var hardware: some View {
-        let shape = RoundedRectangle(cornerRadius: 16, style: .continuous)
-        return HStack(spacing: 22) {
-            stat("GPU", monitor.gpu.points.last.map { String(format: "%.0f%%", $0.value) } ?? "—")
-            stat("Memory", monitor.snapshot.memoryPercent.map { String(format: "%.0f%%", $0) } ?? "—")
-            stat("Thermal", thermal)
-        }
-        .padding(.horizontal, 16)
-        .frame(height: 52)
-        .background(Forge.card.opacity(0.9), in: shape)
-        .overlay(shape.strokeBorder(Color.white.opacity(0.12), lineWidth: 1))
-        .accessibilityElement(children: .combine)
-    }
-
-    private var thermal: String {
-        switch monitor.snapshot.thermalState {
-        case .nominal: return "Nominal"
-        case .fair: return "Fair"
-        case .serious: return "Serious"
-        case .critical: return "Critical"
-        @unknown default: return "—"
-        }
-    }
-
-    private func stat(_ title: String, _ value: String) -> some View {
-        VStack(alignment: .leading, spacing: 1) {
-            Text(title).font(.uiCaption).foregroundStyle(Forge.dim)
-            Text(value).font(.uiCallout.weight(.semibold)).foregroundStyle(Forge.ink).monospacedDigit()
-        }
     }
 }

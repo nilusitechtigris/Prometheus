@@ -30,7 +30,8 @@ import WebKit
 ///   LOCALAI_SHOW_MODEL_PICKER=1     open the model + quant picker after launch
 ///   LOCALAI_NO_ACTIVATE=1           don't bring the app to the front on launch
 ///   LOCALAI_DATA_DIR=/path          keep chats in this folder instead of the user's
-///   LOCALAI_DESTINATION=tests|model|hardware|harness|publish|library   open that page after launch
+///   LOCALAI_DESTINATION=tests|model|hardware|harness|publish|library|telemetry   open that page after launch;
+///                                   in a page tour, "back" after "telemetry" returns to the page before it
 ///   LOCALAI_PUBLISH_ALL=1           write the file Publish makes, with every saved run
 ///   LOCALAI_DEV_CHECK=/path         check Dev mode's parsing, sandbox and agent with a scripted model
 ///   LOCALAI_DEV_SESSION_CHECK=/path  check the Dev workspace's controller, in a folder with an awkward name
@@ -58,7 +59,6 @@ import WebKit
 ///   LOCALAI_EXPAND_TESTS=id,id      open these questions in the model test dashboard
 ///   LOCALAI_DUMP_SUITE=/path.json   write the model test as JSON, to run it outside the app
 ///   LOCALAI_GRADE=/path.json        grade replies from {"id": "reply"}, writing /path.json.graded.json
-///   LOCALAI_TELEMETRY=0|1           start with the telemetry panel closed or open; =cycle closes it after 3 s
 ///   LOCALAI_HARNESS_CHECK=/path.txt check the harness's allowlist, calculator, guard and web tools, writing a report
 ///   LOCALAI_WEB_VIA_CURL=1          make the harness's web requests with curl (see WebTools)
 ///   LOCALAI_CLOSE_MAIN=3            close the main window after this many seconds, like its red button
@@ -183,6 +183,9 @@ enum DebugHooks {
             case "chat": ui.destination = .chat
             case "settings": ui.destination = .settings
             case "home": ui.destination = .home
+            case "telemetry": ui.destination = .telemetry
+            // Telemetry's own way back, to the page it was opened from.
+            case "back": ui.toggleTelemetry()
             default: break
             }
         }
@@ -202,15 +205,6 @@ enum DebugHooks {
                         try? frame.representation(using: .png, properties: [:])?.write(to: URL(fileURLWithPath: "\(dir)/tour-\(index)-\(number).png"))
                     }
                     try? await Task.sleep(for: .seconds(1))
-                }
-            }
-        }
-        if let telemetry = env["LOCALAI_TELEMETRY"] {
-            settings.telemetryOpen = telemetry != "0"
-            if telemetry == "cycle" {
-                Task {
-                    try? await Task.sleep(for: .seconds(3))
-                    settings.telemetryOpen = false
                 }
             }
         }

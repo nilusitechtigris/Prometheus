@@ -124,7 +124,7 @@ If your copy doesn't have the Updates tab yet, quit the app and paste this into 
 
 ### Chat
 
-![A chat with the harness on and hardware telemetry below it](docs/screenshots/chat.png)
+![A chat with the harness on](docs/screenshots/chat.png)
 
 - Streaming replies with Markdown, code blocks, tables and collapsible thinking
 - Stop, regenerate, and saved chats with search (⌘F). Select several chats to delete them together
@@ -132,7 +132,12 @@ If your copy doesn't have the Updates tab yet, quit the app and paste this into 
 - **Side by side** (⇧⌘↩): the plain model and the harness answer the same message next to each other, and one click saves a picture of it
 - With the harness on, a card shows each web search before it's sent: **Allow once**, **Always allow** or **Not now**
 - Framework, model and quantization, context window, Think, Harness and temperature under the message box
-- Live hardware telemetry along the bottom (⌥⌘1): GPU, memory and CPU load and temperatures, with no admin rights needed
+
+### Telemetry
+
+![The Telemetry page: load and temperature of the GPU, memory and CPU](docs/screenshots/telemetry.png)
+
+GPU load, memory and heat show at the foot of the window on every page. Click them, or press ⌥⌘1, for the Telemetry page: load and temperature of the GPU, memory and CPU over the last minutes, with no admin rights needed. **Back**, Esc or ⌥⌘1 again returns to the page you were on, as you left it.
 
 ### Dev mode
 
@@ -207,7 +212,7 @@ Verified open models from Meta, Google, Microsoft, Alibaba Qwen, Mistral AI, IBM
 
 ### Tests
 
-The Tests page opens on the **Hardware Test**. Turn on **Lab** there for the rest. All of them are laid out the same way:
+The Tests page opens on an overview with one card for each test and its last result. All of them are laid out the same way:
 
 - **Model Test** (⌥⌘3): 24 auto-graded questions across math, reasoning, knowledge, instructions, code and long context. Each topic has four levels worth 1, 2, 4 and 8 points. A score of 100 is the level of Claude Opus 5.5 at max effort, from a blind run of the same questions.
 - **Hardware Test** (⌥⌘4, about 30 seconds): CPU, GPU, memory bandwidth and disk speed, plus 15 seconds of sustained GPU load to check for throttling.
@@ -219,13 +224,13 @@ The Tests page opens on the **Hardware Test**. Turn on **Lab** there for the res
 
   Choose **3 runs** to repeat a test and see every round's score, the mean and the spread. For any two runs on the same questions, the page counts the answers that flipped each way and says how often chance alone would split them that unevenly. **By route** shows, for each kind of task, how many questions went right with the harness and without, and how many flipped each way. Turn off **Harness off too** to run with the harness on only. How the public questions were picked, their licences and what a score on them can't show are in [benchmarks/heldout](benchmarks/heldout/README.md).
 
-**Publish** (⌥⌘6) shares your results. Tick the runs you want and press **Publish**. The app saves a JSON file and a readable report named after your Mac and the date, then opens GitHub, where you drag them in to make a pull request. Each task shows its reply, the end of the model's thinking, its token counts, time and points. People's results are in [results](results/README.md), which also describes the files.
+**Publish** (⌥⌘6, in the lab edition, see [The harness](#the-harness)) shares your results. Tick the runs you want and press **Publish**. The app saves a JSON file and a readable report named after your Mac and the date, then opens GitHub, where you drag them in to make a pull request. Each task shows its reply, the end of the model's thinking, its token counts, time and points. People's results are in [results](results/README.md), which also describes the files.
 
 ## The harness
 
 **Harness on** means v3, the loop. In the one published run where every version shared a setup it scored highest, level with v4, and it's the simplest of the versions that check a reply and try again. The app runs that one, and there's nothing to choose.
 
-Every other version stays in the code, so the results below can be repeated. One line in Terminal turns a copy into the **lab edition**, which adds **Other versions** to the Harness button in chat, a version to pick in the Harness Test, the Versions tab, and v1 and v2 in Dev mode:
+Every other version stays in the code, so the results below can be repeated. One line in Terminal turns a copy into the **lab edition**, which adds **Other versions** to the Harness button in chat, a version to pick in the Harness Test, the Versions tab, Publish on the Tests page, and v1 and v2 in Dev mode:
 
 ```sh
 defaults write com.localaiagent.app edition lab
@@ -357,7 +362,7 @@ Conversations are stored in `~/Library/Application Support/LocalAIAgent/conversa
 
 Prometheus is made by one person, and the most useful help needs no code:
 
-- **Publish a test run.** Run the Harness Test on your Mac, then press **Publish** ([how](results/README.md)). A **Held-out** run with **3 runs** is the most useful one now. Any Apple Silicon Mac and any model helps, and M1 to M3 Macs and 8 or 16 GB machines are missing so far.
+- **Publish a test run.** Run the Harness Test on your Mac, then press **Publish**, which is in the lab edition ([how](results/README.md)). A **Held-out** run with **3 runs** is the most useful one now. Any Apple Silicon Mac and any model helps, and M1 to M3 Macs and 8 or 16 GB machines are missing so far.
 - **Stump it.** Found a question that a small model gets wrong even with the harness on? [Open an issue](https://github.com/nilusitechtigris/Prometheus/issues/new) with the question, the model and what came back. Failures are how each version of the harness was made.
 - **Tell someone.** If it's useful to you, a ⭐ helps other people find it.
 

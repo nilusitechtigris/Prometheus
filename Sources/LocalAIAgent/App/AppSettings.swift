@@ -77,10 +77,6 @@ final class AppSettings {
     var activeRounds: Int { Edition.current.isLab ? harnessMaxRounds : Self.usualHarnessRounds }
     /// Whether the Harness Test also covers the harness off, or only the harness on.
     var harnessTestRunsOff: Bool { didSet { defaults.set(harnessTestRunsOff, forKey: "harnessTestRunsOff") } }
-    /// Whether the telemetry panel is open along the bottom of the window, and how tall it is.
-    var telemetryOpen: Bool { didSet { defaults.set(telemetryOpen, forKey: "telemetryOpen") } }
-    var telemetryHeight: Double { didSet { defaults.set(telemetryHeight, forKey: "telemetryHeight") } }
-    static let telemetryHeights = 150.0...420.0
     /// Whether the chats show beside the conversation on the Chat page.
     var chatsOpen: Bool { didSet { defaults.set(chatsOpen, forKey: "chatsOpen") } }
 
@@ -106,9 +102,6 @@ final class AppSettings {
         let rounds = defaults.integer(forKey: "harnessMaxRounds")
         harnessMaxRounds = rounds > 0 ? rounds : Self.usualHarnessRounds
         harnessTestRunsOff = defaults.object(forKey: "harnessTestRunsOff") as? Bool ?? true
-        telemetryOpen = defaults.object(forKey: "telemetryOpen") as? Bool ?? true
-        let panelHeight = defaults.double(forKey: "telemetryHeight")
-        telemetryHeight = panelHeight > 0 ? min(max(panelHeight, Self.telemetryHeights.lowerBound), Self.telemetryHeights.upperBound) : 216
         chatsOpen = defaults.object(forKey: "chatsOpen") as? Bool ?? true
         // Written down once, so the choice made at the first launch doesn't change at the second.
         if defaults.object(forKey: "harnessEnabled") == nil { defaults.set(harnessEnabled, forKey: "harnessEnabled") }

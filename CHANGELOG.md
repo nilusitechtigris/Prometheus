@@ -21,11 +21,12 @@ Every number this project quotes comes from a run someone made in the app. Where
 
 ### Changed
 
-- **A new look.** The sidebar is gone: a header holds the name, and a dock at the foot of the window holds the pages. Home is one question and a box to answer it in, and asking there starts a chat. There are two dark themes, Ember and Rose, with a switch in the header; they replace lime and the other themes, and a theme saved by an older copy becomes Ember. One glass flame burns in the middle of Home and stands beside the name on every other page.
+- **A new look.** The sidebar is gone: a header holds the name, and a dock at the foot of the window holds the pages. Home is one question and a box to answer it in, and asking there starts a chat. There are two dark themes, Ember and Rose, as two dots at the end of the title bar; they replace lime and the other themes, and a theme saved by an older copy becomes Ember. One glass flame is lit in the middle of Home each time you come to it.
 - **Harness on now means one thing:** v3, the loop, and the app offers no other. The earlier and newer versions stay in the code so results can be repeated. One Terminal line turns a copy into the lab edition, which shows them: see "The harness" in the README.
 - **New installs start with the harness on.** Existing installs keep their setting.
 - **Web lookups ask first.** Before the harness searches or opens a page it shows what it will send and where. "Always" and "Never" are in Settings › Harness.
-- **Tests has a Lab switch.** With it off, Tests shows the Hardware Test. With it on, the Model and Harness tests and Publish are there too.
+- **Telemetry is a page of its own.** GPU load, memory and heat show at the foot of the window on every page, on one line with the dock. A click there, or ⌥⌘1, opens the Telemetry page, and Back, Esc or ⌥⌘1 returns to the page you were on. It used to be a strip under the chat.
+- **Tests opens on an overview:** one card each for the Model test, this Mac and the Harness test, with the last result. Publish is in the lab edition only.
 - The Harness Test says before it starts that its knowledge tasks use the web.
 - Every custom button lights up under the pointer, dims while pressed and greys out when it can't be used.
 - Heat is shown in plain words ("Heat: normal", "hottest 43°C"), and meters use a plain mark.

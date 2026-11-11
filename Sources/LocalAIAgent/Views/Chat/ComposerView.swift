@@ -143,7 +143,6 @@ struct ComposerView: View {
         if backends.supportsThinking { ThinkPill(compact: compact) }
         HarnessPill(compact: compact)
         temperaturePill(compact: compact)
-        TelemetryPill(compact: compact)
         DevPill(compact: compact)
     }
 
@@ -443,34 +442,6 @@ struct WebConsentCard: View {
         request.isSearch
             ? "This search would go to \(WebConsent.destinations), and the harness would read pages it finds on the trusted sites. Those sites see the search, the page addresses and your IP address. Nothing else from your chat is sent."
             : "The site sees this address and your IP address. Nothing else from your chat is sent."
-    }
-}
-
-/// Opens or collapses the hardware telemetry under the chat.
-private struct TelemetryPill: View {
-    @Environment(AppSettings.self) private var settings
-    var compact = false
-
-    var body: some View {
-        let on = settings.telemetryOpen
-        Button {
-            withAnimation(Motion.quick) { settings.telemetryOpen.toggle() }
-        } label: {
-            HStack(spacing: 5) {
-                Image(systemName: "gauge.with.dots.needle.67percent")
-                if !compact { Text("Telemetry") }
-            }
-            .font(.uiCallout.weight(on ? .semibold : .regular))
-            .foregroundStyle(on ? Palette.accent : .secondary)
-            .padding(.horizontal, 11)
-            .padding(.vertical, 5)
-            .contentShape(Capsule(style: .circular))
-        }
-        .buttonStyle(.soft)
-        .glassCapsule(interactive: true)
-        .overlay(Capsule(style: .circular).strokeBorder(on ? Palette.accent.opacity(0.6) : .clear, lineWidth: 1))
-        .help("\(on ? "Collapse" : "Open") the hardware telemetry (⌥⌘1)")
-        .accessibilityLabel("Telemetry, \(on ? "on" : "off")")
     }
 }
 
